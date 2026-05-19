@@ -65,8 +65,8 @@ type Registrar struct {
 // NewRegistrar 创建注册器
 func NewRegistrar(cfg *Config) *Registrar {
 	identity := browser.RandomIdentity()
-	log.Printf("[指纹] Chrome: %s | GPU: %s | 内存: %dGB | 核心: %d | 分辨率: %dx%d (%d-bit)", 
-		identity.ChromeVer, identity.GPUModel, identity.DeviceMemory, identity.HardwareConcurrency, 
+	log.Printf("[指纹] Chrome: %s | GPU: %s | 内存: %dGB | 核心: %d | 分辨率: %dx%d (%d-bit)",
+		identity.ChromeVer, identity.GPUModel, identity.DeviceMemory, identity.HardwareConcurrency,
 		identity.Screen.Width, identity.Screen.Height, identity.Screen.ColorDepth)
 
 	client := httputil.NewTLSClient(cfg.Proxy, true, identity.ChromeVer)
@@ -295,6 +295,20 @@ func (r *Registrar) Step3Email() error {
 		log.Printf("email=%s", r.Email)
 		return nil
 	}
+
+	if r.Cfg.EmailProvider == "mailporary" {
+		log.Println("[3] 使用 Mailporary 临时邮箱")
+		svc := email.NewMailporaryService(r.Cfg.Proxy)
+		address, err := svc.CreateWithError()
+		if err != nil {
+			return fmt.Errorf("创建 Mailporary 邮箱失败: %w", err)
+		}
+		r.EmailSvc = svc
+		r.Email = address
+		log.Printf("email=%s", r.Email)
+		return nil
+	}
+
 	log.Println("[3] 创建临时邮箱")
 	// 如果未配置 MoEmail URL，从已保存的 MoeMail 配置中自动读取
 	baseURL := r.Cfg.MoEmailBaseURL

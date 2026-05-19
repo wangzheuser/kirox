@@ -159,20 +159,13 @@ function selectEmailProvider(provider) {
   selectedEmailProvider = provider;
 
   // 更新按钮样式
-  const outlookBtn = document.querySelector('label[onclick*="outlook"]');
-  const moemailBtn = document.querySelector('label[onclick*="moemail"]');
-
-  if (provider === 'outlook') {
-    outlookBtn.style.borderColor = 'var(--primary)';
-    outlookBtn.style.background = 'rgba(59, 130, 246, 0.1)';
-    moemailBtn.style.borderColor = 'var(--border)';
-    moemailBtn.style.background = 'transparent';
-  } else {
-    outlookBtn.style.borderColor = 'var(--border)';
-    outlookBtn.style.background = 'transparent';
-    moemailBtn.style.borderColor = 'var(--primary)';
-    moemailBtn.style.background = 'rgba(59, 130, 246, 0.1)';
-  }
+  ['outlook', 'moemail', 'mailporary'].forEach(function(name) {
+    const btn = document.querySelector('label[onclick*="' + name + '"]');
+    if (!btn) return;
+    const active = provider === name;
+    btn.style.borderColor = active ? 'var(--primary)' : 'var(--border)';
+    btn.style.background = active ? 'rgba(59, 130, 246, 0.1)' : 'transparent';
+  });
 
   // 显示/隐藏 MoeMail 配置选择
   const moemailConfigDiv = document.getElementById('moemail-config-select');
@@ -182,6 +175,9 @@ function selectEmailProvider(provider) {
     moemailConfigDiv.style.display = 'block';
     hintDiv.textContent = '使用 MoeMail 临时邮箱进行注册，每次任务会自动生成新邮箱。';
     loadMoeMailDomainsToList();
+  } else if (provider === 'mailporary') {
+    moemailConfigDiv.style.display = 'none';
+    hintDiv.textContent = '使用 Mailporary 零配置临时邮箱进行注册。';
   } else {
     moemailConfigDiv.style.display = 'none';
     hintDiv.textContent = '使用微软邮箱进行注册，代理配置请在设置页设置。';
@@ -334,4 +330,3 @@ function closeKiroTaskModal() {
     });
   });
 })();
-

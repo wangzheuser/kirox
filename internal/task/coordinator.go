@@ -22,7 +22,7 @@ type StartTaskRequest struct {
 	Concurrency       int                              `json:"concurrency"`
 	Delay             int                              `json:"delay"`
 	OutputPath        string                           `json:"outputPath"`
-	EmailProvider     string                           `json:"emailProvider"`     // "outlook" 或 "moemail"
+	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail" 或 "mailporary"
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
 	MoeMailConfigs    map[string][]email.MoeMailConfig `json:"moemailConfigs"`    // 域名 -> 配置列表映射
 	MoeMailRandomMode bool                             `json:"moemailRandomMode"` // 是否为随机模式
@@ -60,6 +60,8 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 			return map[string]interface{}{"error": "MoeMail 配置缺失"}
 		}
 		// MoeMail 不需要预先加载账号，每次任务动态生成
+	} else if emailProvider == "mailporary" {
+		// Mailporary 为零配置临时邮箱，不需要预加载账号或域名配置。
 	} else {
 		// Outlook 模式：加载账号列表
 		storedAccounts := storage.GetAccountsCached()
@@ -195,6 +197,8 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Printf("[Kiro] MoeMail 域名池: %v (共 %d 个域名)", moemailDomainPool, len(moemailDomainPool))
 	} else if emailProvider == "outlook" {
 		taskConfig.UseOutlook = true
+	} else if emailProvider == "mailporary" {
+		log.Println("[Kiro] Mailporary 零配置邮箱模式")
 	}
 
 	// 统计计数器
@@ -323,6 +327,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			reg.Ctx = taskCtx
 			reg.TaskLabel = fmt.Sprintf("%d/%d", i+1, req.Count)
 			result = reg.Run()
+			if resultEmail, _ := result["email"].(string); resultEmail != "" {
+				currentEmail = resultEmail
+			}
 
 			if result["status"] == "success" {
 				break
@@ -332,7 +339,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 			// AWS 熔断：任一任务遇到 400/BLOCKED/IP-flagged 类错误就终止全部
 			// 触发后继续跑只会烧邮箱、烧代理额度
-			if isKillSwitchError(errorMsg) {
+			if isKillSwitchError(errorMsg, emailProvider) {
 				otpKillOnce.Do(func() {
 					log.Printf("[Kiro] ⚠️ 检测到熔断级错误(%s)，立即终止所有注册任务", errorMsg)
 					go StopTask(true)
@@ -536,16 +543,18 @@ func classifyError(errorMsg string) string {
 }
 
 // isKillSwitchError 判断该错误是否属于"AWS 已把我们拉黑，继续跑没意义"的熔断级错误。
-// 命中则立即终止全部并发任务。与单纯的瞬态失败（网络超时、验证码延迟）区分。
-func isKillSwitchError(errorMsg string) bool {
+// Mailporary 的 send-otp 400 更可能是单个临时邮箱域名被拒，不能直接升级为全局熔断。
+func isKillSwitchError(errorMsg, emailProvider string) bool {
 	if errorMsg == "" {
 		return false
 	}
+	if strings.Contains(errorMsg, "send-otp 失败 (400)") {
+		return emailProvider != "mailporary"
+	}
 	triggers := []string{
-		"send-otp 失败 (400)",     // Step9 原始 400
-		"注册被拦截",                // formatError 对 BLOCKED/注册请求被拦截 的翻译
-		"IP或浏览器指纹被检测",    // 指纹/IP 被标记
-		"BLOCKED",                  // 响应体里直接包含的风控标记
+		"注册被拦截",       // formatError 对 BLOCKED/注册请求被拦截 的翻译
+		"IP或浏览器指纹被检测", // 指纹/IP 被标记
+		"BLOCKED",     // 响应体里直接包含的风控标记
 		"注册请求被拦截",
 	}
 	for _, t := range triggers {
