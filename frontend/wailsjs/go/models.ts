@@ -30,6 +30,13 @@ export namespace proxy {
 	    city: string;
 	    isp: string;
 	    error?: string;
+	    templated?: boolean;
+	    pool?: boolean;
+	    attempts?: number;
+	    successAttempt?: number;
+	    target?: string;
+	    durationMs?: number;
+	    errors?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new Info(source);
@@ -45,6 +52,13 @@ export namespace proxy {
 	        this.city = source["city"];
 	        this.isp = source["isp"];
 	        this.error = source["error"];
+	        this.templated = source["templated"];
+	        this.pool = source["pool"];
+	        this.attempts = source["attempts"];
+	        this.successAttempt = source["successAttempt"];
+	        this.target = source["target"];
+	        this.durationMs = source["durationMs"];
+	        this.errors = source["errors"];
 	    }
 	}
 

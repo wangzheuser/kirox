@@ -273,7 +273,7 @@ func (r *Registrar) Step9SendOTP() error {
 
 	// Outlook 模式: 记录发送前的邮件数量
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
-		count, err := email.GetInboxCount(*r.Cfg.OutlookAccount)
+		count, err := email.GetInboxCountWithProxy(*r.Cfg.OutlookAccount, r.Cfg.Proxy)
 		if err != nil {
 			log.Printf("获取邮件数量失败: %v, 默认为0", err)
 		} else {
@@ -323,7 +323,7 @@ func (r *Registrar) Step9SendOTP() error {
 func (r *Registrar) Step10GetOTP() (string, error) {
 	log.Println("[10] 等待验证码")
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
-		code, err := email.WaitForOTP(*r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5)
+		code, err := email.WaitForOTPWithProxy(*r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5, r.Cfg.Proxy)
 		if err != nil {
 			return "", err
 		}

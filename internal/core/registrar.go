@@ -27,6 +27,7 @@ type Registrar struct {
 	Cookies  map[string]string
 	Identity *browser.BrowserIdentity
 	FPCtx    *browser.FingerprintContext
+	InitErr  error
 
 	VisitorID        string
 	Email            string
@@ -69,7 +70,11 @@ func NewRegistrar(cfg *Config) *Registrar {
 		identity.ChromeVer, identity.GPUModel, identity.DeviceMemory, identity.HardwareConcurrency,
 		identity.Screen.Width, identity.Screen.Height, identity.Screen.ColorDepth)
 
-	client := httputil.NewTLSClient(cfg.Proxy, true, identity.ChromeVer)
+	client, initErr := httputil.NewTLSClientWithTimeout(cfg.Proxy, true, 60, identity.ChromeVer)
+	if initErr != nil {
+		log.Printf("[代理] 客户端初始化失败: %v", initErr)
+		client, _ = httputil.NewTLSClientWithTimeout("", true, 60, identity.ChromeVer)
+	}
 	return &Registrar{
 		Cfg:       cfg,
 		Client:    client,
@@ -78,6 +83,7 @@ func NewRegistrar(cfg *Config) *Registrar {
 		FPCtx:     browser.NewFPContext(identity),
 		VisitorID: httputil.VisitorID(),
 		JWE:       &crypto.JWEEncryptor{},
+		InitErr:   initErr,
 	}
 }
 
@@ -103,9 +109,17 @@ func retryBackoff(attempt int) time.Duration {
 	return base + jitter
 }
 
+// maxHTTPRetries 返回单个 HTTP 客户端上的传输重试次数。
+func (r *Registrar) maxHTTPRetries() int {
+	if r.Cfg != nil && r.Cfg.ProxyFromPool && r.Cfg.Proxy != "" {
+		return 0
+	}
+	return 2
+}
+
 // DoPost 发送 POST 请求（带自动重试）
 func (r *Registrar) DoPost(url string, payload interface{}, headers map[string]string) ([]byte, map[string][]string, error) {
-	const maxRetries = 2
+	maxRetries := r.maxHTTPRetries()
 	var lastErr error
 	var payloadBytes []byte
 	if payload != nil {
@@ -144,7 +158,7 @@ func (r *Registrar) DoPost(url string, payload interface{}, headers map[string]s
 
 // DoGet 发送 GET 请求，返回完整信息（带自动重试）
 func (r *Registrar) DoGet(url string, headers map[string]string) ([]byte, int, map[string][]string, error) {
-	const maxRetries = 2
+	maxRetries := r.maxHTTPRetries()
 	var lastErr error
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -175,7 +189,7 @@ func (r *Registrar) DoGet(url string, headers map[string]string) ([]byte, int, m
 
 // DoPostRaw 发送 POST 请求，返回状态码（带自动重试）
 func (r *Registrar) DoPostRaw(url string, payload interface{}, headers map[string]string) ([]byte, int, map[string][]string, error) {
-	const maxRetries = 2
+	maxRetries := r.maxHTTPRetries()
 	var lastErr error
 	var payloadBytes []byte
 	if payload != nil {

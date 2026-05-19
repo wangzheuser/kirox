@@ -75,8 +75,20 @@ func PKCE() (verifier, challenge string) {
 // NewTLSClient 创建带 TLS 指纹伪装的 HTTP 客户端
 // chromeVer 可选，忽略（始终使用 Chrome_144 profile）
 func NewTLSClient(proxy string, followRedirect bool, chromeVer ...string) tls_client.HttpClient {
+	client, err := NewTLSClientWithTimeout(proxy, followRedirect, 60, chromeVer...)
+	if err != nil {
+		panic(fmt.Sprintf("创建 TLS 客户端失败: %v", err))
+	}
+	return client
+}
+
+// NewTLSClientWithTimeout 创建带 TLS 指纹伪装和自定义超时的 HTTP 客户端。
+func NewTLSClientWithTimeout(proxy string, followRedirect bool, timeoutSeconds int, chromeVer ...string) (tls_client.HttpClient, error) {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 60
+	}
 	opts := []tls_client.HttpClientOption{
-		tls_client.WithTimeoutSeconds(60),
+		tls_client.WithTimeoutSeconds(timeoutSeconds),
 		tls_client.WithClientProfile(profiles.Chrome_144),
 		tls_client.WithInsecureSkipVerify(),
 	}
@@ -85,12 +97,14 @@ func NewTLSClient(proxy string, followRedirect bool, chromeVer ...string) tls_cl
 	}
 	client, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(), opts...)
 	if err != nil {
-		panic(fmt.Sprintf("创建 TLS 客户端失败: %v", err))
+		return nil, fmt.Errorf("创建 TLS 客户端失败: %w", err)
 	}
 	if proxy != "" {
-		client.SetProxy(proxy)
+		if err := client.SetProxy(proxy); err != nil {
+			return nil, fmt.Errorf("设置代理失败: %w", err)
+		}
 	}
-	return client
+	return client, nil
 }
 
 // NewNoRedirectTLSClient 创建不跟随重定向的 TLS 客户端

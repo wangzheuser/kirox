@@ -13,6 +13,7 @@ import (
 	"reg_go/internal/core"
 	"reg_go/internal/data"
 	"reg_go/internal/email"
+	"reg_go/internal/proxy"
 	"reg_go/internal/storage"
 )
 
@@ -175,7 +176,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	taskConfig.EmailProvider = emailProvider
 	taskConfig.Proxy = storage.GetProxy()
 	if taskConfig.Proxy != "" {
-		log.Printf("[Kiro] 已启用代理")
+		if proxy.HasURLTemplate(taskConfig.Proxy) {
+			log.Printf("[Kiro] 已启用代理模板，注册时将动态生成会话代理")
+		} else {
+			log.Printf("[Kiro] 已启用代理")
+		}
 	}
 	killSwitchEnabled := storage.GetKillSwitchEnabled()
 	if !killSwitchEnabled {
@@ -303,8 +308,10 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		itemStart := time.Now()
 
 		const maxAttempts = 2
+		const maxProxySwitches = 3
 
 		var result map[string]interface{}
+		proxySwitches := 0
 	retryLoop:
 		for attempt := 0; attempt < maxAttempts; attempt++ {
 			// 每次重试前检查停止信号
@@ -327,7 +334,28 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				return
 			}
 
-			reg := core.NewRegistrar(&taskCfg)
+			attemptCfg := taskCfg
+			if taskConfig.Proxy != "" {
+				selection, err := proxy.SelectRuntimeProxy(taskCtx, taskConfig.Proxy, proxy.DefaultRegisterSelectOptions())
+				if err != nil {
+					log.Printf("[Kiro][%d/%d] 代理候选选择失败: %v", i+1, req.Count, err)
+					result = map[string]interface{}{
+						"status": "failed",
+						"error":  "代理池无可用节点: " + err.Error(),
+						"email":  currentEmail,
+					}
+					break
+				}
+				attemptCfg.Proxy = selection.ProxyURL
+				attemptCfg.ProxyFromPool = selection.Templated
+				if selection.Templated {
+					log.Printf("[Kiro][%d/%d] 代理池候选可用: 第 %d/%d 个, 耗时 %dms, %s",
+						i+1, req.Count, selection.SuccessAttempt, selection.Attempts, selection.Duration.Milliseconds(), selection.MaskedProxyURL)
+				} else {
+					log.Printf("[Kiro][%d/%d] 代理验证可用: %s", i+1, req.Count, selection.MaskedProxyURL)
+				}
+			}
+			reg := core.NewRegistrar(&attemptCfg)
 			reg.Ctx = taskCtx
 			reg.TaskLabel = fmt.Sprintf("%d/%d", i+1, req.Count)
 			result = reg.Run()
@@ -372,6 +400,15 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			if pwSet, _ := result["passwordSet"].(bool); pwSet {
 				log.Printf("[Kiro][%d/%d] 密码已设置但验活失败，邮箱已消耗，不再重试", i+1, req.Count)
 				break
+			}
+
+			// 动态代理池中部分 UUID 节点可能不可用；代理类网络错误优先切换新 UUID，不消耗业务重试次数。
+			if proxy.HasURLTemplate(taskConfig.Proxy) && isProxyNetworkError(errorMsg) && proxySwitches < maxProxySwitches {
+				proxySwitches++
+				log.Printf("[Kiro][%d/%d] 检测到代理节点网络错误，切换新 UUID 节点重试 (%d/%d): %s",
+					i+1, req.Count, proxySwitches, maxProxySwitches, errorMsg)
+				attempt--
+				continue retryLoop
 			}
 
 			// 不重试的错误类型（含 context 取消 / 被封 / 临时邮箱重复）
@@ -544,6 +581,38 @@ func classifyError(errorMsg string) string {
 		return "registered"
 	}
 	return "failed"
+}
+
+// isProxyNetworkError 判断错误是否更像代理节点不可用，而不是业务风控或邮箱问题。
+func isProxyNetworkError(errorMsg string) bool {
+	if errorMsg == "" {
+		return false
+	}
+	lower := strings.ToLower(errorMsg)
+	triggers := []string{
+		"timeout",
+		"i/o timeout",
+		"deadline",
+		"tls handshake",
+		"connection reset",
+		"connection refused",
+		"unexpected eof",
+		"broken pipe",
+		"connect",
+		"proxy",
+		"代理",
+		"网络连接",
+		"连接超时",
+		"连接失败",
+		"连接被拒绝",
+		"域名解析失败",
+	}
+	for _, trigger := range triggers {
+		if strings.Contains(lower, strings.ToLower(trigger)) {
+			return true
+		}
+	}
+	return false
 }
 
 // isKillSwitchError 判断该错误是否属于"AWS 已把我们拉黑，继续跑没意义"的熔断级错误。

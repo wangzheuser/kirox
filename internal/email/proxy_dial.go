@@ -3,6 +3,7 @@ package email
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -45,7 +46,16 @@ func dialThroughProxy(proxyURL, network, addr string, timeout time.Duration) (ne
 
 // dialHTTPConnect 通过 HTTP(S) 代理用 CONNECT 方法建立到目标的 TCP 隧道。
 func dialHTTPConnect(u *stdurl.URL, target string, timeout time.Duration) (net.Conn, error) {
-	conn, err := (&net.Dialer{Timeout: timeout}).Dial("tcp", u.Host)
+	dialer := &net.Dialer{Timeout: timeout}
+	proxyHost := httpProxyHost(u)
+	var conn net.Conn
+	var err error
+	if strings.EqualFold(u.Scheme, "https") {
+		// HTTPS 代理需要先与代理服务器建立 TLS，再在 TLS 隧道内发送 CONNECT。
+		conn, err = tls.DialWithDialer(dialer, "tcp", proxyHost, &tls.Config{ServerName: u.Hostname()})
+	} else {
+		conn, err = dialer.Dial("tcp", proxyHost)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -76,6 +86,17 @@ func dialHTTPConnect(u *stdurl.URL, target string, timeout time.Duration) (net.C
 	}
 	conn.SetDeadline(time.Time{}) // 清掉握手 deadline
 	return conn, nil
+}
+
+// httpProxyHost 返回带默认端口的 HTTP(S) 代理主机地址。
+func httpProxyHost(u *stdurl.URL) string {
+	if u.Port() != "" {
+		return u.Host
+	}
+	if strings.EqualFold(u.Scheme, "https") {
+		return net.JoinHostPort(u.Hostname(), "443")
+	}
+	return net.JoinHostPort(u.Hostname(), "80")
 }
 
 // httpClientWithProxy 返回带代理的 http.Client（用于 OAuth refresh 等）。

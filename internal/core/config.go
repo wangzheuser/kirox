@@ -25,6 +25,8 @@ type Config struct {
 
 	Proxy string
 	Debug bool
+	// ProxyFromPool 表示 Proxy 是已从动态代理池中选出的运行时节点。
+	ProxyFromPool bool
 
 	EmailProvider  string
 	UseOutlook     bool
@@ -79,4 +81,3 @@ func GenPassword() string {
 	rand.Shuffle(len(pw), func(i, j int) { pw[i], pw[j] = pw[j], pw[i] })
 	return string(pw)
 }
-

@@ -421,12 +421,12 @@
             <div class="settings-item">
               <div class="settings-item-main">
                 <div class="settings-item-title">代理</div>
-                <div class="settings-item-desc">所有注册请求走该代理；留空=直连。支持 http/https/socks5 完整 URL，也支持 host:port:user:pass、host:port、user:pass@host:port 等简写。</div>
+                <div class="settings-item-desc">所有注册请求走该代理；留空=直连。支持 http/https/socks5 完整 URL，也支持 host:port:user:pass、host:port、user:pass@host:port 等简写；可用 {uuid} 作为运行时会话占位符。</div>
               </div>
               <div class="settings-item-action">
                 <div style="display:flex;flex-direction:column;gap:8px;width:100%;">
                   <div style="display:flex;gap:8px;">
-                    <input type="text" id="cfg-proxy" placeholder="例如 http://user:pass@127.0.0.1:7890" class="form-input" style="flex:1;">
+                    <input type="text" id="cfg-proxy" placeholder="例如 https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443" class="form-input" style="flex:1;">
                     <button onclick="saveProxy()" class="btn btn-secondary btn-sm">保存</button>
                     <button onclick="resetProxy()" class="btn btn-secondary btn-sm">清除</button>
                   </div>

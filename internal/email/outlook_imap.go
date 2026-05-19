@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"reg_go/internal/proxy"
 	"reg_go/internal/storage"
 )
 
@@ -114,6 +115,16 @@ func ParseOutlookLines(data string) []OutlookAccount {
 
 // RefreshOutlookToken 用 refresh_token 获取 access_token（优先走全局代理，失败时降级直连）
 func RefreshOutlookToken(acc OutlookAccount) (string, error) {
+	return refreshOutlookToken(acc, storage.GetProxy(), true)
+}
+
+// RefreshOutlookTokenWithProxy 用指定代理刷新 Outlook access_token。
+func RefreshOutlookTokenWithProxy(acc OutlookAccount, proxyURL string) (string, error) {
+	return refreshOutlookToken(acc, proxyURL, false)
+}
+
+// refreshOutlookToken 用 refresh_token 获取 access_token，可按调用场景控制是否允许降级直连。
+func refreshOutlookToken(acc OutlookAccount, proxyURL string, allowDirectFallback bool) (string, error) {
 	form := url.Values{
 		"client_id":     {acc.ClientID},
 		"refresh_token": {acc.RefreshToken},
@@ -121,7 +132,7 @@ func RefreshOutlookToken(acc OutlookAccount) (string, error) {
 		"scope":         {"https://outlook.office.com/IMAP.AccessAsUser.All offline_access"},
 	}
 
-	proxyURL := storage.GetProxy()
+	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	tryPost := func(p string) (resp *http.Response, err error) {
 		client := httpClientWithProxy(p, 30*time.Second)
 		return client.Post(
@@ -130,8 +141,8 @@ func RefreshOutlookToken(acc OutlookAccount) (string, error) {
 			strings.NewReader(form.Encode()),
 		)
 	}
-	resp, err := tryPost(proxyURL)
-	if err != nil && proxyURL != "" {
+	resp, err := tryPost(runtimeProxyURL)
+	if err != nil && runtimeProxyURL != "" && allowDirectFallback {
 		log.Printf("[Outlook OAuth] 代理请求失败，降级直连：%v", err)
 		resp, err = tryPost("")
 	}
@@ -169,10 +180,20 @@ type imapClient struct {
 
 // newIMAPClient 连接 Outlook IMAP（优先走全局代理，代理被封端口时自动降级直连）
 func newIMAPClient() (*imapClient, error) {
+	return newIMAPClientWithFallback(storage.GetProxy(), true)
+}
+
+// newIMAPClientWithProxy 连接 Outlook IMAP，并优先使用指定代理。
+func newIMAPClientWithProxy(proxyURL string) (*imapClient, error) {
+	return newIMAPClientWithFallback(proxyURL, false)
+}
+
+// newIMAPClientWithFallback 连接 Outlook IMAP，可按调用场景控制是否允许降级直连。
+func newIMAPClientWithFallback(proxyURL string, allowDirectFallback bool) (*imapClient, error) {
 	const target = "outlook.office365.com:993"
-	proxyURL := storage.GetProxy()
-	rawConn, err := dialThroughProxy(proxyURL, "tcp", target, 15*time.Second)
-	if err != nil && proxyURL != "" {
+	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
+	rawConn, err := dialThroughProxy(runtimeProxyURL, "tcp", target, 15*time.Second)
+	if err != nil && runtimeProxyURL != "" && allowDirectFallback {
 		log.Printf("[IMAP] 代理拨号失败，降级直连：%v", err)
 		rawConn, err = dialThroughProxy("", "tcp", target, 15*time.Second)
 	}
@@ -372,9 +393,15 @@ func (c *imapClient) fetchLatestBody(seq int) (string, error) {
 
 // WaitForOTP 通过 IMAP 轮询等待 AWS 验证码
 func WaitForOTP(acc OutlookAccount, beforeCount, timeout, interval int) (string, error) {
+	return WaitForOTPWithProxy(acc, beforeCount, timeout, interval, storage.GetProxy())
+}
+
+// WaitForOTPWithProxy 通过指定代理轮询等待 AWS 验证码。
+func WaitForOTPWithProxy(acc OutlookAccount, beforeCount, timeout, interval int, proxyURL string) (string, error) {
 	log.Printf("[Outlook IMAP] 等待验证码, 邮箱=%s, 发送前邮件数=%d", acc.Email, beforeCount)
 
-	accessToken, err := RefreshOutlookToken(acc)
+	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
+	accessToken, err := RefreshOutlookTokenWithProxy(acc, runtimeProxyURL)
 	if err != nil {
 		return "", fmt.Errorf("刷新 Outlook Token 失败: %v", err)
 	}
@@ -384,7 +411,7 @@ func WaitForOTP(acc OutlookAccount, beforeCount, timeout, interval int) (string,
 	consecutiveSelectFail := 0
 	maxConsecutiveSelectFail := 3 // 连续 3 次 SELECT 失败则提前放弃，避免单账号卡住整批
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		client, err := newIMAPClient()
+		client, err := newIMAPClientWithProxy(runtimeProxyURL)
 		if err != nil {
 			if attempt%5 == 0 {
 				log.Printf("[Outlook IMAP] 连接失败: %v, 重试中...", err)
@@ -395,7 +422,7 @@ func WaitForOTP(acc OutlookAccount, beforeCount, timeout, interval int) (string,
 
 		if err := client.authenticate(acc.Email, accessToken); err != nil {
 			client.close()
-			accessToken, _ = RefreshOutlookToken(acc)
+			accessToken, _ = RefreshOutlookTokenWithProxy(acc, runtimeProxyURL)
 			time.Sleep(time.Duration(interval) * time.Second)
 			continue
 		}
@@ -447,7 +474,13 @@ func WaitForOTP(acc OutlookAccount, beforeCount, timeout, interval int) (string,
 
 // GetInboxCount 获取收件箱当前邮件数量（带完整重连重试）
 func GetInboxCount(acc OutlookAccount) (int, error) {
-	accessToken, err := RefreshOutlookToken(acc)
+	return GetInboxCountWithProxy(acc, storage.GetProxy())
+}
+
+// GetInboxCountWithProxy 通过指定代理获取收件箱当前邮件数量。
+func GetInboxCountWithProxy(acc OutlookAccount, proxyURL string) (int, error) {
+	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
+	accessToken, err := RefreshOutlookTokenWithProxy(acc, runtimeProxyURL)
 	if err != nil {
 		return 0, fmt.Errorf("刷新 Outlook Token 失败: %v", err)
 	}
@@ -457,7 +490,7 @@ func GetInboxCount(acc OutlookAccount) (int, error) {
 		if attempt > 0 {
 			time.Sleep(time.Duration(1+attempt) * time.Second)
 		}
-		client, err := newIMAPClient()
+		client, err := newIMAPClientWithProxy(runtimeProxyURL)
 		if err != nil {
 			lastErr = fmt.Errorf("连接 IMAP 失败: %v", err)
 			continue

@@ -206,32 +206,45 @@ function renderProxyDetectCard(state, payload) {
   var base = 'border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;';
   if (state === 'loading') {
     box.style.cssText = base + 'background:var(--card-bg, transparent);color:var(--muted);';
-    box.innerHTML = '正在检测代理出口…';
+    box.innerHTML = '正在检测代理出口…' + (payload && payload.templated ? '<div style="margin-top:4px;font-size:11px;">检测时会临时生成 {uuid}。</div>' : '');
     return;
   }
   if (state === 'ok') {
     var loc = [payload.country, payload.region, payload.city].filter(Boolean).join(' · ');
+    var okTitle = payload.pool ? '✓ 代理池可用' : '✓ 可用';
+    var poolNote = payload.pool
+      ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">第 ' + (payload.successAttempt || payload.attempts || 1) + ' 个 UUID 节点可用；注册前会重新抽样并绑定可用节点。' + (payload.durationMs ? '耗时 ' + payload.durationMs + 'ms。' : '') + '</div>'
+      : '';
+    var templateNote = payload.templated && !payload.pool ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">模板代理已使用临时 UUID 完成检测；注册时每次尝试会重新生成会话代理。</div>' : '';
     box.style.cssText = base + 'background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.35);';
     box.innerHTML =
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-        '<span style="font-weight:600;color:#10b981;">✓ 可用</span>' +
+        '<span style="font-weight:600;color:#10b981;">' + okTitle + '</span>' +
         '<span style="padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.15);color:#10b981;font-size:11px;font-weight:600;">' + (payload.scheme || '').toUpperCase() + '</span>' +
-        '<span style="color:var(--text);font-weight:600;">' + (payload.ip || '') + '</span>' +
+        (payload.ip ? '<span style="color:var(--text);font-weight:600;">' + payload.ip + '</span>' : '') +
         (loc ? '<span style="color:var(--muted);">· ' + loc + '</span>' : '') +
       '</div>' +
-      (payload.isp ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">' + payload.isp + '</div>' : '');
+      (payload.isp ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">' + payload.isp + '</div>' : '') +
+      poolNote +
+      templateNote;
     return;
   }
   // error
+  var errDetails = payload && payload.errors && payload.errors.length
+    ? '<div style="margin-top:6px;font-size:11px;line-height:1.5;">' + payload.errors.map(function(x) { return '• ' + x; }).join('<br>') + '</div>'
+    : '';
   box.style.cssText = base + 'background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.35);color:#ef4444;';
-  box.innerHTML = '✗ 检测失败：' + (payload && payload.error ? payload.error : '未知错误');
+  box.innerHTML = '✗ 检测失败：' + (payload && payload.error ? payload.error : '未知错误') +
+    (payload && payload.pool ? '<div style="margin-top:4px;font-size:11px;">已连续抽样 ' + (payload.attempts || 0) + ' 个 UUID 节点，均不可用。</div>' : '') +
+    (payload && payload.templated && !payload.pool ? '<div style="margin-top:4px;font-size:11px;">已尝试使用临时 UUID 检测模板代理。</div>' : '') +
+    errDetails;
 }
 
 async function saveProxy() {
   var el = document.getElementById('cfg-proxy');
   if (!el) return;
   try {
-    if (el.value.trim()) renderProxyDetectCard('loading');
+    if (el.value.trim()) renderProxyDetectCard('loading', { templated: el.value.indexOf('{uuid}') >= 0 });
     else renderProxyDetectCard('hidden');
     var result = await window.go.main.App.SetProxy(el.value.trim());
     if (result.error) {

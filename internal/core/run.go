@@ -81,6 +81,7 @@ func (r *Registrar) formatError(step string, err error) string {
 	// 未知错误，添加步骤信息
 	stepNames := map[string]string{
 		"OIDC":           "初始化注册",
+		"Proxy":          "代理初始化",
 		"Device":         "设备注册",
 		"Email":          "邮箱验证",
 		"Portal":         "门户访问",
@@ -108,7 +109,6 @@ func (r *Registrar) formatError(step string, err error) string {
 	return friendlyStep + "失败: " + errMsg
 }
 
-
 // ctxCancelled 检查 context 是否已取消
 func (r *Registrar) ctxCancelled() bool {
 	return r.Ctx != nil && r.Ctx.Err() != nil
@@ -116,6 +116,11 @@ func (r *Registrar) ctxCancelled() bool {
 
 // Run 执行完整注册流程
 func (r *Registrar) Run() map[string]interface{} {
+	if r.InitErr != nil {
+		friendlyErr := r.formatError("Proxy", r.InitErr)
+		return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email}
+	}
+
 	// 入口处立即检查 context
 	if r.ctxCancelled() {
 		return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email}

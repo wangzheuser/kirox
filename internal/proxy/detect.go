@@ -14,52 +14,82 @@ import (
 
 // Info 代理检测结果
 type Info struct {
-	OK      bool   `json:"ok"`
-	Scheme  string `json:"scheme"`
-	IP      string `json:"ip"`
-	Country string `json:"country"`
-	Region  string `json:"region"`
-	City    string `json:"city"`
-	ISP     string `json:"isp"`
-	Error   string `json:"error,omitempty"`
+	OK             bool     `json:"ok"`
+	Scheme         string   `json:"scheme"`
+	IP             string   `json:"ip"`
+	Country        string   `json:"country"`
+	Region         string   `json:"region"`
+	City           string   `json:"city"`
+	ISP            string   `json:"isp"`
+	Error          string   `json:"error,omitempty"`
+	Templated      bool     `json:"templated,omitempty"`
+	Pool           bool     `json:"pool,omitempty"`
+	Attempts       int      `json:"attempts,omitempty"`
+	SuccessAttempt int      `json:"successAttempt,omitempty"`
+	Target         string   `json:"target,omitempty"`
+	DurationMs     int64    `json:"durationMs,omitempty"`
+	Errors         []string `json:"errors,omitempty"`
 }
 
-// Detect 通过给定代理访问 ipinfo.io，返回出口 IP 和归属信息。
+// Detect 通过给定代理访问 IP 查询接口，返回出口 IP 和归属信息。
 func Detect(proxyURL string) Info {
 	proxyURL = strings.TrimSpace(proxyURL)
 	if proxyURL == "" {
 		return Info{Error: "代理为空"}
 	}
-
-	scheme := "http"
-	if i := strings.Index(proxyURL, "://"); i > 0 {
-		scheme = strings.ToLower(proxyURL[:i])
+	templated := HasURLTemplate(proxyURL)
+	if templated {
+		selection, err := SelectRuntimeProxy(context.Background(), proxyURL, DefaultDetectSelectOptions())
+		info := Info{
+			Scheme:         schemeOf(selection.ProxyURL, proxyURL),
+			Templated:      true,
+			Pool:           true,
+			Attempts:       selection.Attempts,
+			SuccessAttempt: selection.SuccessAttempt,
+			Target:         selection.TargetURL,
+			DurationMs:     selection.Duration.Milliseconds(),
+			Errors:         selection.Errors,
+		}
+		if err != nil {
+			info.Error = simplifyProxyErr(err.Error())
+			return info
+		}
+		info.OK = true
+		return info
 	}
+
+	runtimeProxyURL := RenderURLTemplate(proxyURL)
+
+	scheme := schemeOf(runtimeProxyURL, proxyURL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
 	result := make(chan Info, 1)
 	go func() {
-		client := httputil.NewTLSClient(proxyURL, true)
+		client, err := httputil.NewTLSClientWithTimeout(runtimeProxyURL, true, 8)
+		if err != nil {
+			result <- Info{Scheme: scheme, Error: simplifyProxyErr(err.Error()), Templated: templated}
+			return
+		}
 		req, _ := fhttp.NewRequest("GET", "http://ip-api.com/json/?lang=zh-CN&fields=status,message,country,regionName,city,isp,query", nil)
 		req.Header.Set("User-Agent", "kirox/proxy-check")
 		resp, err := client.Do(req)
 		if err != nil {
-			result <- Info{Scheme: scheme, Error: simplifyProxyErr(err.Error())}
+			result <- Info{Scheme: scheme, Error: simplifyProxyErr(err.Error()), Templated: templated}
 			return
 		}
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
 		if resp.StatusCode != 200 {
-			result <- Info{Scheme: scheme, Error: fmt.Sprintf("HTTP %d", resp.StatusCode)}
+			result <- Info{Scheme: scheme, Error: fmt.Sprintf("HTTP %d", resp.StatusCode), Templated: templated}
 			return
 		}
 		var data struct {
 			Status, Message, Country, RegionName, City, ISP, Query string
 		}
 		if err := json.Unmarshal(body, &data); err != nil {
-			result <- Info{Scheme: scheme, Error: "解析响应失败"}
+			result <- Info{Scheme: scheme, Error: "解析响应失败", Templated: templated}
 			return
 		}
 		if data.Status != "success" {
@@ -67,17 +97,18 @@ func Detect(proxyURL string) Info {
 			if msg == "" {
 				msg = "查询失败"
 			}
-			result <- Info{Scheme: scheme, Error: msg}
+			result <- Info{Scheme: scheme, Error: msg, Templated: templated}
 			return
 		}
 		result <- Info{
-			OK:      true,
-			Scheme:  scheme,
-			IP:      data.Query,
-			Country: data.Country,
-			Region:  data.RegionName,
-			City:    data.City,
-			ISP:     data.ISP,
+			OK:        true,
+			Scheme:    scheme,
+			IP:        data.Query,
+			Country:   data.Country,
+			Region:    data.RegionName,
+			City:      data.City,
+			ISP:       data.ISP,
+			Templated: templated,
 		}
 	}()
 
@@ -85,8 +116,18 @@ func Detect(proxyURL string) Info {
 	case info := <-result:
 		return info
 	case <-ctx.Done():
-		return Info{Scheme: scheme, Error: "检测超时"}
+		return Info{Scheme: scheme, Error: "检测超时", Templated: templated}
 	}
+}
+
+func schemeOf(proxyURL string, fallback string) string {
+	if proxyURL == "" {
+		proxyURL = fallback
+	}
+	if i := strings.Index(proxyURL, "://"); i > 0 {
+		return strings.ToLower(proxyURL[:i])
+	}
+	return "http"
 }
 
 func simplifyProxyErr(s string) string {
