@@ -26,8 +26,8 @@ type MoeMailClient struct {
 
 // MoeMailSystemConfig 系统配置响应
 type MoeMailSystemConfig struct {
-	EmailDomains string `json:"emailDomains"` // 可用域名（逗号分隔字符串）
-	Domains      []string                      // 解析后的域名列表（不参与 JSON）
+	EmailDomains string   `json:"emailDomains"` // 可用域名（逗号分隔字符串）
+	Domains      []string // 解析后的域名列表（不参与 JSON）
 }
 
 // MoeMailEmail 邮箱信息
@@ -276,6 +276,11 @@ func NewMoeMailProvider(config MoeMailConfig, name string, expiryTime int64, dom
 // GetAddress 返回邮箱地址
 func (p *MoeMailProvider) GetAddress() string {
 	return p.address
+}
+
+// Create 返回已创建的 MoeMail 邮箱地址
+func (p *MoeMailProvider) Create() string {
+	return p.GetAddress()
 }
 
 // WaitForCode 轮询等待验证码

@@ -267,6 +267,35 @@ async function resetProxy() {
   }
 }
 
+// 熔断级错误自动停止开关
+async function loadKillSwitchEnabled() {
+  var el = document.getElementById('cfg-kill-switch');
+  if (!el) return;
+  try {
+    var enabled = await window.go.main.App.GetKillSwitchEnabled();
+    el.checked = enabled !== false;
+  } catch(e) {
+    el.checked = true;
+  }
+}
+
+async function saveKillSwitchEnabled() {
+  var el = document.getElementById('cfg-kill-switch');
+  if (!el) return;
+  try {
+    var result = await window.go.main.App.SetKillSwitchEnabled(!!el.checked);
+    if (result.error) {
+      showToast(result.error, 'error');
+      await loadKillSwitchEnabled();
+      return;
+    }
+    showToast(el.checked ? '已开启熔断级错误自动停止' : '已关闭熔断级错误自动停止');
+  } catch(e) {
+    showToast('保存失败: ' + e.message, 'error');
+    await loadKillSwitchEnabled();
+  }
+}
+
 // UI 状态
 function updateUIStatus(running) {
   var btnStart = document.getElementById('btn-start');
@@ -414,6 +443,7 @@ async function loadConfig() {
   loadDataDir();
   loadResultOutputDir();
   loadProxy();
+  loadKillSwitchEnabled();
   startOverviewTimer();
   console.log('[启动] 初始化完成');
 }
@@ -497,4 +527,3 @@ function renderChangelog(md) {
   if (inList) html += '</ul>';
   return html;
 }
-

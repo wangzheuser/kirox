@@ -434,6 +434,21 @@
                 </div>
               </div>
             </div>
+
+            <div class="settings-item">
+              <div class="settings-item-main">
+                <div class="settings-item-title">熔断级错误自动停止</div>
+                <div class="settings-item-desc">开启后遇到 BLOCKED、IP/指纹风控等熔断级错误会立即停止整批任务；关闭后仅记录当前任务失败并继续后续任务。</div>
+              </div>
+              <div class="settings-item-action">
+                <label style="cursor:pointer;">
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="cfg-kill-switch" checked onchange="saveKillSwitchEnabled()">
+                    <span class="toggle-slider"></span>
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
         </div>
 

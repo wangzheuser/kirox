@@ -12,6 +12,15 @@ import (
 	httputil "reg_go/internal/http"
 )
 
+// shortResponseBody 截断响应体，避免失败日志过长
+func shortResponseBody(body []byte, limit int) string {
+	text := strings.TrimSpace(string(body))
+	if len(text) > limit {
+		return text[:limit] + "..."
+	}
+	return text
+}
+
 // Step6SubmitEmail 提交邮箱
 func (r *Registrar) Step6SubmitEmail() (string, error) {
 	log.Printf("[6] 提交邮箱 %s", r.Email)
@@ -247,7 +256,20 @@ func (r *Registrar) Step8ProfileStart() error {
 
 // Step9SendOTP 发送验证码
 func (r *Registrar) Step9SendOTP() error {
-	log.Println("[9] 发送验证码")
+	ref := fmt.Sprintf("%s/?workflowID=%s", r.Cfg.ProfileBase, r.WorkflowID)
+	timeOnPage := 5000 + rand.Intn(3001)
+	log.Printf("[9] 准备发送验证码，模拟页面停留 %dms", timeOnPage)
+
+	// 让真实等待时间与 browserData.timeSpentOnPage 保持一致。
+	if r.Ctx != nil {
+		select {
+		case <-r.Ctx.Done():
+			return r.Ctx.Err()
+		case <-time.After(time.Duration(timeOnPage) * time.Millisecond):
+		}
+	} else {
+		time.Sleep(time.Duration(timeOnPage) * time.Millisecond)
+	}
 
 	// Outlook 模式: 记录发送前的邮件数量
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
@@ -260,8 +282,7 @@ func (r *Registrar) Step9SendOTP() error {
 		}
 	}
 
-	ref := fmt.Sprintf("%s/?workflowID=%s", r.Cfg.ProfileBase, r.WorkflowID)
-	timeOnPage := 5000 + rand.Intn(3001)
+	log.Println("[9] 发送验证码")
 	fp := r.GenFPWithTime("profile", "PageSubmit", timeOnPage, len(r.Email), r.Email)
 	tsp := fmt.Sprintf("%d", timeOnPage)
 
@@ -287,8 +308,10 @@ func (r *Registrar) Step9SendOTP() error {
 		return err
 	}
 	if status != 200 {
-		if r.Cfg.Debug {
-			log.Printf("[DEBUG] send-otp 失败: status=%d, body=%s, fp_len=%d", status, string(respBody), len(fp))
+		bodyText := shortResponseBody(respBody, 500)
+		log.Printf("[send-otp] 失败: status=%d, body=%s, fp_len=%d", status, bodyText, len(fp))
+		if bodyText != "" {
+			return fmt.Errorf("send-otp 失败 (%d): %s", status, bodyText)
 		}
 		return fmt.Errorf("send-otp 失败 (%d)", status)
 	}

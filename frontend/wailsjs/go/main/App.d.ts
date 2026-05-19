@@ -24,6 +24,8 @@ export function DownloadUpdate():Promise<Record<string, any>>;
 
 export function GetDataDir():Promise<string>;
 
+export function GetKillSwitchEnabled():Promise<boolean>;
+
 export function GetLicenseInfo():Promise<Record<string, any>>;
 
 export function GetLogs():Promise<Array<string>>;
@@ -67,6 +69,8 @@ export function SelectDirectory():Promise<string>;
 export function SelectOutlookFile():Promise<string>;
 
 export function SetDataDir(arg1:string):Promise<Record<string, any>>;
+
+export function SetKillSwitchEnabled(arg1:boolean):Promise<Record<string, any>>;
 
 export function SetProxy(arg1:string):Promise<Record<string, any>>;
 

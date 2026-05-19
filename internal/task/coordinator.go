@@ -177,6 +177,10 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	if taskConfig.Proxy != "" {
 		log.Printf("[Kiro] 已启用代理")
 	}
+	killSwitchEnabled := storage.GetKillSwitchEnabled()
+	if !killSwitchEnabled {
+		log.Println("[Kiro] 熔断级错误自动停止已关闭")
+	}
 
 	// 预先准备 MoeMail 域名池
 	var moemailDomainPool []string
@@ -339,7 +343,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 			// AWS 熔断：任一任务遇到 400/BLOCKED/IP-flagged 类错误就终止全部
 			// 触发后继续跑只会烧邮箱、烧代理额度
-			if isKillSwitchError(errorMsg, emailProvider) {
+			if killSwitchEnabled && isKillSwitchError(errorMsg, emailProvider) {
 				otpKillOnce.Do(func() {
 					log.Printf("[Kiro] ⚠️ 检测到熔断级错误(%s)，立即终止所有注册任务", errorMsg)
 					go StopTask(true)

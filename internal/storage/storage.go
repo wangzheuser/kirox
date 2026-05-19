@@ -12,18 +12,21 @@ import (
 )
 
 const (
-	keyDataDir         = "data_dir"
-	keyResultOutputDir = "result_output_dir"
-	keyProxy           = "proxy"
+	keyDataDir           = "data_dir"
+	keyResultOutputDir   = "result_output_dir"
+	keyProxy             = "proxy"
+	keyKillSwitchEnabled = "kill_switch_enabled"
 )
 
 var (
-	_dataDir          string
-	_dataDirOnce      sync.Once
-	_resultOutputDir  string
-	_resultOutputOnce sync.Once
-	_proxy            string
-	_proxyOnce        sync.Once
+	_dataDir           string
+	_dataDirOnce       sync.Once
+	_resultOutputDir   string
+	_resultOutputOnce  sync.Once
+	_proxy             string
+	_proxyOnce         sync.Once
+	_killSwitchEnabled bool
+	_killSwitchOnce    sync.Once
 )
 
 // GetDefaultDataDir 获取默认应用数据目录
@@ -76,7 +79,7 @@ func loadConfigMap() map[string]string {
 func saveConfigMap(m map[string]string) error {
 	os.MkdirAll(GetDefaultDataDir(), 0755)
 	var b strings.Builder
-	for _, k := range []string{keyDataDir, keyResultOutputDir, keyProxy} {
+	for _, k := range []string{keyDataDir, keyResultOutputDir, keyProxy, keyKillSwitchEnabled} {
 		if v := strings.TrimSpace(m[k]); v != "" {
 			b.WriteString(k)
 			b.WriteByte('=')
@@ -263,6 +266,33 @@ func ResetProxy() {
 	_proxy = ""
 	_proxyOnce = sync.Once{}
 	_proxyOnce.Do(func() {})
+}
+
+// GetKillSwitchEnabled 返回熔断级错误自动停止开关状态，默认开启。
+func GetKillSwitchEnabled() bool {
+	_killSwitchOnce.Do(func() {
+		m := loadConfigMap()
+		raw := strings.ToLower(strings.TrimSpace(m[keyKillSwitchEnabled]))
+		_killSwitchEnabled = raw != "false" && raw != "0" && raw != "no" && raw != "off"
+	})
+	return _killSwitchEnabled
+}
+
+// SetKillSwitchEnabled 设置熔断级错误自动停止开关状态。
+func SetKillSwitchEnabled(enabled bool) error {
+	m := loadConfigMap()
+	if enabled {
+		m[keyKillSwitchEnabled] = "true"
+	} else {
+		m[keyKillSwitchEnabled] = "false"
+	}
+	if err := saveConfigMap(m); err != nil {
+		return err
+	}
+	_killSwitchEnabled = enabled
+	_killSwitchOnce = sync.Once{}
+	_killSwitchOnce.Do(func() {})
+	return nil
 }
 
 // NormalizeProxyAddress 归一化常见代理写法为完整 URL:

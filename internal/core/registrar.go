@@ -296,6 +296,14 @@ func (r *Registrar) Step3Email() error {
 		return nil
 	}
 
+	if r.Cfg.UseMoeMail && r.Cfg.MoeMailProvider != nil {
+		log.Println("[3] 使用已创建的 MoeMail 邮箱")
+		r.EmailSvc = r.Cfg.MoeMailProvider
+		r.Email = r.Cfg.MoeMailProvider.GetAddress()
+		log.Printf("email=%s", r.Email)
+		return nil
+	}
+
 	if r.Cfg.EmailProvider == "mailporary" {
 		log.Println("[3] 使用 Mailporary 临时邮箱")
 		svc := email.NewMailporaryService(r.Cfg.Proxy)

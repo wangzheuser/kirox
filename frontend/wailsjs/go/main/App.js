@@ -42,6 +42,10 @@ export function GetDataDir() {
   return window['go']['main']['App']['GetDataDir']();
 }
 
+export function GetKillSwitchEnabled() {
+  return window['go']['main']['App']['GetKillSwitchEnabled']();
+}
+
 export function GetLicenseInfo() {
   return window['go']['main']['App']['GetLicenseInfo']();
 }
@@ -128,6 +132,10 @@ export function SelectOutlookFile() {
 
 export function SetDataDir(arg1) {
   return window['go']['main']['App']['SetDataDir'](arg1);
+}
+
+export function SetKillSwitchEnabled(arg1) {
+  return window['go']['main']['App']['SetKillSwitchEnabled'](arg1);
 }
 
 export function SetProxy(arg1) {

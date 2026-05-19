@@ -306,6 +306,19 @@ func (a *App) ResetProxy() map[string]interface{} {
 	return map[string]interface{}{"success": true}
 }
 
+// GetKillSwitchEnabled 返回熔断级错误自动停止开关状态
+func (a *App) GetKillSwitchEnabled() bool {
+	return storage.GetKillSwitchEnabled()
+}
+
+// SetKillSwitchEnabled 保存熔断级错误自动停止开关状态
+func (a *App) SetKillSwitchEnabled(enabled bool) map[string]interface{} {
+	if err := storage.SetKillSwitchEnabled(enabled); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "enabled": enabled}
+}
+
 // StartTask 启动注册任务
 func (a *App) StartTask(req task.StartTaskRequest) map[string]interface{} {
 	return task.StartTask(req)
