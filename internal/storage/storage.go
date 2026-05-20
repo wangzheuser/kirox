@@ -20,8 +20,13 @@ const (
 	ProxyModeNormal = "normal"
 	ProxyModeClash  = "clash"
 
+	DefaultPageStayMinMs = 5000
+	DefaultPageStayMaxMs = 8000
+
 	keyDataDir                   = "data_dir"
 	keyResultOutputDir           = "result_output_dir"
+	keyPageStayMinMs             = "page_stay_min_ms"
+	keyPageStayMaxMs             = "page_stay_max_ms"
 	keyProxyMode                 = "proxy_mode"
 	keyProxy                     = "proxy"
 	keyClashProxy                = "clash_proxy"
@@ -34,6 +39,12 @@ const (
 	keyClashTestTimeout          = "clash_test_timeout"
 	keyClashSkipConnectivityTest = "clash_skip_connectivity_test"
 )
+
+// PageStayConfig 保存发送验证码前模拟页面停留的随机区间。
+type PageStayConfig struct {
+	MinMs int `json:"minMs"`
+	MaxMs int `json:"maxMs"`
+}
 
 var (
 	_dataDir           string
@@ -99,6 +110,8 @@ func saveConfigMap(m map[string]string) error {
 	for _, k := range []string{
 		keyDataDir,
 		keyResultOutputDir,
+		keyPageStayMinMs,
+		keyPageStayMaxMs,
 		keyProxyMode,
 		keyProxy,
 		keyClashProxy,
@@ -260,6 +273,51 @@ func ResetResultOutputDir() string {
 	_resultOutputOnce = sync.Once{}
 	_resultOutputOnce.Do(func() {})
 	return defaultDir
+}
+
+// GetPageStayConfig 获取模拟页面停留时间配置，默认保持 5-8 秒随机。
+func GetPageStayConfig() PageStayConfig {
+	m := loadConfigMap()
+	cfg := PageStayConfig{
+		MinMs: DefaultPageStayMinMs,
+		MaxMs: DefaultPageStayMaxMs,
+	}
+	if raw := strings.TrimSpace(m[keyPageStayMinMs]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			cfg.MinMs = value
+		}
+	}
+	if raw := strings.TrimSpace(m[keyPageStayMaxMs]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			cfg.MaxMs = value
+		}
+	}
+	if err := ValidatePageStayConfig(cfg); err != nil {
+		return PageStayConfig{MinMs: DefaultPageStayMinMs, MaxMs: DefaultPageStayMaxMs}
+	}
+	return cfg
+}
+
+// SetPageStayConfig 保存模拟页面停留时间配置。
+func SetPageStayConfig(cfg PageStayConfig) error {
+	if err := ValidatePageStayConfig(cfg); err != nil {
+		return err
+	}
+	m := loadConfigMap()
+	m[keyPageStayMinMs] = strconv.Itoa(cfg.MinMs)
+	m[keyPageStayMaxMs] = strconv.Itoa(cfg.MaxMs)
+	return saveConfigMap(m)
+}
+
+// ValidatePageStayConfig 校验模拟页面停留时间配置。
+func ValidatePageStayConfig(cfg PageStayConfig) error {
+	if cfg.MinMs < 0 || cfg.MaxMs < 0 {
+		return fmt.Errorf("页面停留时间不能小于 0")
+	}
+	if cfg.MinMs > cfg.MaxMs {
+		return fmt.Errorf("页面停留最小值不能大于最大值")
+	}
+	return nil
 }
 
 // GetProxy 返回当前全局代理 URL（空字符串表示直连）。

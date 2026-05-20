@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -257,17 +256,17 @@ func (r *Registrar) Step8ProfileStart() error {
 // Step9SendOTP 发送验证码
 func (r *Registrar) Step9SendOTP() error {
 	ref := fmt.Sprintf("%s/?workflowID=%s", r.Cfg.ProfileBase, r.WorkflowID)
-	timeOnPage := 5000 + rand.Intn(3001)
+	timeOnPage := r.Cfg.RandomPageStayMs()
 	log.Printf("[9] 准备发送验证码，模拟页面停留 %dms", timeOnPage)
 
 	// 让真实等待时间与 browserData.timeSpentOnPage 保持一致。
-	if r.Ctx != nil {
+	if timeOnPage > 0 && r.Ctx != nil {
 		select {
 		case <-r.Ctx.Done():
 			return r.Ctx.Err()
 		case <-time.After(time.Duration(timeOnPage) * time.Millisecond):
 		}
-	} else {
+	} else if timeOnPage > 0 {
 		time.Sleep(time.Duration(timeOnPage) * time.Millisecond)
 	}
 

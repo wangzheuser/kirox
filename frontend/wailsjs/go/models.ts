@@ -100,6 +100,25 @@ export namespace proxy {
 
 }
 
+export namespace storage {
+
+	export class PageStayConfig {
+	    minMs: number;
+	    maxMs: number;
+
+	    static createFrom(source: any = {}) {
+	        return new PageStayConfig(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.minMs = source["minMs"];
+	        this.maxMs = source["maxMs"];
+	    }
+	}
+
+}
+
 export namespace task {
 
 	export class StartTaskRequest {

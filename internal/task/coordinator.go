@@ -174,6 +174,15 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	taskConfig := core.NewConfig()
 	taskConfig.EmailProvider = emailProvider
+	pageStayConfig := storage.GetPageStayConfig()
+	taskConfig.PageStayMinMs = pageStayConfig.MinMs
+	taskConfig.PageStayMaxMs = pageStayConfig.MaxMs
+	if pageStayConfig.MinMs == 0 && pageStayConfig.MaxMs == 0 {
+		log.Printf("[Kiro] 模拟页面停留: 不延迟")
+	} else {
+		log.Printf("[Kiro] 模拟页面停留: %d-%dms", pageStayConfig.MinMs, pageStayConfig.MaxMs)
+	}
+
 	proxyMode := storage.GetProxyMode()
 	failConfig := func(message string) {
 		log.Printf("[Kiro] %s，任务终止", message)

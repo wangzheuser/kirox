@@ -275,6 +275,19 @@ func (a *App) ResetResultOutputDir() map[string]interface{} {
 	return map[string]interface{}{"success": true, "path": path}
 }
 
+// GetPageStayConfig 获取发送验证码前模拟页面停留配置。
+func (a *App) GetPageStayConfig() storage.PageStayConfig {
+	return storage.GetPageStayConfig()
+}
+
+// SetPageStayConfig 保存发送验证码前模拟页面停留配置。
+func (a *App) SetPageStayConfig(config storage.PageStayConfig) map[string]interface{} {
+	if err := storage.SetPageStayConfig(config); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "config": storage.GetPageStayConfig()}
+}
+
 // GetProxy 返回当前全局代理（空字符串=直连）
 func (a *App) GetProxy() string {
 	return storage.GetProxy()

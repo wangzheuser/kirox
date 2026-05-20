@@ -78,6 +78,10 @@ export function GetOverview() {
   return window['go']['main']['App']['GetOverview']();
 }
 
+export function GetPageStayConfig() {
+  return window['go']['main']['App']['GetPageStayConfig']();
+}
+
 export function GetProxy() {
   return window['go']['main']['App']['GetProxy']();
 }
@@ -160,6 +164,10 @@ export function SetDataDir(arg1) {
 
 export function SetKillSwitchEnabled(arg1) {
   return window['go']['main']['App']['SetKillSwitchEnabled'](arg1);
+}
+
+export function SetPageStayConfig(arg1) {
+  return window['go']['main']['App']['SetPageStayConfig'](arg1);
 }
 
 export function SetProxy(arg1) {

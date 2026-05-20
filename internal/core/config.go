@@ -23,6 +23,9 @@ type Config struct {
 	Password string
 	FullName string
 
+	PageStayMinMs int
+	PageStayMaxMs int
+
 	Proxy string
 	Debug bool
 	// ProxyFromPool 表示 Proxy 是已从动态代理池中选出的运行时节点。
@@ -56,7 +59,25 @@ func NewConfig() *Config {
 		KiroRedirectURI: "https://app.kiro.dev/signin/oauth",
 		Password:        GenPassword(),
 		FullName:        "Test User",
+		PageStayMinMs:   5000,
+		PageStayMaxMs:   8000,
 	}
+}
+
+// RandomPageStayMs 从配置区间内随机生成模拟页面停留时间。
+func (c *Config) RandomPageStayMs() int {
+	minMs := c.PageStayMinMs
+	maxMs := c.PageStayMaxMs
+	if minMs < 0 {
+		minMs = 0
+	}
+	if maxMs < minMs {
+		maxMs = minMs
+	}
+	if minMs == maxMs {
+		return minMs
+	}
+	return minMs + rand.Intn(maxMs-minMs+1)
 }
 
 // GenPassword 生成随机密码
