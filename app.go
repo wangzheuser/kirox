@@ -288,6 +288,19 @@ func (a *App) SetPageStayConfig(config storage.PageStayConfig) map[string]interf
 	return map[string]interface{}{"success": true, "config": storage.GetPageStayConfig()}
 }
 
+// GetOutlookScope 获取 Outlook 验证码读取方式。
+func (a *App) GetOutlookScope() string {
+	return storage.GetOutlookScope()
+}
+
+// SetOutlookScope 保存 Outlook 验证码读取方式。
+func (a *App) SetOutlookScope(scope string) map[string]interface{} {
+	if err := storage.SetOutlookScope(scope); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "scope": storage.GetOutlookScope()}
+}
+
 // GetProxy 返回当前全局代理（空字符串=直连）
 func (a *App) GetProxy() string {
 	return storage.GetProxy()

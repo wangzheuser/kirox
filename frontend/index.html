@@ -433,7 +433,21 @@
                     <input type="number" id="cfg-page-stay-max-seconds" min="0" step="0.1" value="8" class="form-input" style="width:92px;">
                     秒
                   </label>
-                  <button onclick="savePageStayConfig()" class="btn btn-secondary btn-sm">保存停留时间</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-item">
+              <div class="settings-item-main">
+                <div class="settings-item-title">Outlook 读取方式</div>
+                <div class="settings-item-desc">IMAP 兼容旧账号；Microsoft Graph 兼容 OutlookRegister 导出的 ClientID + RefreshToken 数据。</div>
+              </div>
+              <div class="settings-item-action">
+                <div style="display:flex;align-items:center;gap:8px;width:100%;flex-wrap:wrap;">
+                  <select id="cfg-outlook-scope" class="form-input" style="width:220px;height:38px;">
+                    <option value="imap">IMAP（默认）</option>
+                    <option value="graph">Microsoft Graph</option>
+                  </select>
                 </div>
               </div>
             </div>

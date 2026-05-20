@@ -174,6 +174,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	taskConfig := core.NewConfig()
 	taskConfig.EmailProvider = emailProvider
+	taskConfig.OutlookScope = storage.GetOutlookScope()
 	pageStayConfig := storage.GetPageStayConfig()
 	taskConfig.PageStayMinMs = pageStayConfig.MinMs
 	taskConfig.PageStayMaxMs = pageStayConfig.MaxMs
@@ -255,6 +256,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Printf("[Kiro] MoeMail 域名池: %v (共 %d 个域名)", moemailDomainPool, len(moemailDomainPool))
 	} else if emailProvider == "outlook" {
 		taskConfig.UseOutlook = true
+		log.Printf("[Kiro] Outlook 读取方式: %s", taskConfig.OutlookScope)
 	} else if emailProvider == "mailporary" {
 		log.Println("[Kiro] Mailporary 零配置邮箱模式")
 	}

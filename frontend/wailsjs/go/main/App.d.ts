@@ -41,6 +41,8 @@ export function GetMoeMailConfigs():Promise<Array<email.MoeMailConfig>>;
 
 export function GetOutlookAccounts():Promise<Array<Record<string, any>>>;
 
+export function GetOutlookScope():Promise<string>;
+
 export function GetOverview():Promise<Record<string, any>>;
 
 export function GetPageStayConfig():Promise<storage.PageStayConfig>;
@@ -86,6 +88,8 @@ export function SetClashProxy(arg1:string):Promise<Record<string, any>>;
 export function SetDataDir(arg1:string):Promise<Record<string, any>>;
 
 export function SetKillSwitchEnabled(arg1:boolean):Promise<Record<string, any>>;
+
+export function SetOutlookScope(arg1:string):Promise<Record<string, any>>;
 
 export function SetPageStayConfig(arg1:storage.PageStayConfig):Promise<Record<string, any>>;
 

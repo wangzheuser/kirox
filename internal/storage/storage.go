@@ -20,6 +20,9 @@ const (
 	ProxyModeNormal = "normal"
 	ProxyModeClash  = "clash"
 
+	OutlookScopeIMAP  = "imap"
+	OutlookScopeGraph = "graph"
+
 	DefaultPageStayMinMs = 5000
 	DefaultPageStayMaxMs = 8000
 
@@ -27,6 +30,7 @@ const (
 	keyResultOutputDir           = "result_output_dir"
 	keyPageStayMinMs             = "page_stay_min_ms"
 	keyPageStayMaxMs             = "page_stay_max_ms"
+	keyOutlookScope              = "outlook_scope"
 	keyProxyMode                 = "proxy_mode"
 	keyProxy                     = "proxy"
 	keyClashProxy                = "clash_proxy"
@@ -112,6 +116,7 @@ func saveConfigMap(m map[string]string) error {
 		keyResultOutputDir,
 		keyPageStayMinMs,
 		keyPageStayMaxMs,
+		keyOutlookScope,
 		keyProxyMode,
 		keyProxy,
 		keyClashProxy,
@@ -320,6 +325,29 @@ func ValidatePageStayConfig(cfg PageStayConfig) error {
 	return nil
 }
 
+// GetOutlookScope 返回 Outlook 验证码读取方式，默认使用 IMAP 保持兼容。
+func GetOutlookScope() string {
+	m := loadConfigMap()
+	if scope := normalizeOutlookScope(m[keyOutlookScope]); scope != "" {
+		return scope
+	}
+	return OutlookScopeIMAP
+}
+
+// SetOutlookScope 设置 Outlook 验证码读取方式。
+func SetOutlookScope(scope string) error {
+	if strings.TrimSpace(scope) == "" {
+		return fmt.Errorf("未知 Outlook 读取方式")
+	}
+	normalized := normalizeOutlookScope(scope)
+	if normalized == "" {
+		return fmt.Errorf("未知 Outlook 读取方式")
+	}
+	m := loadConfigMap()
+	m[keyOutlookScope] = normalized
+	return saveConfigMap(m)
+}
+
 // GetProxy 返回当前全局代理 URL（空字符串表示直连）。
 func GetProxy() string {
 	_proxyOnce.Do(func() {
@@ -469,6 +497,17 @@ func normalizeProxyMode(mode string) string {
 		return ProxyModeNormal
 	case ProxyModeClash:
 		return ProxyModeClash
+	default:
+		return ""
+	}
+}
+
+func normalizeOutlookScope(scope string) string {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case OutlookScopeIMAP, "":
+		return OutlookScopeIMAP
+	case OutlookScopeGraph:
+		return OutlookScopeGraph
 	default:
 		return ""
 	}

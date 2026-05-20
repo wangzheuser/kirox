@@ -74,6 +74,10 @@ export function GetOutlookAccounts() {
   return window['go']['main']['App']['GetOutlookAccounts']();
 }
 
+export function GetOutlookScope() {
+  return window['go']['main']['App']['GetOutlookScope']();
+}
+
 export function GetOverview() {
   return window['go']['main']['App']['GetOverview']();
 }
@@ -164,6 +168,10 @@ export function SetDataDir(arg1) {
 
 export function SetKillSwitchEnabled(arg1) {
   return window['go']['main']['App']['SetKillSwitchEnabled'](arg1);
+}
+
+export function SetOutlookScope(arg1) {
+  return window['go']['main']['App']['SetOutlookScope'](arg1);
 }
 
 export function SetPageStayConfig(arg1) {

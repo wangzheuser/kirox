@@ -3,8 +3,14 @@ package core
 import (
 	"math/rand"
 	"strings"
+	"time"
 
 	"reg_go/internal/email"
+)
+
+const (
+	OutlookScopeIMAP  = "imap"
+	OutlookScopeGraph = "graph"
 )
 
 // Config 注册配置
@@ -33,9 +39,11 @@ type Config struct {
 	// ProxySwitchable 表示当前代理背后可换节点，HTTP 传输错误应交给任务层切换节点。
 	ProxySwitchable bool
 
-	EmailProvider  string
-	UseOutlook     bool
-	OutlookAccount *email.OutlookAccount
+	EmailProvider   string
+	UseOutlook      bool
+	OutlookAccount  *email.OutlookAccount
+	OutlookScope    string
+	OutlookOTPAfter time.Time
 
 	UseMoeMail      bool
 	MoeMailConfig   *email.MoeMailConfig
@@ -61,6 +69,7 @@ func NewConfig() *Config {
 		FullName:        "Test User",
 		PageStayMinMs:   5000,
 		PageStayMaxMs:   8000,
+		OutlookScope:    OutlookScopeIMAP,
 	}
 }
 
@@ -78,6 +87,11 @@ func (c *Config) RandomPageStayMs() int {
 		return minMs
 	}
 	return minMs + rand.Intn(maxMs-minMs+1)
+}
+
+// UseOutlookGraph 判断当前 Outlook 账号是否使用 Microsoft Graph 读取邮件。
+func (c *Config) UseOutlookGraph() bool {
+	return strings.EqualFold(strings.TrimSpace(c.OutlookScope), OutlookScopeGraph)
 }
 
 // GenPassword 生成随机密码

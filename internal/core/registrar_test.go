@@ -52,3 +52,19 @@ func TestRandomPageStayMsKeepsValueInRange(t *testing.T) {
 		}
 	}
 }
+
+func TestNewConfigDefaultsOutlookScopeToIMAP(t *testing.T) {
+	cfg := NewConfig()
+
+	if cfg.OutlookScope != OutlookScopeIMAP {
+		t.Fatalf("默认 Outlook 读取方式应为 imap: got %q", cfg.OutlookScope)
+	}
+}
+
+func TestUseOutlookGraph(t *testing.T) {
+	cfg := &Config{OutlookScope: OutlookScopeGraph}
+
+	if !cfg.UseOutlookGraph() {
+		t.Fatalf("OutlookScope=graph 时应启用 Graph 读取")
+	}
+}

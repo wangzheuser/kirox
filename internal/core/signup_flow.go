@@ -270,14 +270,19 @@ func (r *Registrar) Step9SendOTP() error {
 		time.Sleep(time.Duration(timeOnPage) * time.Millisecond)
 	}
 
-	// Outlook 模式: 记录发送前的邮件数量
+	// Outlook 模式: 根据读取方式记录发送验证码前的定位信息。
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
-		count, err := email.GetInboxCountWithProxy(*r.Cfg.OutlookAccount, r.Cfg.Proxy)
-		if err != nil {
-			log.Printf("获取邮件数量失败: %v, 默认为0", err)
+		if r.Cfg.UseOutlookGraph() {
+			r.Cfg.OutlookOTPAfter = time.Now().UTC().Add(-5 * time.Second)
+			log.Printf("[Outlook Graph] 记录验证码起始时间: %s", r.Cfg.OutlookOTPAfter.Format(time.RFC3339))
 		} else {
-			r.OutlookMailCount = count
-			log.Printf("发送前邮件数: %d", count)
+			count, err := email.GetInboxCountWithProxy(*r.Cfg.OutlookAccount, r.Cfg.Proxy)
+			if err != nil {
+				log.Printf("获取邮件数量失败: %v, 默认为0", err)
+			} else {
+				r.OutlookMailCount = count
+				log.Printf("发送前邮件数: %d", count)
+			}
 		}
 	}
 
@@ -318,11 +323,19 @@ func (r *Registrar) Step9SendOTP() error {
 	return nil
 }
 
-// Step10GetOTP 等待验证码 (临时邮箱或 Outlook IMAP)
+// Step10GetOTP 等待验证码 (临时邮箱或 Outlook)
 func (r *Registrar) Step10GetOTP() (string, error) {
 	log.Println("[10] 等待验证码")
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
-		code, err := email.WaitForOTPWithProxy(*r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5, r.Cfg.Proxy)
+		var (
+			code string
+			err  error
+		)
+		if r.Cfg.UseOutlookGraph() {
+			code, err = email.WaitForOTPGraphWithProxy(*r.Cfg.OutlookAccount, r.Cfg.OutlookOTPAfter, 120, 5, r.Cfg.Proxy)
+		} else {
+			code, err = email.WaitForOTPWithProxy(*r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5, r.Cfg.Proxy)
+		}
 		if err != nil {
 			return "", err
 		}

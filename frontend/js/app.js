@@ -190,6 +190,9 @@ async function resetResultOutputDir() {
 }
 
 // 模拟页面停留时间设置
+var pageStaySaveTimer = null;
+var lastSavedPageStayPayload = '';
+
 function pageStaySecondsText(ms) {
   var seconds = (parseInt(ms, 10) || 0) / 1000;
   return Number.isInteger(seconds) ? String(seconds) : String(Number(seconds.toFixed(3)));
@@ -211,6 +214,7 @@ async function loadPageStayConfig() {
     var maxEl = document.getElementById('cfg-page-stay-max-seconds');
     if (minEl) minEl.value = pageStaySecondsText(cfg.minMs);
     if (maxEl) maxEl.value = pageStaySecondsText(cfg.maxMs);
+    lastSavedPageStayPayload = JSON.stringify({ minMs: cfg.minMs, maxMs: cfg.maxMs });
   } catch(e) {}
 }
 
@@ -221,7 +225,12 @@ async function savePageStayConfig() {
     if (minMs > maxMs) {
       throw new Error('最小停留时间不能大于最大停留时间');
     }
-    var result = await window.go.main.App.SetPageStayConfig({ minMs: minMs, maxMs: maxMs });
+    var payload = { minMs: minMs, maxMs: maxMs };
+    var payloadKey = JSON.stringify(payload);
+    if (payloadKey === lastSavedPageStayPayload) {
+      return;
+    }
+    var result = await window.go.main.App.SetPageStayConfig(payload);
     if (result.error) {
       showToast(result.error, 'error');
       return;
@@ -231,9 +240,59 @@ async function savePageStayConfig() {
     var maxEl = document.getElementById('cfg-page-stay-max-seconds');
     if (minEl) minEl.value = pageStaySecondsText(cfg.minMs);
     if (maxEl) maxEl.value = pageStaySecondsText(cfg.maxMs);
+    lastSavedPageStayPayload = JSON.stringify({ minMs: cfg.minMs, maxMs: cfg.maxMs });
     showToast(cfg.minMs === 0 && cfg.maxMs === 0 ? '已关闭模拟页面停留' : '模拟页面停留时间已保存');
   } catch(e) {
     showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
+function schedulePageStayConfigSave() {
+  if (pageStaySaveTimer) {
+    clearTimeout(pageStaySaveTimer);
+  }
+  pageStaySaveTimer = setTimeout(function() {
+    pageStaySaveTimer = null;
+    savePageStayConfig();
+  }, 450);
+}
+
+// Outlook 读取方式设置
+async function loadOutlookScope() {
+  try {
+    var scope = await window.go.main.App.GetOutlookScope();
+    var el = document.getElementById('cfg-outlook-scope');
+    if (el) el.value = scope || 'imap';
+  } catch(e) {}
+}
+
+async function saveOutlookScope() {
+  try {
+    var el = document.getElementById('cfg-outlook-scope');
+    var scope = (el && el.value) || 'imap';
+    var result = await window.go.main.App.SetOutlookScope(scope);
+    if (result.error) {
+      showToast(result.error, 'error');
+      return;
+    }
+    if (el) el.value = result.scope || scope;
+    showToast((result.scope || scope) === 'graph' ? 'Outlook 将使用 Microsoft Graph 读取验证码' : 'Outlook 将使用 IMAP 读取验证码');
+  } catch(e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
+function bindSettingsAutosave() {
+  ['cfg-page-stay-min-seconds', 'cfg-page-stay-max-seconds'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', schedulePageStayConfigSave);
+    el.addEventListener('change', schedulePageStayConfigSave);
+  });
+
+  var outlookScopeEl = document.getElementById('cfg-outlook-scope');
+  if (outlookScopeEl) {
+    outlookScopeEl.addEventListener('change', saveOutlookScope);
   }
 }
 
@@ -679,6 +738,7 @@ async function loadConfig() {
   loadDataDir();
   loadResultOutputDir();
   loadPageStayConfig();
+  loadOutlookScope();
   loadProxyMode();
   loadProxy();
   loadClashProxy();
@@ -692,6 +752,7 @@ async function loadConfig() {
 window.addEventListener('DOMContentLoaded', async function() {
   await loadConfig();
   initEmailProviderSelection();
+  bindSettingsAutosave();
   // 启动时静默检查更新
   setTimeout(checkUpdateOnStartup, 2000);
 });
