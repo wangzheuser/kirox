@@ -174,12 +174,52 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	taskConfig := core.NewConfig()
 	taskConfig.EmailProvider = emailProvider
-	taskConfig.Proxy = storage.GetProxy()
-	if taskConfig.Proxy != "" {
+	proxyMode := storage.GetProxyMode()
+	failConfig := func(message string) {
+		log.Printf("[Kiro] %s，任务终止", message)
+		Manager.mu.Lock()
+		Manager.completed = req.Count
+		Manager.failed = req.Count
+		Manager.mu.Unlock()
+	}
+
+	var clashConfig proxy.ClashConfig
+	clashEnabled := false
+	switch proxyMode {
+	case storage.ProxyModeNone:
+		log.Printf("[Kiro] 代理模式: 直连")
+	case storage.ProxyModeNormal:
+		taskConfig.Proxy = storage.GetProxy()
+		if taskConfig.Proxy == "" {
+			failConfig("普通代理模式已启用但代理为空")
+			return
+		}
 		if proxy.HasURLTemplate(taskConfig.Proxy) {
-			log.Printf("[Kiro] 已启用代理模板，注册时将动态生成会话代理")
+			log.Printf("[Kiro] 代理模式: 普通代理模板，注册时将动态生成会话代理")
 		} else {
-			log.Printf("[Kiro] 已启用代理")
+			log.Printf("[Kiro] 代理模式: 普通代理")
+		}
+	case storage.ProxyModeClash:
+		taskConfig.Proxy = storage.GetClashProxy()
+		if taskConfig.Proxy == "" {
+			failConfig("Clash 代理模式已启用但本地代理地址为空")
+			return
+		}
+		clashConfig = storage.GetClashConfig()
+		clashConfig.Enabled = true
+		clashEnabled = true
+	default:
+		failConfig("未知代理模式: " + proxyMode)
+		return
+	}
+
+	var clashClient *proxy.ClashClient
+	var clashMu sync.Mutex
+	if clashEnabled {
+		clashClient = proxy.NewClashClient(clashConfig)
+		log.Printf("[Kiro] 已启用 Clash API 自动切换: %s", clashConfig.APIURL)
+		if req.Concurrency > 1 {
+			log.Printf("[Kiro] Clash 节点为全局状态，注册流程将串行使用代理，避免中途切换节点")
 		}
 	}
 	killSwitchEnabled := storage.GetKillSwitchEnabled()
@@ -335,7 +375,45 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			attemptCfg := taskCfg
-			if taskConfig.Proxy != "" {
+			runRegistrar := func(cfg *core.Config) map[string]interface{} {
+				reg := core.NewRegistrar(cfg)
+				reg.Ctx = taskCtx
+				reg.TaskLabel = fmt.Sprintf("%d/%d", i+1, req.Count)
+				return reg.Run()
+			}
+			runAttempt := func() bool {
+				if clashEnabled {
+					clashMu.Lock()
+					defer clashMu.Unlock()
+
+					selection, err := clashClient.SwitchToNextAvailable(taskCtx)
+					if err != nil {
+						log.Printf("[Kiro][%d/%d] Clash 节点选择失败: %v", i+1, req.Count, err)
+						result = map[string]interface{}{
+							"status": "failed",
+							"error":  "Clash 无可用节点: " + err.Error(),
+							"email":  currentEmail,
+						}
+						return false
+					}
+					attemptCfg.Proxy = taskConfig.Proxy
+					attemptCfg.ProxySwitchable = true
+					delayText := "跳过连通性测试"
+					if !selection.SkippedTest {
+						delayText = fmt.Sprintf("延迟 %dms", selection.DelayMs)
+					}
+					log.Printf("[Kiro][%d/%d] Clash 节点已绑定本次注册: %s / %s (%s, 尝试 %d 个, 耗时 %dms)",
+						i+1, req.Count, selection.ProxyGroup, selection.Node, delayText, selection.Attempts, selection.DurationMs)
+
+					result = runRegistrar(&attemptCfg)
+					return true
+				}
+
+				if taskConfig.Proxy == "" {
+					result = runRegistrar(&attemptCfg)
+					return true
+				}
+
 				selection, err := proxy.SelectRuntimeProxy(taskCtx, taskConfig.Proxy, proxy.DefaultRegisterSelectOptions())
 				if err != nil {
 					log.Printf("[Kiro][%d/%d] 代理候选选择失败: %v", i+1, req.Count, err)
@@ -344,21 +422,23 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 						"error":  "代理池无可用节点: " + err.Error(),
 						"email":  currentEmail,
 					}
-					break
+					return false
 				}
 				attemptCfg.Proxy = selection.ProxyURL
 				attemptCfg.ProxyFromPool = selection.Templated
+				attemptCfg.ProxySwitchable = selection.Templated
 				if selection.Templated {
 					log.Printf("[Kiro][%d/%d] 代理池候选可用: 第 %d/%d 个, 耗时 %dms, %s",
 						i+1, req.Count, selection.SuccessAttempt, selection.Attempts, selection.Duration.Milliseconds(), selection.MaskedProxyURL)
 				} else {
 					log.Printf("[Kiro][%d/%d] 代理验证可用: %s", i+1, req.Count, selection.MaskedProxyURL)
 				}
+				result = runRegistrar(&attemptCfg)
+				return true
 			}
-			reg := core.NewRegistrar(&attemptCfg)
-			reg.Ctx = taskCtx
-			reg.TaskLabel = fmt.Sprintf("%d/%d", i+1, req.Count)
-			result = reg.Run()
+			if ok := runAttempt(); !ok {
+				break
+			}
 			if resultEmail, _ := result["email"].(string); resultEmail != "" {
 				currentEmail = resultEmail
 			}
@@ -403,10 +483,15 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			// 动态代理池中部分 UUID 节点可能不可用；代理类网络错误优先切换新 UUID，不消耗业务重试次数。
-			if proxy.HasURLTemplate(taskConfig.Proxy) && isProxyNetworkError(errorMsg) && proxySwitches < maxProxySwitches {
+			if (proxy.HasURLTemplate(taskConfig.Proxy) || clashEnabled) && isProxyNetworkError(errorMsg) && proxySwitches < maxProxySwitches {
 				proxySwitches++
-				log.Printf("[Kiro][%d/%d] 检测到代理节点网络错误，切换新 UUID 节点重试 (%d/%d): %s",
-					i+1, req.Count, proxySwitches, maxProxySwitches, errorMsg)
+				if clashEnabled {
+					log.Printf("[Kiro][%d/%d] 检测到 Clash 节点网络错误，切换下一个节点重试 (%d/%d): %s",
+						i+1, req.Count, proxySwitches, maxProxySwitches, errorMsg)
+				} else {
+					log.Printf("[Kiro][%d/%d] 检测到代理节点网络错误，切换新 UUID 节点重试 (%d/%d): %s",
+						i+1, req.Count, proxySwitches, maxProxySwitches, errorMsg)
+				}
 				attempt--
 				continue retryLoop
 			}

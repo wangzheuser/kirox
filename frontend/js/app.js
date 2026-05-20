@@ -198,6 +198,140 @@ async function loadProxy() {
   } catch(e) {}
 }
 
+async function loadClashProxy() {
+  try {
+    var p = await window.go.main.App.GetClashProxy();
+    var el = document.getElementById('cfg-clash-proxy');
+    if (el) el.value = p || '';
+  } catch(e) {}
+}
+
+function currentProxyMode() {
+  var checked = document.querySelector('input[name="proxy-mode"]:checked');
+  return checked ? checked.value : 'none';
+}
+
+function applyProxyMode(mode) {
+  mode = mode || 'none';
+  var radio = document.getElementById('cfg-proxy-mode-' + mode);
+  if (radio) radio.checked = true;
+  var normalPanel = document.getElementById('proxy-normal-panel');
+  var clashPanel = document.getElementById('proxy-clash-panel');
+  if (normalPanel) normalPanel.style.display = mode === 'normal' ? 'flex' : 'none';
+  if (clashPanel) clashPanel.style.display = mode === 'clash' ? 'flex' : 'none';
+}
+
+async function loadProxyMode() {
+  try {
+    var mode = await window.go.main.App.GetProxyMode();
+    applyProxyMode(mode || 'none');
+  } catch(e) {
+    applyProxyMode('none');
+  }
+}
+
+async function saveProxyMode(mode) {
+  try {
+    var result = await window.go.main.App.SetProxyMode(mode);
+    if (result.error) {
+      showToast(result.error, 'error');
+      return null;
+    }
+    applyProxyMode(result.mode || mode);
+    renderProxyDetectCard('hidden');
+    showToast('代理模式已切换为' + ({ none: '直连', normal: '普通代理', clash: 'Clash 代理' }[result.mode || mode] || mode));
+    return result.mode || mode;
+  } catch(e) {
+    showToast('代理模式保存失败: ' + e.message, 'error');
+    return null;
+  }
+}
+
+function proxyEscapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, function(ch) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+  });
+}
+
+function getClashConfigFromForm() {
+  var timeout = parseInt((document.getElementById('cfg-clash-test-timeout') || {}).value || '10', 10);
+  if (!timeout || timeout < 1) timeout = 10;
+  return {
+    enabled: currentProxyMode() === 'clash',
+    apiUrl: ((document.getElementById('cfg-clash-api-url') || {}).value || '').trim() || 'http://127.0.0.1:9097',
+    apiSecret: ((document.getElementById('cfg-clash-api-secret') || {}).value || '').trim(),
+    proxyGroup: ((document.getElementById('cfg-clash-proxy-group') || {}).value || '').trim(),
+    testUrl: ((document.getElementById('cfg-clash-test-url') || {}).value || '').trim() || 'https://oidc.us-east-1.amazonaws.com/ping',
+    testTimeout: timeout,
+    skipConnectivityTest: !!((document.getElementById('cfg-clash-skip-test') || {}).checked)
+  };
+}
+
+function applyClashConfigToForm(config) {
+  config = config || {};
+  var map = {
+    'cfg-clash-api-url': config.apiUrl || 'http://127.0.0.1:9097',
+    'cfg-clash-api-secret': config.apiSecret || '',
+    'cfg-clash-proxy-group': config.proxyGroup || '',
+    'cfg-clash-test-url': config.testUrl || 'https://oidc.us-east-1.amazonaws.com/ping',
+    'cfg-clash-test-timeout': config.testTimeout || 10,
+    'cfg-clash-skip-test': !!config.skipConnectivityTest
+  };
+  Object.keys(map).forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!map[id];
+    else el.value = map[id];
+  });
+}
+
+async function loadClashConfig() {
+  try {
+    var config = await window.go.main.App.GetClashConfig();
+    applyClashConfigToForm(config);
+  } catch(e) {}
+}
+
+async function saveClashConfig(silent) {
+  try {
+    var config = getClashConfigFromForm();
+    var result = await window.go.main.App.SetClashConfig(config);
+    if (result.error) {
+      if (!silent) showToast(result.error, 'error');
+      return null;
+    }
+    applyClashConfigToForm(result.config || config);
+    if (!silent) showToast('Clash 配置已保存');
+    return result.config || config;
+  } catch(e) {
+    if (!silent) showToast('Clash 配置保存失败: ' + e.message, 'error');
+    return null;
+  }
+}
+
+async function saveClashSettings(silent) {
+  try {
+    await window.go.main.App.SetProxyMode('clash');
+    applyProxyMode('clash');
+
+    var proxyEl = document.getElementById('cfg-clash-proxy');
+    var proxyResult = await window.go.main.App.SetClashProxy((proxyEl && proxyEl.value || '').trim());
+    if (proxyResult.error) {
+      if (!silent) showToast(proxyResult.error, 'error');
+      return null;
+    }
+    if (proxyEl) proxyEl.value = proxyResult.proxy || '';
+
+    var config = await saveClashConfig(true);
+    if (!config) return null;
+    if (!silent) showToast('Clash 配置已保存');
+    return { proxy: proxyResult.proxy || '', config: config };
+  } catch(e) {
+    if (!silent) showToast('Clash 配置保存失败: ' + e.message, 'error');
+    return null;
+  }
+}
+
 function renderProxyDetectCard(state, payload) {
   var box = document.getElementById('proxy-detect-card');
   if (!box) return;
@@ -206,16 +340,26 @@ function renderProxyDetectCard(state, payload) {
   var base = 'border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;';
   if (state === 'loading') {
     box.style.cssText = base + 'background:var(--card-bg, transparent);color:var(--muted);';
-    box.innerHTML = '正在检测代理出口…' + (payload && payload.templated ? '<div style="margin-top:4px;font-size:11px;">检测时会临时生成 {uuid}。</div>' : '');
+    box.innerHTML = '正在检测代理出口…' +
+      (payload && payload.clash ? '<div style="margin-top:4px;font-size:11px;">正在通过 Clash API 切换并验证节点。</div>' : '') +
+      (payload && payload.templated ? '<div style="margin-top:4px;font-size:11px;">检测时会临时生成 {uuid}。</div>' : '');
     return;
   }
   if (state === 'ok') {
     var loc = [payload.country, payload.region, payload.city].filter(Boolean).join(' · ');
-    var okTitle = payload.pool ? '✓ 代理池可用' : '✓ 可用';
+    var okTitle = payload.clash ? '✓ Clash 节点可用' : (payload.pool ? '✓ 代理池可用' : '✓ 可用');
     var poolNote = payload.pool
       ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">第 ' + (payload.successAttempt || payload.attempts || 1) + ' 个 UUID 节点可用；注册前会重新抽样并绑定可用节点。' + (payload.durationMs ? '耗时 ' + payload.durationMs + 'ms。' : '') + '</div>'
       : '';
     var templateNote = payload.templated && !payload.pool ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">模板代理已使用临时 UUID 完成检测；注册时每次尝试会重新生成会话代理。</div>' : '';
+    var clashNote = payload.clash
+      ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">Clash ' + proxyEscapeHtml(payload.clashVersion || '未知版本') +
+        ' · 代理组 ' + proxyEscapeHtml(payload.clashGroup || '未识别') +
+        ' · 节点 ' + proxyEscapeHtml(payload.clashNode || '未知') +
+        (payload.clashSkipped ? ' · 已跳过节点连通性测试' : (' · 延迟 ' + (payload.clashDelayMs || 0) + 'ms')) +
+        ' · 尝试 ' + (payload.attempts || 1) + ' 个节点' +
+        (payload.durationMs ? ' · 耗时 ' + payload.durationMs + 'ms' : '') + '</div>'
+      : '';
     box.style.cssText = base + 'background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.35);';
     box.innerHTML =
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
@@ -225,16 +369,26 @@ function renderProxyDetectCard(state, payload) {
         (loc ? '<span style="color:var(--muted);">· ' + loc + '</span>' : '') +
       '</div>' +
       (payload.isp ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">' + payload.isp + '</div>' : '') +
+      clashNote +
       poolNote +
       templateNote;
     return;
   }
   // error
   var errDetails = payload && payload.errors && payload.errors.length
-    ? '<div style="margin-top:6px;font-size:11px;line-height:1.5;">' + payload.errors.map(function(x) { return '• ' + x; }).join('<br>') + '</div>'
+    ? '<div style="margin-top:6px;font-size:11px;line-height:1.5;">' + payload.errors.map(function(x) { return '• ' + proxyEscapeHtml(x); }).join('<br>') + '</div>'
     : '';
   box.style.cssText = base + 'background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.35);color:#ef4444;';
-  box.innerHTML = '✗ 检测失败：' + (payload && payload.error ? payload.error : '未知错误') +
+  var errorText = payload && payload.error ? payload.error : '未知错误';
+  var staleBackendHint = /解析 Clash API 响应失败: unexpected end of JSON input/.test(errorText)
+    ? '<div style="margin-top:4px;font-size:11px;">当前前端已更新，但 Go/Wails 后端仍像旧版本：请完全退出应用后重新启动或重新构建后再检测。</div>'
+    : '';
+  box.innerHTML = '✗ 检测失败：' + proxyEscapeHtml(errorText) +
+    staleBackendHint +
+    (payload && payload.clash ? '<div style="margin-top:4px;font-size:11px;">Clash 节点检测失败' +
+      (payload.clashGroup ? ' · 代理组 ' + proxyEscapeHtml(payload.clashGroup) : '') +
+      (payload.clashNode ? ' · 节点 ' + proxyEscapeHtml(payload.clashNode) : '') +
+      (payload.attempts ? ' · 已尝试 ' + payload.attempts + ' 个节点' : '') + '。</div>' : '') +
     (payload && payload.pool ? '<div style="margin-top:4px;font-size:11px;">已连续抽样 ' + (payload.attempts || 0) + ' 个 UUID 节点，均不可用。</div>' : '') +
     (payload && payload.templated && !payload.pool ? '<div style="margin-top:4px;font-size:11px;">已尝试使用临时 UUID 检测模板代理。</div>' : '') +
     errDetails;
@@ -244,6 +398,8 @@ async function saveProxy() {
   var el = document.getElementById('cfg-proxy');
   if (!el) return;
   try {
+    await window.go.main.App.SetProxyMode('normal');
+    applyProxyMode('normal');
     if (el.value.trim()) renderProxyDetectCard('loading', { templated: el.value.indexOf('{uuid}') >= 0 });
     else renderProxyDetectCard('hidden');
     var result = await window.go.main.App.SetProxy(el.value.trim());
@@ -265,6 +421,25 @@ async function saveProxy() {
   } catch(e) {
     showToast('保存失败: ' + e.message, 'error');
     renderProxyDetectCard('error', { error: e.message });
+  }
+}
+
+async function detectClashProxy() {
+  var el = document.getElementById('cfg-clash-proxy');
+  if (!el || !el.value.trim()) {
+    showToast('请先填写本地 Clash 代理地址', 'error');
+    return;
+  }
+  try {
+    var settings = await saveClashSettings(true);
+    if (!settings) return;
+    renderProxyDetectCard('loading', { clash: true });
+    var d = await window.go.main.App.DetectClashProxy(settings.proxy, settings.config);
+    if (d && d.ok) renderProxyDetectCard('ok', d);
+    else renderProxyDetectCard('error', d || {});
+  } catch(e) {
+    showToast('Clash 检测失败: ' + e.message, 'error');
+    renderProxyDetectCard('error', { clash: true, error: e.message });
   }
 }
 
@@ -455,7 +630,10 @@ async function loadConfig() {
   loadOutlookAccountsList();
   loadDataDir();
   loadResultOutputDir();
+  loadProxyMode();
   loadProxy();
+  loadClashProxy();
+  loadClashConfig();
   loadKillSwitchEnabled();
   startOverviewTimer();
   console.log('[启动] 初始化完成');

@@ -4,18 +4,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"reg_go/internal/proxy"
 )
 
 const (
-	keyDataDir           = "data_dir"
-	keyResultOutputDir   = "result_output_dir"
-	keyProxy             = "proxy"
-	keyKillSwitchEnabled = "kill_switch_enabled"
+	ProxyModeNone   = "none"
+	ProxyModeNormal = "normal"
+	ProxyModeClash  = "clash"
+
+	keyDataDir                   = "data_dir"
+	keyResultOutputDir           = "result_output_dir"
+	keyProxyMode                 = "proxy_mode"
+	keyProxy                     = "proxy"
+	keyClashProxy                = "clash_proxy"
+	keyKillSwitchEnabled         = "kill_switch_enabled"
+	keyClashEnabled              = "clash_enabled"
+	keyClashAPIURL               = "clash_api_url"
+	keyClashAPISecret            = "clash_api_secret"
+	keyClashProxyGroup           = "clash_proxy_group"
+	keyClashTestURL              = "clash_test_url"
+	keyClashTestTimeout          = "clash_test_timeout"
+	keyClashSkipConnectivityTest = "clash_skip_connectivity_test"
 )
 
 var (
@@ -79,7 +96,21 @@ func loadConfigMap() map[string]string {
 func saveConfigMap(m map[string]string) error {
 	os.MkdirAll(GetDefaultDataDir(), 0755)
 	var b strings.Builder
-	for _, k := range []string{keyDataDir, keyResultOutputDir, keyProxy, keyKillSwitchEnabled} {
+	for _, k := range []string{
+		keyDataDir,
+		keyResultOutputDir,
+		keyProxyMode,
+		keyProxy,
+		keyClashProxy,
+		keyKillSwitchEnabled,
+		keyClashEnabled,
+		keyClashAPIURL,
+		keyClashAPISecret,
+		keyClashProxyGroup,
+		keyClashTestURL,
+		keyClashTestTimeout,
+		keyClashSkipConnectivityTest,
+	} {
 		if v := strings.TrimSpace(m[k]); v != "" {
 			b.WriteString(k)
 			b.WriteByte('=')
@@ -268,6 +299,88 @@ func ResetProxy() {
 	_proxyOnce.Do(func() {})
 }
 
+// GetProxyMode 返回当前互斥代理模式。
+func GetProxyMode() string {
+	m := loadConfigMap()
+	if mode := normalizeProxyMode(m[keyProxyMode]); mode != "" {
+		return mode
+	}
+	if parseBool(m[keyClashEnabled]) && looksLikeLocalProxy(m[keyProxy]) {
+		return ProxyModeClash
+	}
+	if strings.TrimSpace(m[keyProxy]) != "" {
+		return ProxyModeNormal
+	}
+	return ProxyModeNone
+}
+
+// SetProxyMode 设置当前互斥代理模式，不清空其他模式配置。
+func SetProxyMode(mode string) error {
+	mode = normalizeProxyMode(mode)
+	if mode == "" {
+		return fmt.Errorf("未知代理模式")
+	}
+	m := loadConfigMap()
+	m[keyProxyMode] = mode
+	return saveConfigMap(m)
+}
+
+// GetClashProxy 返回 Clash 本地代理地址。
+func GetClashProxy() string {
+	m := loadConfigMap()
+	if value := strings.TrimSpace(m[keyClashProxy]); value != "" {
+		return value
+	}
+	if parseBool(m[keyClashEnabled]) && looksLikeLocalProxy(m[keyProxy]) {
+		return strings.TrimSpace(m[keyProxy])
+	}
+	return ""
+}
+
+// SetClashProxy 设置 Clash 本地代理地址。
+func SetClashProxy(raw string) (string, error) {
+	normalized := NormalizeProxyAddress(strings.TrimSpace(raw))
+	m := loadConfigMap()
+	if normalized == "" {
+		delete(m, keyClashProxy)
+	} else {
+		m[keyClashProxy] = normalized
+	}
+	if err := saveConfigMap(m); err != nil {
+		return "", err
+	}
+	return normalized, nil
+}
+
+// GetClashConfig 返回 Clash API 自动切换配置。
+func GetClashConfig() proxy.ClashConfig {
+	m := loadConfigMap()
+	timeout, _ := strconv.Atoi(strings.TrimSpace(m[keyClashTestTimeout]))
+	return proxy.NormalizeClashConfig(proxy.ClashConfig{
+		Enabled:              parseBool(m[keyClashEnabled]),
+		APIURL:               strings.TrimSpace(m[keyClashAPIURL]),
+		APISecret:            strings.TrimSpace(m[keyClashAPISecret]),
+		ProxyGroup:           strings.TrimSpace(m[keyClashProxyGroup]),
+		TestURL:              strings.TrimSpace(m[keyClashTestURL]),
+		TestTimeout:          timeout,
+		SkipConnectivityTest: parseBool(m[keyClashSkipConnectivityTest]),
+	})
+}
+
+// SetClashConfig 保存 Clash API 自动切换配置。
+func SetClashConfig(config proxy.ClashConfig) error {
+	config = proxy.NormalizeClashConfig(config)
+	m := loadConfigMap()
+	m[keyClashEnabled] = strconv.FormatBool(config.Enabled)
+	m[keyClashAPIURL] = config.APIURL
+	m[keyClashAPISecret] = config.APISecret
+	m[keyClashProxyGroup] = config.ProxyGroup
+	m[keyClashTestURL] = config.TestURL
+	m[keyClashTestTimeout] = strconv.Itoa(config.TestTimeout)
+	m[keyClashSkipConnectivityTest] = strconv.FormatBool(config.SkipConnectivityTest)
+	return saveConfigMap(m)
+}
+
 // GetKillSwitchEnabled 返回熔断级错误自动停止开关状态，默认开启。
 func GetKillSwitchEnabled() bool {
 	_killSwitchOnce.Do(func() {
@@ -276,6 +389,55 @@ func GetKillSwitchEnabled() bool {
 		_killSwitchEnabled = raw != "false" && raw != "0" && raw != "no" && raw != "off"
 	})
 	return _killSwitchEnabled
+}
+
+func parseBool(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeProxyMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case ProxyModeNone, "":
+		if strings.TrimSpace(mode) == "" {
+			return ""
+		}
+		return ProxyModeNone
+	case ProxyModeNormal:
+		return ProxyModeNormal
+	case ProxyModeClash:
+		return ProxyModeClash
+	default:
+		return ""
+	}
+}
+
+func looksLikeLocalProxy(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	normalized := NormalizeProxyAddress(raw)
+	hostPort := normalized
+	if i := strings.Index(normalized, "://"); i >= 0 {
+		hostPort = normalized[i+3:]
+		if j := strings.IndexByte(hostPort, '/'); j >= 0 {
+			hostPort = hostPort[:j]
+		}
+		if j := strings.LastIndexByte(hostPort, '@'); j >= 0 {
+			hostPort = hostPort[j+1:]
+		}
+	}
+	host, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		host = hostPort
+	}
+	host = strings.Trim(host, "[]")
+	return host == "localhost" || host == "::1" || strings.HasPrefix(host, "127.") || host == "0.0.0.0"
 }
 
 // SetKillSwitchEnabled 设置熔断级错误自动停止开关状态。

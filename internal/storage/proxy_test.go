@@ -1,6 +1,11 @@
 package storage
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+)
 
 func TestNormalizeProxyAddressKeepsFullTemplateURL(t *testing.T) {
 	input := "https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"
@@ -25,5 +30,63 @@ func TestNormalizeProxyAddressKeepsHostPortDefaultBehavior(t *testing.T) {
 
 	if got != want {
 		t.Fatalf("host:port 默认归一化行为不应回退: got %q, want %q", got, want)
+	}
+}
+
+func TestProxyModeLegacyProxyDefaultsToNormal(t *testing.T) {
+	withTempStorageConfig(t, "proxy=https://user:pass@example.com:443\n")
+
+	if got := GetProxyMode(); got != ProxyModeNormal {
+		t.Fatalf("旧普通代理配置应解释为 normal: got %q", got)
+	}
+}
+
+func TestProxyModeLegacyClashLocalProxyDefaultsToClash(t *testing.T) {
+	withTempStorageConfig(t, "proxy=http://127.0.0.1:7890\nclash_enabled=true\n")
+
+	if got := GetProxyMode(); got != ProxyModeClash {
+		t.Fatalf("旧 Clash 本地代理配置应解释为 clash: got %q", got)
+	}
+	if got := GetClashProxy(); got != "http://127.0.0.1:7890" {
+		t.Fatalf("旧 Clash 本地代理应作为 clash_proxy 读取: got %q", got)
+	}
+}
+
+func TestSetClashProxyDoesNotOverwriteNormalProxy(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	if _, err := SetProxy("https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetClashProxy("http://127.0.0.1:7890"); err != nil {
+		t.Fatal(err)
+	}
+	if got := GetProxy(); got != "https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443" {
+		t.Fatalf("普通代理不应被 Clash 代理覆盖: got %q", got)
+	}
+	if got := GetClashProxy(); got != "http://127.0.0.1:7890" {
+		t.Fatalf("Clash 代理读取失败: got %q", got)
+	}
+}
+
+func withTempStorageConfig(t *testing.T, content string) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
+	_dataDir = ""
+	_dataDirOnce = sync.Once{}
+	_resultOutputDir = ""
+	_resultOutputOnce = sync.Once{}
+	_proxy = ""
+	_proxyOnce = sync.Once{}
+	_killSwitchEnabled = false
+	_killSwitchOnce = sync.Once{}
+
+	path := getConfigFilePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
 	}
 }

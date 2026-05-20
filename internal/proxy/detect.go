@@ -29,6 +29,12 @@ type Info struct {
 	Target         string   `json:"target,omitempty"`
 	DurationMs     int64    `json:"durationMs,omitempty"`
 	Errors         []string `json:"errors,omitempty"`
+	Clash          bool     `json:"clash,omitempty"`
+	ClashVersion   string   `json:"clashVersion,omitempty"`
+	ClashGroup     string   `json:"clashGroup,omitempty"`
+	ClashNode      string   `json:"clashNode,omitempty"`
+	ClashDelayMs   int      `json:"clashDelayMs,omitempty"`
+	ClashSkipped   bool     `json:"clashSkipped,omitempty"`
 }
 
 // Detect 通过给定代理访问 IP 查询接口，返回出口 IP 和归属信息。
@@ -118,6 +124,52 @@ func Detect(proxyURL string) Info {
 	case <-ctx.Done():
 		return Info{Scheme: scheme, Error: "检测超时", Templated: templated}
 	}
+}
+
+// DetectClash 切换 Clash 节点后，通过本地 Clash 代理检测出口。
+func DetectClash(proxyURL string, config ClashConfig) Info {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return Info{Clash: true, Error: "代理为空"}
+	}
+	config = NormalizeClashConfig(config)
+	client := NewClashClient(config)
+	selection, err := client.SwitchToNextAvailable(context.Background())
+	info := Info{
+		Scheme:         schemeOf(proxyURL, proxyURL),
+		Clash:          true,
+		ClashVersion:   selection.Version,
+		ClashGroup:     selection.ProxyGroup,
+		ClashNode:      selection.Node,
+		ClashDelayMs:   selection.DelayMs,
+		ClashSkipped:   selection.SkippedTest,
+		Attempts:       selection.Attempts,
+		Target:         selection.TargetURL,
+		DurationMs:     selection.DurationMs,
+		Errors:         selection.Errors,
+		SuccessAttempt: selection.Attempts,
+	}
+	if err != nil {
+		info.Error = simplifyProxyErr(err.Error())
+		return info
+	}
+
+	detected := Detect(proxyURL)
+	detected.Clash = true
+	detected.ClashVersion = selection.Version
+	detected.ClashGroup = selection.ProxyGroup
+	detected.ClashNode = selection.Node
+	detected.ClashDelayMs = selection.DelayMs
+	detected.ClashSkipped = selection.SkippedTest
+	detected.Attempts = selection.Attempts
+	detected.SuccessAttempt = selection.Attempts
+	detected.Target = selection.TargetURL
+	detected.DurationMs = selection.DurationMs
+	detected.Errors = selection.Errors
+	if !detected.OK && detected.Error != "" {
+		detected.Error = "Clash 节点已切换，但代理检测失败: " + detected.Error
+	}
+	return detected
 }
 
 func schemeOf(proxyURL string, fallback string) string {

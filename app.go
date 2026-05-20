@@ -300,6 +300,52 @@ func (a *App) DetectProxy(raw string) proxy.Info {
 	return proxy.Detect(normalized)
 }
 
+// GetProxyMode 返回当前互斥代理模式。
+func (a *App) GetProxyMode() string {
+	return storage.GetProxyMode()
+}
+
+// SetProxyMode 保存当前互斥代理模式。
+func (a *App) SetProxyMode(mode string) map[string]interface{} {
+	if err := storage.SetProxyMode(mode); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "mode": storage.GetProxyMode()}
+}
+
+// GetClashProxy 返回 Clash 本地代理地址。
+func (a *App) GetClashProxy() string {
+	return storage.GetClashProxy()
+}
+
+// SetClashProxy 保存 Clash 本地代理地址。
+func (a *App) SetClashProxy(raw string) map[string]interface{} {
+	normalized, err := storage.SetClashProxy(raw)
+	if err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "proxy": normalized}
+}
+
+// GetClashConfig 返回 Clash API 自动切换配置。
+func (a *App) GetClashConfig() proxy.ClashConfig {
+	return storage.GetClashConfig()
+}
+
+// SetClashConfig 保存 Clash API 自动切换配置。
+func (a *App) SetClashConfig(config proxy.ClashConfig) map[string]interface{} {
+	if err := storage.SetClashConfig(config); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "config": storage.GetClashConfig()}
+}
+
+// DetectClashProxy 先切换 Clash 节点，再检测本地代理出口。
+func (a *App) DetectClashProxy(raw string, config proxy.ClashConfig) proxy.Info {
+	normalized := storage.NormalizeProxyAddress(raw)
+	return proxy.DetectClash(normalized, config)
+}
+
 // ResetProxy 清空代理，恢复直连
 func (a *App) ResetProxy() map[string]interface{} {
 	storage.ResetProxy()

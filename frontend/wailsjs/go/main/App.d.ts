@@ -18,9 +18,15 @@ export function ClearRegisteredOutlookAccounts():Promise<Record<string, any>>;
 
 export function DeleteOutlookAccount(arg1:string):Promise<Record<string, any>>;
 
+export function DetectClashProxy(arg1:string,arg2:proxy.ClashConfig):Promise<proxy.Info>;
+
 export function DetectProxy(arg1:string):Promise<proxy.Info>;
 
 export function DownloadUpdate():Promise<Record<string, any>>;
+
+export function GetClashConfig():Promise<proxy.ClashConfig>;
+
+export function GetClashProxy():Promise<string>;
 
 export function GetDataDir():Promise<string>;
 
@@ -37,6 +43,8 @@ export function GetOutlookAccounts():Promise<Array<Record<string, any>>>;
 export function GetOverview():Promise<Record<string, any>>;
 
 export function GetProxy():Promise<string>;
+
+export function GetProxyMode():Promise<string>;
 
 export function GetResultOutputDir():Promise<string>;
 
@@ -68,11 +76,17 @@ export function SelectDirectory():Promise<string>;
 
 export function SelectOutlookFile():Promise<string>;
 
+export function SetClashConfig(arg1:proxy.ClashConfig):Promise<Record<string, any>>;
+
+export function SetClashProxy(arg1:string):Promise<Record<string, any>>;
+
 export function SetDataDir(arg1:string):Promise<Record<string, any>>;
 
 export function SetKillSwitchEnabled(arg1:boolean):Promise<Record<string, any>>;
 
 export function SetProxy(arg1:string):Promise<Record<string, any>>;
+
+export function SetProxyMode(arg1:string):Promise<Record<string, any>>;
 
 export function SetResultOutputDir(arg1:string):Promise<Record<string, any>>;
 

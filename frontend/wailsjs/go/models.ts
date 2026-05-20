@@ -1,14 +1,14 @@
 export namespace email {
-	
+
 	export class MoeMailConfig {
 	    name: string;
 	    url: string;
 	    apiKey: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new MoeMailConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -20,7 +20,31 @@ export namespace email {
 }
 
 export namespace proxy {
-	
+
+	export class ClashConfig {
+	    enabled: boolean;
+	    apiUrl: string;
+	    apiSecret: string;
+	    proxyGroup: string;
+	    testUrl: string;
+	    testTimeout: number;
+	    skipConnectivityTest: boolean;
+
+	    static createFrom(source: any = {}) {
+	        return new ClashConfig(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.apiUrl = source["apiUrl"];
+	        this.apiSecret = source["apiSecret"];
+	        this.proxyGroup = source["proxyGroup"];
+	        this.testUrl = source["testUrl"];
+	        this.testTimeout = source["testTimeout"];
+	        this.skipConnectivityTest = source["skipConnectivityTest"];
+	    }
+	}
 	export class Info {
 	    ok: boolean;
 	    scheme: string;
@@ -37,11 +61,17 @@ export namespace proxy {
 	    target?: string;
 	    durationMs?: number;
 	    errors?: string[];
-	
+	    clash?: boolean;
+	    clashVersion?: string;
+	    clashGroup?: string;
+	    clashNode?: string;
+	    clashDelayMs?: number;
+	    clashSkipped?: boolean;
+
 	    static createFrom(source: any = {}) {
 	        return new Info(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
@@ -59,13 +89,19 @@ export namespace proxy {
 	        this.target = source["target"];
 	        this.durationMs = source["durationMs"];
 	        this.errors = source["errors"];
+	        this.clash = source["clash"];
+	        this.clashVersion = source["clashVersion"];
+	        this.clashGroup = source["clashGroup"];
+	        this.clashNode = source["clashNode"];
+	        this.clashDelayMs = source["clashDelayMs"];
+	        this.clashSkipped = source["clashSkipped"];
 	    }
 	}
 
 }
 
 export namespace task {
-	
+
 	export class StartTaskRequest {
 	    count: number;
 	    concurrency: number;
@@ -75,11 +111,11 @@ export namespace task {
 	    moemailDomains: string[];
 	    moemailConfigs: Record<string, Array<email.MoeMailConfig>>;
 	    moemailRandomMode: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StartTaskRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.count = source["count"];
@@ -91,7 +127,7 @@ export namespace task {
 	        this.moemailConfigs = this.convertValues(source["moemailConfigs"], Array<email.MoeMailConfig>, true);
 	        this.moemailRandomMode = source["moemailRandomMode"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;

@@ -30,12 +30,24 @@ export function DeleteOutlookAccount(arg1) {
   return window['go']['main']['App']['DeleteOutlookAccount'](arg1);
 }
 
+export function DetectClashProxy(arg1, arg2) {
+  return window['go']['main']['App']['DetectClashProxy'](arg1, arg2);
+}
+
 export function DetectProxy(arg1) {
   return window['go']['main']['App']['DetectProxy'](arg1);
 }
 
 export function DownloadUpdate() {
   return window['go']['main']['App']['DownloadUpdate']();
+}
+
+export function GetClashConfig() {
+  return window['go']['main']['App']['GetClashConfig']();
+}
+
+export function GetClashProxy() {
+  return window['go']['main']['App']['GetClashProxy']();
 }
 
 export function GetDataDir() {
@@ -68,6 +80,10 @@ export function GetOverview() {
 
 export function GetProxy() {
   return window['go']['main']['App']['GetProxy']();
+}
+
+export function GetProxyMode() {
+  return window['go']['main']['App']['GetProxyMode']();
 }
 
 export function GetResultOutputDir() {
@@ -130,6 +146,14 @@ export function SelectOutlookFile() {
   return window['go']['main']['App']['SelectOutlookFile']();
 }
 
+export function SetClashConfig(arg1) {
+  return window['go']['main']['App']['SetClashConfig'](arg1);
+}
+
+export function SetClashProxy(arg1) {
+  return window['go']['main']['App']['SetClashProxy'](arg1);
+}
+
 export function SetDataDir(arg1) {
   return window['go']['main']['App']['SetDataDir'](arg1);
 }
@@ -140,6 +164,10 @@ export function SetKillSwitchEnabled(arg1) {
 
 export function SetProxy(arg1) {
   return window['go']['main']['App']['SetProxy'](arg1);
+}
+
+export function SetProxyMode(arg1) {
+  return window['go']['main']['App']['SetProxyMode'](arg1);
 }
 
 export function SetResultOutputDir(arg1) {

@@ -111,7 +111,7 @@ func retryBackoff(attempt int) time.Duration {
 
 // maxHTTPRetries 返回单个 HTTP 客户端上的传输重试次数。
 func (r *Registrar) maxHTTPRetries() int {
-	if r.Cfg != nil && r.Cfg.ProxyFromPool && r.Cfg.Proxy != "" {
+	if r.Cfg != nil && (r.Cfg.ProxySwitchable || r.Cfg.ProxyFromPool) && r.Cfg.Proxy != "" {
 		return 0
 	}
 	return 2

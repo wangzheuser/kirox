@@ -27,6 +27,8 @@ type Config struct {
 	Debug bool
 	// ProxyFromPool 表示 Proxy 是已从动态代理池中选出的运行时节点。
 	ProxyFromPool bool
+	// ProxySwitchable 表示当前代理背后可换节点，HTTP 传输错误应交给任务层切换节点。
+	ProxySwitchable bool
 
 	EmailProvider  string
 	UseOutlook     bool
