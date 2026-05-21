@@ -115,7 +115,7 @@ func ParseOutlookLines(data string) []OutlookAccount {
 
 // RefreshOutlookToken 用 refresh_token 获取 access_token（优先走全局代理，失败时降级直连）
 func RefreshOutlookToken(acc OutlookAccount) (string, error) {
-	return refreshOutlookToken(acc, storage.GetProxy(), true)
+	return refreshOutlookToken(acc, storage.GetEmailProxy(), true)
 }
 
 // RefreshOutlookTokenWithProxy 用指定代理刷新 Outlook access_token。
@@ -134,7 +134,7 @@ func refreshOutlookToken(acc OutlookAccount, proxyURL string, allowDirectFallbac
 
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	tryPost := func(p string) (resp *http.Response, err error) {
-		client := httpClientWithProxy(p, 30*time.Second)
+		client := httpClientWithProxy(p, emailRequestTimeout)
 		return client.Post(
 			"https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
 			"application/x-www-form-urlencoded",
@@ -180,7 +180,7 @@ type imapClient struct {
 
 // newIMAPClient 连接 Outlook IMAP（优先走全局代理，代理被封端口时自动降级直连）
 func newIMAPClient() (*imapClient, error) {
-	return newIMAPClientWithFallback(storage.GetProxy(), true)
+	return newIMAPClientWithFallback(storage.GetEmailProxy(), true)
 }
 
 // newIMAPClientWithProxy 连接 Outlook IMAP，并优先使用指定代理。
@@ -192,17 +192,17 @@ func newIMAPClientWithProxy(proxyURL string) (*imapClient, error) {
 func newIMAPClientWithFallback(proxyURL string, allowDirectFallback bool) (*imapClient, error) {
 	const target = "outlook.office365.com:993"
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
-	rawConn, err := dialThroughProxy(runtimeProxyURL, "tcp", target, 15*time.Second)
+	rawConn, err := dialThroughProxy(runtimeProxyURL, "tcp", target, emailRequestTimeout)
 	if err != nil && runtimeProxyURL != "" && allowDirectFallback {
 		log.Printf("[IMAP] 代理拨号失败，降级直连：%v", err)
-		rawConn, err = dialThroughProxy("", "tcp", target, 15*time.Second)
+		rawConn, err = dialThroughProxy("", "tcp", target, emailRequestTimeout)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("连接失败: %v", err)
 	}
 	tlsConfig := &tls.Config{ServerName: "outlook.office365.com"}
 	conn := tls.Client(rawConn, tlsConfig)
-	if err := conn.SetDeadline(time.Now().Add(15 * time.Second)); err == nil {
+	if err := conn.SetDeadline(time.Now().Add(emailRequestTimeout)); err == nil {
 		err = conn.Handshake()
 		conn.SetDeadline(time.Time{})
 		if err != nil {
@@ -225,6 +225,8 @@ func (c *imapClient) sendCommand(cmd string) (string, error) {
 	c.tag++
 	tagStr := fmt.Sprintf("A%03d", c.tag)
 	line := fmt.Sprintf("%s %s\r\n", tagStr, cmd)
+	_ = c.conn.SetDeadline(time.Now().Add(emailRequestTimeout))
+	defer c.conn.SetDeadline(time.Time{})
 	_, err := c.conn.Write([]byte(line))
 	if err != nil {
 		return "", err
@@ -233,6 +235,8 @@ func (c *imapClient) sendCommand(cmd string) (string, error) {
 }
 
 func (c *imapClient) readLine() (string, error) {
+	_ = c.conn.SetDeadline(time.Now().Add(emailRequestTimeout))
+	defer c.conn.SetDeadline(time.Time{})
 	line, err := c.reader.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -393,7 +397,7 @@ func (c *imapClient) fetchLatestBody(seq int) (string, error) {
 
 // WaitForOTP 通过 IMAP 轮询等待 AWS 验证码
 func WaitForOTP(acc OutlookAccount, beforeCount, timeout, interval int) (string, error) {
-	return WaitForOTPWithProxy(acc, beforeCount, timeout, interval, storage.GetProxy())
+	return WaitForOTPWithProxy(acc, beforeCount, timeout, interval, storage.GetEmailProxy())
 }
 
 // WaitForOTPWithProxy 通过指定代理轮询等待 AWS 验证码。
@@ -474,7 +478,7 @@ func WaitForOTPWithProxy(acc OutlookAccount, beforeCount, timeout, interval int,
 
 // GetInboxCount 获取收件箱当前邮件数量（带完整重连重试）
 func GetInboxCount(acc OutlookAccount) (int, error) {
-	return GetInboxCountWithProxy(acc, storage.GetProxy())
+	return GetInboxCountWithProxy(acc, storage.GetEmailProxy())
 }
 
 // GetInboxCountWithProxy 通过指定代理获取收件箱当前邮件数量。

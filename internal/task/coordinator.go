@@ -174,7 +174,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	taskConfig := core.NewConfig()
 	taskConfig.EmailProvider = emailProvider
+	taskConfig.EmailProxy = storage.GetEmailProxy()
 	taskConfig.OutlookScope = storage.GetOutlookScope()
+	taskConfig.OutlookRegisterDomainOverride = storage.GetOutlookRegisterDomainOverride()
 	pageStayConfig := storage.GetPageStayConfig()
 	taskConfig.PageStayMinMs = pageStayConfig.MinMs
 	taskConfig.PageStayMaxMs = pageStayConfig.MaxMs
@@ -182,6 +184,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Printf("[Kiro] 模拟页面停留: 不延迟")
 	} else {
 		log.Printf("[Kiro] 模拟页面停留: %d-%dms", pageStayConfig.MinMs, pageStayConfig.MaxMs)
+	}
+	if taskConfig.EmailProxy == "" {
+		log.Printf("[Kiro] 邮箱代理: 直连")
+	} else {
+		log.Printf("[Kiro] 邮箱代理: 已启用")
 	}
 
 	proxyMode := storage.GetProxyMode()
@@ -257,6 +264,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	} else if emailProvider == "outlook" {
 		taskConfig.UseOutlook = true
 		log.Printf("[Kiro] Outlook 读取方式: %s", taskConfig.OutlookScope)
+		if taskConfig.OutlookRegisterDomainOverride != "" {
+			log.Printf("[Kiro] Outlook 注册邮箱后缀覆盖: @%s", taskConfig.OutlookRegisterDomainOverride)
+		}
 	} else if emailProvider == "mailporary" {
 		log.Println("[Kiro] Mailporary 零配置邮箱模式")
 	}
@@ -311,7 +321,14 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 		taskCfg := *taskConfig
 		taskCfg.Password = core.GenPassword()
+		var accountEmail string
 		var currentEmail string
+		setOutlookAccount := func(acc email.OutlookAccount) {
+			// 账号池状态始终按原始邮箱更新；注册邮箱可按配置临时替换后缀。
+			taskCfg.OutlookAccount = &acc
+			accountEmail = acc.Email
+			currentEmail = core.BuildOutlookRegistrationEmail(acc.Email, taskCfg.OutlookRegisterDomainOverride)
+		}
 
 		// 根据邮箱提供商类型获取邮箱
 		if emailProvider == "outlook" {
@@ -325,8 +342,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				Manager.mu.Unlock()
 				return
 			}
-			taskCfg.OutlookAccount = &acc
-			currentEmail = acc.Email
+			setOutlookAccount(acc)
 		} else if emailProvider == "moemail" {
 			// MoeMail 模式：动态生成临时邮箱
 			// 从域名池中获取域名和配置
@@ -341,7 +357,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			log.Printf("[Kiro][%d/%d] 创建 MoeMail 邮箱: %s@%s (配置: %s)", i+1, req.Count, emailName, domain, config.Name)
 
 			// 创建 MoeMail 提供商
-			provider, err := email.NewMoeMailProvider(config, emailName, expiryTime, domain)
+			provider, err := email.NewMoeMailProviderWithProxy(config, emailName, expiryTime, domain, taskCfg.EmailProxy)
 			if err != nil {
 				log.Printf("[Kiro][%d/%d] 生成 MoeMail 邮箱失败: %v", i+1, req.Count, err)
 				Manager.mu.Lock()
@@ -473,12 +489,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			// 邮箱已注册：标记当前账号，换号重来（重置 attempt）
 			if taskConfig.UseOutlook && strings.Contains(errorMsg, "邮箱已注册过") {
 				log.Printf("[Kiro][%d/%d] %s 已注册，标记并换号", i+1, req.Count, currentEmail)
-				email.UpdateAccountStatus(currentEmail, true, false)
+				email.UpdateAccountStatus(accountEmail, true, false)
 				acc, ok := nextAccount()
 				if ok {
-					taskCfg.OutlookAccount = &acc
+					setOutlookAccount(acc)
 					taskCfg.Password = core.GenPassword()
-					currentEmail = acc.Email
 					attempt = -1 // 换号：代理预算重置
 					continue retryLoop
 				}
@@ -569,10 +584,10 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 		// 只有设置完密码后（passwordSet=true）才标记邮箱为已注册
 		// 之前步骤失败的邮箱不标记，等同于归还到邮箱池
-		if taskConfig.UseOutlook && currentEmail != "" {
+		if taskConfig.UseOutlook && accountEmail != "" {
 			passwordSet, _ := result["passwordSet"].(bool)
 			if passwordSet {
-				email.UpdateAccountStatus(currentEmail, true, success)
+				email.UpdateAccountStatus(accountEmail, true, success)
 			}
 			// 未设密码的失败邮箱不标记 registered，下次任务可继续使用
 		}

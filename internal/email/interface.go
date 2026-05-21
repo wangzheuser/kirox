@@ -18,16 +18,22 @@ type TempEmailService interface {
 
 // moEmailAdapter 适配器，将 MoeMailProvider 包装为 TempEmailService
 type moEmailAdapter struct {
-	baseURL string
-	apiKey  string
+	baseURL  string
+	apiKey   string
+	proxy    string
 	provider *MoeMailProvider
 }
 
 // NewMoEmailService 创建 MoEmail 临时邮箱服务（兼容 reg_go 核心调用）
-func NewMoEmailService(baseURL, apiKey string) TempEmailService {
+func NewMoEmailService(baseURL, apiKey string, proxyURL ...string) TempEmailService {
+	proxy := ""
+	if len(proxyURL) > 0 {
+		proxy = proxyURL[0]
+	}
 	return &moEmailAdapter{
 		baseURL: baseURL,
 		apiKey:  apiKey,
+		proxy:   proxy,
 	}
 }
 
@@ -40,7 +46,7 @@ func (a *moEmailAdapter) Create() string {
 	}
 
 	// 获取可用域名
-	client := NewMoeMailClient(config)
+	client := NewMoeMailClientWithProxy(config, a.proxy)
 	sysConfig, err := client.GetSystemConfig()
 	if err != nil {
 		log.Printf("[MoEmail] 获取系统配置失败: %v", err)
@@ -54,7 +60,7 @@ func (a *moEmailAdapter) Create() string {
 	domain := sysConfig.Domains[0]
 	name := GenerateEmailName(0)
 
-	provider, err := NewMoeMailProvider(config, name, 3600000, domain)
+	provider, err := NewMoeMailProviderWithProxy(config, name, 3600000, domain, a.proxy)
 	if err != nil {
 		log.Printf("[MoEmail] 创建邮箱失败: %v", err)
 		return ""

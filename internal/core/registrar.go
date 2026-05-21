@@ -305,8 +305,13 @@ func (r *Registrar) Step2Device() error {
 func (r *Registrar) Step3Email() error {
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
 		log.Println("[3] 使用 Outlook 邮箱")
-		r.Email = r.Cfg.OutlookAccount.Email
-		log.Printf("email=%s", r.Email)
+		originalEmail := strings.TrimSpace(r.Cfg.OutlookAccount.Email)
+		r.Email = BuildOutlookRegistrationEmail(originalEmail, r.Cfg.OutlookRegisterDomainOverride)
+		if !strings.EqualFold(originalEmail, r.Email) {
+			log.Printf("email=%s (原始账号=%s)", r.Email, originalEmail)
+		} else {
+			log.Printf("email=%s", r.Email)
+		}
 		return nil
 	}
 
@@ -320,7 +325,7 @@ func (r *Registrar) Step3Email() error {
 
 	if r.Cfg.EmailProvider == "mailporary" {
 		log.Println("[3] 使用 Mailporary 临时邮箱")
-		svc := email.NewMailporaryService(r.Cfg.Proxy)
+		svc := email.NewMailporaryService(r.Cfg.EmailProxy)
 		address, err := svc.CreateWithError()
 		if err != nil {
 			return fmt.Errorf("创建 Mailporary 邮箱失败: %w", err)
@@ -343,7 +348,7 @@ func (r *Registrar) Step3Email() error {
 			log.Printf("[MoEmail] 自动使用已保存配置: %s", configs[0].Name)
 		}
 	}
-	r.EmailSvc = email.NewMoEmailService(baseURL, apiKey)
+	r.EmailSvc = email.NewMoEmailService(baseURL, apiKey, r.Cfg.EmailProxy)
 	r.Email = r.EmailSvc.Create()
 	log.Printf("email=%s", r.Email)
 	return nil

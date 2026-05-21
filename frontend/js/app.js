@@ -282,6 +282,51 @@ async function saveOutlookScope() {
   }
 }
 
+// Outlook 注册邮箱后缀覆盖设置
+var outlookRegisterDomainSaveTimer = null;
+var lastSavedOutlookRegisterDomain = '';
+
+async function loadOutlookRegisterDomainOverride() {
+  try {
+    var domain = await window.go.main.App.GetOutlookRegisterDomainOverride();
+    var el = document.getElementById('cfg-outlook-register-domain');
+    if (el) el.value = domain || '';
+    lastSavedOutlookRegisterDomain = domain || '';
+  } catch(e) {}
+}
+
+async function saveOutlookRegisterDomainOverride() {
+  try {
+    var el = document.getElementById('cfg-outlook-register-domain');
+    if (!el) return;
+    var raw = (el.value || '').trim();
+    if (raw === lastSavedOutlookRegisterDomain) {
+      return;
+    }
+    var result = await window.go.main.App.SetOutlookRegisterDomainOverride(raw);
+    if (result.error) {
+      showToast(result.error, 'error');
+      return;
+    }
+    var domain = result.domain || '';
+    el.value = domain;
+    lastSavedOutlookRegisterDomain = domain;
+    showToast(domain ? ('Outlook 注册邮箱将使用 @' + domain) : '已关闭 Outlook 注册邮箱后缀覆盖');
+  } catch(e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
+function scheduleOutlookRegisterDomainSave() {
+  if (outlookRegisterDomainSaveTimer) {
+    clearTimeout(outlookRegisterDomainSaveTimer);
+  }
+  outlookRegisterDomainSaveTimer = setTimeout(function() {
+    outlookRegisterDomainSaveTimer = null;
+    saveOutlookRegisterDomainOverride();
+  }, 450);
+}
+
 function bindSettingsAutosave() {
   ['cfg-page-stay-min-seconds', 'cfg-page-stay-max-seconds'].forEach(function(id) {
     var el = document.getElementById(id);
@@ -294,6 +339,12 @@ function bindSettingsAutosave() {
   if (outlookScopeEl) {
     outlookScopeEl.addEventListener('change', saveOutlookScope);
   }
+
+  var outlookDomainEl = document.getElementById('cfg-outlook-register-domain');
+  if (outlookDomainEl) {
+    outlookDomainEl.addEventListener('input', scheduleOutlookRegisterDomainSave);
+    outlookDomainEl.addEventListener('change', scheduleOutlookRegisterDomainSave);
+  }
 }
 
 // 代理设置
@@ -301,6 +352,14 @@ async function loadProxy() {
   try {
     var p = await window.go.main.App.GetProxy();
     var el = document.getElementById('cfg-proxy');
+    if (el) el.value = p || '';
+  } catch(e) {}
+}
+
+async function loadEmailProxy() {
+  try {
+    var p = await window.go.main.App.GetEmailProxy();
+    var el = document.getElementById('cfg-email-proxy');
     if (el) el.value = p || '';
   } catch(e) {}
 }
@@ -501,6 +560,41 @@ function renderProxyDetectCard(state, payload) {
     errDetails;
 }
 
+function renderEmailProxyDetectCard(state, payload) {
+  var box = document.getElementById('email-proxy-detect-card');
+  if (!box) return;
+  if (state === 'hidden') { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = 'block';
+  var base = 'border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;';
+  if (state === 'loading') {
+    box.style.cssText = base + 'background:var(--card-bg, transparent);color:var(--muted);';
+    box.innerHTML = '正在检测邮箱代理出口…' +
+      (payload && payload.templated ? '<div style="margin-top:4px;font-size:11px;">检测时会临时生成 {uuid}。</div>' : '');
+    return;
+  }
+  if (state === 'ok') {
+    var loc = [payload.country, payload.region, payload.city].filter(Boolean).join(' · ');
+    box.style.cssText = base + 'background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.35);';
+    box.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+        '<span style="font-weight:600;color:#10b981;">✓ 邮箱代理可用</span>' +
+        '<span style="padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.15);color:#10b981;font-size:11px;font-weight:600;">' + proxyEscapeHtml((payload.scheme || '').toUpperCase()) + '</span>' +
+        (payload.ip ? '<span style="color:var(--text);font-weight:600;">' + proxyEscapeHtml(payload.ip) + '</span>' : '') +
+        (loc ? '<span style="color:var(--muted);">· ' + proxyEscapeHtml(loc) + '</span>' : '') +
+      '</div>' +
+      (payload.isp ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">' + proxyEscapeHtml(payload.isp) + '</div>' : '') +
+      (payload.pool ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">第 ' + (payload.successAttempt || payload.attempts || 1) + ' 个 UUID 节点可用；邮箱 API 调用时会重新生成会话代理。</div>' : '');
+    return;
+  }
+  var errDetails = payload && payload.errors && payload.errors.length
+    ? '<div style="margin-top:6px;font-size:11px;line-height:1.5;">' + payload.errors.map(function(x) { return '• ' + proxyEscapeHtml(x); }).join('<br>') + '</div>'
+    : '';
+  box.style.cssText = base + 'background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.35);color:#ef4444;';
+  box.innerHTML = '✗ 邮箱代理检测失败：' + proxyEscapeHtml(payload && payload.error ? payload.error : '未知错误') +
+    (payload && payload.pool ? '<div style="margin-top:4px;font-size:11px;">已连续抽样 ' + (payload.attempts || 0) + ' 个 UUID 节点，均不可用。</div>' : '') +
+    errDetails;
+}
+
 async function saveProxy() {
   var el = document.getElementById('cfg-proxy');
   if (!el) return;
@@ -531,6 +625,34 @@ async function saveProxy() {
   }
 }
 
+async function saveEmailProxy() {
+  var el = document.getElementById('cfg-email-proxy');
+  if (!el) return;
+  try {
+    if (el.value.trim()) renderEmailProxyDetectCard('loading', { templated: el.value.indexOf('{uuid}') >= 0 });
+    else renderEmailProxyDetectCard('hidden');
+    var result = await window.go.main.App.SetEmailProxy(el.value.trim());
+    if (result.error) {
+      showToast(result.error, 'error');
+      renderEmailProxyDetectCard('hidden');
+      return;
+    }
+    el.value = result.proxy || '';
+    if (!result.proxy) {
+      renderEmailProxyDetectCard('hidden');
+      showToast('已清空邮箱代理（直连）');
+      return;
+    }
+    showToast('邮箱代理已保存');
+    var d = result.detect;
+    if (d && d.ok) renderEmailProxyDetectCard('ok', d);
+    else renderEmailProxyDetectCard('error', d || {});
+  } catch(e) {
+    showToast('邮箱代理保存失败: ' + e.message, 'error');
+    renderEmailProxyDetectCard('error', { error: e.message });
+  }
+}
+
 async function detectClashProxy() {
   var el = document.getElementById('cfg-clash-proxy');
   if (!el || !el.value.trim()) {
@@ -547,6 +669,18 @@ async function detectClashProxy() {
   } catch(e) {
     showToast('Clash 检测失败: ' + e.message, 'error');
     renderProxyDetectCard('error', { clash: true, error: e.message });
+  }
+}
+
+async function resetEmailProxy() {
+  try {
+    await window.go.main.App.ResetEmailProxy();
+    var el = document.getElementById('cfg-email-proxy');
+    if (el) el.value = '';
+    renderEmailProxyDetectCard('hidden');
+    showToast('已清空邮箱代理（直连）');
+  } catch(e) {
+    showToast('清空邮箱代理失败: ' + e.message, 'error');
   }
 }
 
@@ -739,8 +873,10 @@ async function loadConfig() {
   loadResultOutputDir();
   loadPageStayConfig();
   loadOutlookScope();
+  loadOutlookRegisterDomainOverride();
   loadProxyMode();
   loadProxy();
+  loadEmailProxy();
   loadClashProxy();
   loadClashConfig();
   loadKillSwitchEnabled();

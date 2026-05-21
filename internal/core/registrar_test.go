@@ -68,3 +68,27 @@ func TestUseOutlookGraph(t *testing.T) {
 		t.Fatalf("OutlookScope=graph 时应启用 Graph 读取")
 	}
 }
+
+func TestBuildOutlookRegistrationEmailKeepsOriginalWithoutOverride(t *testing.T) {
+	got := BuildOutlookRegistrationEmail("user@outlook.com", "")
+
+	if got != "user@outlook.com" {
+		t.Fatalf("未配置后缀覆盖时应保持原邮箱: got %q", got)
+	}
+}
+
+func TestBuildOutlookRegistrationEmailOverridesDomain(t *testing.T) {
+	got := BuildOutlookRegistrationEmail("user@outlook.com", "outlook.fr")
+
+	if got != "user@outlook.fr" {
+		t.Fatalf("后缀覆盖失败: got %q", got)
+	}
+}
+
+func TestBuildOutlookRegistrationEmailKeepsInvalidOriginalEmail(t *testing.T) {
+	got := BuildOutlookRegistrationEmail("invalid-email", "outlook.fr")
+
+	if got != "invalid-email" {
+		t.Fatalf("原邮箱格式异常时应保持原值: got %q", got)
+	}
+}

@@ -33,17 +33,21 @@ type Config struct {
 	PageStayMaxMs int
 
 	Proxy string
-	Debug bool
+	// EmailProxy 表示邮箱服务 API 专用代理，空值表示直连。
+	EmailProxy string
+	Debug      bool
 	// ProxyFromPool 表示 Proxy 是已从动态代理池中选出的运行时节点。
 	ProxyFromPool bool
 	// ProxySwitchable 表示当前代理背后可换节点，HTTP 传输错误应交给任务层切换节点。
 	ProxySwitchable bool
 
-	EmailProvider   string
-	UseOutlook      bool
-	OutlookAccount  *email.OutlookAccount
-	OutlookScope    string
-	OutlookOTPAfter time.Time
+	EmailProvider  string
+	UseOutlook     bool
+	OutlookAccount *email.OutlookAccount
+	OutlookScope   string
+	// OutlookRegisterDomainOverride 表示注册时临时替换 Outlook 邮箱后缀，空值保持原邮箱。
+	OutlookRegisterDomainOverride string
+	OutlookOTPAfter               time.Time
 
 	UseMoeMail      bool
 	MoeMailConfig   *email.MoeMailConfig
@@ -92,6 +96,20 @@ func (c *Config) RandomPageStayMs() int {
 // UseOutlookGraph 判断当前 Outlook 账号是否使用 Microsoft Graph 读取邮件。
 func (c *Config) UseOutlookGraph() bool {
 	return strings.EqualFold(strings.TrimSpace(c.OutlookScope), OutlookScopeGraph)
+}
+
+// BuildOutlookRegistrationEmail 根据配置的后缀覆盖构造实际提交注册的 Outlook 邮箱。
+func BuildOutlookRegistrationEmail(originalEmail, overrideDomain string) string {
+	originalEmail = strings.TrimSpace(originalEmail)
+	domain := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(overrideDomain)), "@")
+	if domain == "" {
+		return originalEmail
+	}
+	localPart, _, ok := strings.Cut(originalEmail, "@")
+	if !ok || strings.TrimSpace(localPart) == "" {
+		return originalEmail
+	}
+	return localPart + "@" + domain
 }
 
 // GenPassword 生成随机密码

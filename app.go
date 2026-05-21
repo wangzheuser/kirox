@@ -191,6 +191,11 @@ func (a *App) ClearRegisteredOutlookAccounts() map[string]interface{} {
 	return email.ClearRegisteredOutlookAccounts()
 }
 
+// ResetOutlookAccountStatuses 重置所有 Outlook 账号状态但不删除账号。
+func (a *App) ResetOutlookAccountStatuses() map[string]interface{} {
+	return email.ResetOutlookAccountStatuses()
+}
+
 func (a *App) ImportOutlookFile(filePath string) map[string]interface{} {
 	return email.ImportOutlookFile(filePath)
 }
@@ -301,6 +306,20 @@ func (a *App) SetOutlookScope(scope string) map[string]interface{} {
 	return map[string]interface{}{"success": true, "scope": storage.GetOutlookScope()}
 }
 
+// GetOutlookRegisterDomainOverride 获取 Outlook 注册邮箱后缀覆盖配置。
+func (a *App) GetOutlookRegisterDomainOverride() string {
+	return storage.GetOutlookRegisterDomainOverride()
+}
+
+// SetOutlookRegisterDomainOverride 保存 Outlook 注册邮箱后缀覆盖配置。
+func (a *App) SetOutlookRegisterDomainOverride(raw string) map[string]interface{} {
+	domain, err := storage.SetOutlookRegisterDomainOverride(raw)
+	if err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "domain": domain}
+}
+
 // GetProxy 返回当前全局代理（空字符串=直连）
 func (a *App) GetProxy() string {
 	return storage.GetProxy()
@@ -324,6 +343,36 @@ func (a *App) SetProxy(raw string) map[string]interface{} {
 func (a *App) DetectProxy(raw string) proxy.Info {
 	normalized := storage.NormalizeProxyAddress(raw)
 	return proxy.Detect(normalized)
+}
+
+// GetEmailProxy 返回邮箱 API 专用代理（空字符串=直连）。
+func (a *App) GetEmailProxy() string {
+	return storage.GetEmailProxy()
+}
+
+// SetEmailProxy 保存邮箱 API 专用代理；留空表示直连。
+func (a *App) SetEmailProxy(raw string) map[string]interface{} {
+	normalized, err := storage.SetEmailProxy(raw)
+	if err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	resp := map[string]interface{}{"success": true, "proxy": normalized}
+	if normalized != "" {
+		resp["detect"] = proxy.Detect(normalized)
+	}
+	return resp
+}
+
+// DetectEmailProxy 单独探测邮箱 API 专用代理（不保存）。
+func (a *App) DetectEmailProxy(raw string) proxy.Info {
+	normalized := storage.NormalizeProxyAddress(raw)
+	return proxy.Detect(normalized)
+}
+
+// ResetEmailProxy 清空邮箱 API 专用代理，恢复直连。
+func (a *App) ResetEmailProxy() map[string]interface{} {
+	storage.ResetEmailProxy()
+	return map[string]interface{}{"success": true}
 }
 
 // GetProxyMode 返回当前互斥代理模式。

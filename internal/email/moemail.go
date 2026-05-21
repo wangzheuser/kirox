@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"reg_go/internal/proxy"
 )
 
 // MoeMailConfig MoeMail 配置
@@ -60,9 +62,15 @@ type MoeMailMessagesResponse struct {
 
 // NewMoeMailClient 创建 MoeMail 客户端
 func NewMoeMailClient(config MoeMailConfig) *MoeMailClient {
+	return NewMoeMailClientWithProxy(config, "")
+}
+
+// NewMoeMailClientWithProxy 创建使用指定代理的 MoeMail 客户端。
+func NewMoeMailClientWithProxy(config MoeMailConfig, proxyURL string) *MoeMailClient {
+	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	return &MoeMailClient{
 		config: config,
-		client: &http.Client{Timeout: 15 * time.Second},
+		client: httpClientWithProxy(runtimeProxyURL, emailRequestTimeout),
 	}
 }
 
@@ -221,7 +229,12 @@ func GenerateEmailName(taskIndex int) string {
 
 // NewMoeMailProvider 创建 MoeMail 提供商
 func NewMoeMailProvider(config MoeMailConfig, name string, expiryTime int64, domain string) (*MoeMailProvider, error) {
-	client := NewMoeMailClient(config)
+	return NewMoeMailProviderWithProxy(config, name, expiryTime, domain, "")
+}
+
+// NewMoeMailProviderWithProxy 创建使用指定代理的 MoeMail 提供商。
+func NewMoeMailProviderWithProxy(config MoeMailConfig, name string, expiryTime int64, domain string, proxyURL string) (*MoeMailProvider, error) {
+	client := NewMoeMailClientWithProxy(config, proxyURL)
 
 	// 实时获取可用域名列表，验证域名是否可用
 	sysConfig, err := client.GetSystemConfig()

@@ -169,6 +169,27 @@ function clearRegisteredOutlookAccounts() {
   });
 }
 
+function resetOutlookAccountStatuses() {
+  var total = outlookAllAccounts.length;
+  if (!total) {
+    showToast('没有可重置的账号');
+    return;
+  }
+  showConfirmModal('重置状态', '确认将所有微软邮箱状态重置为未注册？账号数据不会删除。', '确认重置', async function() {
+    try {
+      var result = await window.go.main.App.ResetOutlookAccountStatuses();
+      if (result.error) {
+        showToast(result.error, 'error');
+        return;
+      }
+      showToast('已重置 ' + (result.reset || 0) + ' 个账号状态');
+      await loadOutlookAccountsList();
+    } catch(e) {
+      showToast('重置失败: ' + e.message, 'error');
+    }
+  });
+}
+
 function openOutlookModal() {
   switchPage('accounts');
   loadOutlookAccountsList();

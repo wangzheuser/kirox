@@ -20,6 +20,7 @@ import (
 	tls_client "github.com/bogdanfinn/tls-client"
 
 	httputil "reg_go/internal/http"
+	"reg_go/internal/proxy"
 )
 
 const (
@@ -61,9 +62,15 @@ type MailporaryService struct {
 }
 
 // NewMailporaryService 创建 Mailporary 临时邮箱服务。
-func NewMailporaryService(proxy string) *MailporaryService {
+func NewMailporaryService(proxyURL string) *MailporaryService {
+	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
+	client, err := httputil.NewTLSClientWithTimeout(runtimeProxyURL, true, int(emailRequestTimeout/time.Second))
+	if err != nil {
+		log.Printf("[Mailporary] 邮箱代理初始化失败: %v", err)
+		client, _ = httputil.NewTLSClientWithTimeout("", true, int(emailRequestTimeout/time.Second))
+	}
 	return &MailporaryService{
-		client:     httputil.NewTLSClient(proxy, true),
+		client:     client,
 		checkedIDs: make(map[string]struct{}),
 	}
 }

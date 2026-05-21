@@ -276,7 +276,7 @@ func (r *Registrar) Step9SendOTP() error {
 			r.Cfg.OutlookOTPAfter = time.Now().UTC().Add(-5 * time.Second)
 			log.Printf("[Outlook Graph] 记录验证码起始时间: %s", r.Cfg.OutlookOTPAfter.Format(time.RFC3339))
 		} else {
-			count, err := email.GetInboxCountWithProxy(*r.Cfg.OutlookAccount, r.Cfg.Proxy)
+			count, err := email.GetInboxCountWithProxy(*r.Cfg.OutlookAccount, r.Cfg.EmailProxy)
 			if err != nil {
 				log.Printf("获取邮件数量失败: %v, 默认为0", err)
 			} else {
@@ -332,9 +332,9 @@ func (r *Registrar) Step10GetOTP() (string, error) {
 			err  error
 		)
 		if r.Cfg.UseOutlookGraph() {
-			code, err = email.WaitForOTPGraphWithProxy(*r.Cfg.OutlookAccount, r.Cfg.OutlookOTPAfter, 120, 5, r.Cfg.Proxy)
+			code, err = email.WaitForOTPGraphWithProxy(*r.Cfg.OutlookAccount, r.Cfg.OutlookOTPAfter, 120, 5, r.Cfg.EmailProxy)
 		} else {
-			code, err = email.WaitForOTPWithProxy(*r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5, r.Cfg.Proxy)
+			code, err = email.WaitForOTPWithProxy(*r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5, r.Cfg.EmailProxy)
 		}
 		if err != nil {
 			return "", err

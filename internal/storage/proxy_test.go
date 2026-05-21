@@ -69,6 +69,49 @@ func TestSetClashProxyDoesNotOverwriteNormalProxy(t *testing.T) {
 	}
 }
 
+func TestSetEmailProxyClearsWhenBlank(t *testing.T) {
+	withTempStorageConfig(t, "email_proxy=http://127.0.0.1:7890\n")
+
+	got, err := SetEmailProxy("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "" {
+		t.Fatalf("清空邮箱代理应返回空字符串: got %q", got)
+	}
+	if stored := GetEmailProxy(); stored != "" {
+		t.Fatalf("邮箱代理应已清空: got %q", stored)
+	}
+}
+
+func TestSetEmailProxyNormalizesHostPort(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	got, err := SetEmailProxy("127.0.0.1:7890")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "socks5://127.0.0.1:7890" {
+		t.Fatalf("邮箱代理 host:port 归一化失败: got %q", got)
+	}
+	if stored := GetEmailProxy(); stored != got {
+		t.Fatalf("邮箱代理读取不一致: got %q, want %q", stored, got)
+	}
+}
+
+func TestSetEmailProxyKeepsTemplateURL(t *testing.T) {
+	withTempStorageConfig(t, "")
+	input := "https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"
+
+	got, err := SetEmailProxy(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != input {
+		t.Fatalf("邮箱代理模板不应被改写: got %q, want %q", got, input)
+	}
+}
+
 func withTempStorageConfig(t *testing.T, content string) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())

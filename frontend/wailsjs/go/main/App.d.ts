@@ -21,6 +21,8 @@ export function DeleteOutlookAccount(arg1:string):Promise<Record<string, any>>;
 
 export function DetectClashProxy(arg1:string,arg2:proxy.ClashConfig):Promise<proxy.Info>;
 
+export function DetectEmailProxy(arg1:string):Promise<proxy.Info>;
+
 export function DetectProxy(arg1:string):Promise<proxy.Info>;
 
 export function DownloadUpdate():Promise<Record<string, any>>;
@@ -31,6 +33,8 @@ export function GetClashProxy():Promise<string>;
 
 export function GetDataDir():Promise<string>;
 
+export function GetEmailProxy():Promise<string>;
+
 export function GetKillSwitchEnabled():Promise<boolean>;
 
 export function GetLicenseInfo():Promise<Record<string, any>>;
@@ -40,6 +44,8 @@ export function GetLogs():Promise<Array<string>>;
 export function GetMoeMailConfigs():Promise<Array<email.MoeMailConfig>>;
 
 export function GetOutlookAccounts():Promise<Array<Record<string, any>>>;
+
+export function GetOutlookRegisterDomainOverride():Promise<string>;
 
 export function GetOutlookScope():Promise<string>;
 
@@ -71,6 +77,10 @@ export function OpenURL(arg1:string):Promise<void>;
 
 export function ResetDataDir():Promise<Record<string, any>>;
 
+export function ResetEmailProxy():Promise<Record<string, any>>;
+
+export function ResetOutlookAccountStatuses():Promise<Record<string, any>>;
+
 export function ResetProxy():Promise<Record<string, any>>;
 
 export function ResetResultOutputDir():Promise<Record<string, any>>;
@@ -87,7 +97,11 @@ export function SetClashProxy(arg1:string):Promise<Record<string, any>>;
 
 export function SetDataDir(arg1:string):Promise<Record<string, any>>;
 
+export function SetEmailProxy(arg1:string):Promise<Record<string, any>>;
+
 export function SetKillSwitchEnabled(arg1:boolean):Promise<Record<string, any>>;
+
+export function SetOutlookRegisterDomainOverride(arg1:string):Promise<Record<string, any>>;
 
 export function SetOutlookScope(arg1:string):Promise<Record<string, any>>;
 

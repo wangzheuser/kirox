@@ -69,7 +69,7 @@ func TestMoeMailConnection(configJSON string) map[string]interface{} {
 		return map[string]interface{}{"error": "配置格式错误: " + err.Error()}
 	}
 
-	client := NewMoeMailClient(config)
+	client := NewMoeMailClientWithProxy(config, storage.GetEmailProxy())
 	sysConfig, err := client.GetSystemConfig()
 	if err != nil {
 		return map[string]interface{}{"error": "连接失败: " + err.Error()}
@@ -89,7 +89,7 @@ func GetMoeMailDomains(configJSON string) map[string]interface{} {
 		return map[string]interface{}{"error": "配置格式错误: " + err.Error()}
 	}
 
-	client := NewMoeMailClient(config)
+	client := NewMoeMailClientWithProxy(config, storage.GetEmailProxy())
 	sysConfig, err := client.GetSystemConfig()
 	if err != nil {
 		return map[string]interface{}{"error": "获取域名列表失败: " + err.Error()}

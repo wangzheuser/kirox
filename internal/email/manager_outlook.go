@@ -142,6 +142,25 @@ func ClearRegisteredOutlookAccounts() map[string]interface{} {
 	return map[string]interface{}{"status": "ok", "removed": removed, "total": newLen}
 }
 
+// ResetOutlookAccountStatuses 将所有 Outlook 账号恢复为未注册状态。
+func ResetOutlookAccountStatuses() map[string]interface{} {
+	reset := 0
+	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
+		for i := range accounts {
+			if accounts[i] == nil {
+				continue
+			}
+			// 只重置状态字段，保留账号、密码、ClientID 与 RefreshToken。
+			accounts[i]["registered"] = false
+			accounts[i]["success"] = false
+			delete(accounts[i], "registeredAt")
+			reset++
+		}
+		return accounts
+	})
+	return map[string]interface{}{"status": "reset", "reset": reset, "total": reset}
+}
+
 // ImportOutlookFile 导入 Outlook 账号文件
 func ImportOutlookFile(filePath string) map[string]interface{} {
 	if filePath == "" {

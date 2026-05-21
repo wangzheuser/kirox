@@ -44,7 +44,7 @@ func RefreshOutlookGraphTokenWithProxy(acc OutlookAccount, proxyURL string) (str
 		"scope":         {outlookGraphScope},
 	}
 
-	client := httpClientWithProxy(runtimeProxyURL, 30*time.Second)
+	client := httpClientWithProxy(runtimeProxyURL, emailRequestTimeout)
 	resp, err := client.Post(outlookGraphTokenEndpoint, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("请求失败: %v", err)
@@ -147,7 +147,7 @@ func fetchGraphMessages(accessToken, folder, proxyURL string) ([]graphMessage, e
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Prefer", `outlook.body-content-type="text"`)
 
-	resp, err := httpClientWithProxy(proxyURL, 30*time.Second).Do(req)
+	resp, err := httpClientWithProxy(proxyURL, emailRequestTimeout).Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -1,14 +1,14 @@
 export namespace email {
-
+	
 	export class MoeMailConfig {
 	    name: string;
 	    url: string;
 	    apiKey: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new MoeMailConfig(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -20,7 +20,7 @@ export namespace email {
 }
 
 export namespace proxy {
-
+	
 	export class ClashConfig {
 	    enabled: boolean;
 	    apiUrl: string;
@@ -29,11 +29,11 @@ export namespace proxy {
 	    testUrl: string;
 	    testTimeout: number;
 	    skipConnectivityTest: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ClashConfig(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.enabled = source["enabled"];
@@ -67,11 +67,11 @@ export namespace proxy {
 	    clashNode?: string;
 	    clashDelayMs?: number;
 	    clashSkipped?: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Info(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
@@ -101,15 +101,15 @@ export namespace proxy {
 }
 
 export namespace storage {
-
+	
 	export class PageStayConfig {
 	    minMs: number;
 	    maxMs: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new PageStayConfig(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.minMs = source["minMs"];
@@ -120,7 +120,7 @@ export namespace storage {
 }
 
 export namespace task {
-
+	
 	export class StartTaskRequest {
 	    count: number;
 	    concurrency: number;
@@ -130,11 +130,11 @@ export namespace task {
 	    moemailDomains: string[];
 	    moemailConfigs: Record<string, Array<email.MoeMailConfig>>;
 	    moemailRandomMode: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new StartTaskRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.count = source["count"];
@@ -146,7 +146,7 @@ export namespace task {
 	        this.moemailConfigs = this.convertValues(source["moemailConfigs"], Array<email.MoeMailConfig>, true);
 	        this.moemailRandomMode = source["moemailRandomMode"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;

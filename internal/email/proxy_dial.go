@@ -15,6 +15,8 @@ import (
 	xproxy "golang.org/x/net/proxy"
 )
 
+const emailRequestTimeout = 5 * time.Second
+
 // dialThroughProxy 通过给定代理 URL 与目标 host:port 建立 TCP/SOCKS 连接。
 // 支持的 scheme：http / https / socks5 / socks5h。proxyURL 为空时直连。
 func dialThroughProxy(proxyURL, network, addr string, timeout time.Duration) (net.Conn, error) {
@@ -101,8 +103,11 @@ func httpProxyHost(u *stdurl.URL) string {
 
 // httpClientWithProxy 返回带代理的 http.Client（用于 OAuth refresh 等）。
 func httpClientWithProxy(proxyURL string, timeout time.Duration) *http.Client {
+	if timeout <= 0 {
+		timeout = emailRequestTimeout
+	}
 	transport := &http.Transport{
-		DialContext: (&net.Dialer{Timeout: 15 * time.Second}).DialContext,
+		DialContext: (&net.Dialer{Timeout: timeout}).DialContext,
 	}
 	if proxyURL != "" {
 		if u, err := stdurl.Parse(proxyURL); err == nil {
@@ -111,7 +116,7 @@ func httpClientWithProxy(proxyURL string, timeout time.Duration) *http.Client {
 				transport.Proxy = http.ProxyURL(u)
 			case "socks5", "socks5h":
 				transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
-					return dialThroughProxy(proxyURL, network, addr, 15*time.Second)
+					return dialThroughProxy(proxyURL, network, addr, timeout)
 				}
 			}
 		}

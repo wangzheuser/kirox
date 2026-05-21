@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"reg_go/internal/proxy"
 )
@@ -31,9 +32,11 @@ const (
 	keyPageStayMinMs             = "page_stay_min_ms"
 	keyPageStayMaxMs             = "page_stay_max_ms"
 	keyOutlookScope              = "outlook_scope"
+	keyOutlookRegisterDomain     = "outlook_register_domain_override"
 	keyProxyMode                 = "proxy_mode"
 	keyProxy                     = "proxy"
 	keyClashProxy                = "clash_proxy"
+	keyEmailProxy                = "email_proxy"
 	keyKillSwitchEnabled         = "kill_switch_enabled"
 	keyClashEnabled              = "clash_enabled"
 	keyClashAPIURL               = "clash_api_url"
@@ -117,9 +120,11 @@ func saveConfigMap(m map[string]string) error {
 		keyPageStayMinMs,
 		keyPageStayMaxMs,
 		keyOutlookScope,
+		keyOutlookRegisterDomain,
 		keyProxyMode,
 		keyProxy,
 		keyClashProxy,
+		keyEmailProxy,
 		keyKillSwitchEnabled,
 		keyClashEnabled,
 		keyClashAPIURL,
@@ -348,6 +353,59 @@ func SetOutlookScope(scope string) error {
 	return saveConfigMap(m)
 }
 
+// GetOutlookRegisterDomainOverride 返回 Outlook 注册邮箱后缀覆盖配置，空字符串表示关闭。
+func GetOutlookRegisterDomainOverride() string {
+	m := loadConfigMap()
+	domain, err := NormalizeOutlookRegisterDomainOverride(m[keyOutlookRegisterDomain])
+	if err != nil {
+		return ""
+	}
+	return domain
+}
+
+// SetOutlookRegisterDomainOverride 保存 Outlook 注册邮箱后缀覆盖配置。
+func SetOutlookRegisterDomainOverride(raw string) (string, error) {
+	domain, err := NormalizeOutlookRegisterDomainOverride(raw)
+	if err != nil {
+		return "", err
+	}
+	m := loadConfigMap()
+	if domain == "" {
+		delete(m, keyOutlookRegisterDomain)
+	} else {
+		m[keyOutlookRegisterDomain] = domain
+	}
+	return domain, saveConfigMap(m)
+}
+
+// NormalizeOutlookRegisterDomainOverride 规范化并校验 Outlook 注册邮箱后缀覆盖域名。
+func NormalizeOutlookRegisterDomainOverride(raw string) (string, error) {
+	domain := strings.ToLower(strings.TrimSpace(raw))
+	domain = strings.TrimPrefix(domain, "@")
+	if domain == "" {
+		return "", nil
+	}
+	if strings.Contains(domain, "://") || strings.ContainsAny(domain, "/\\?#@:") {
+		return "", fmt.Errorf("Outlook 注册邮箱后缀只能填写域名，例如 outlook.fr")
+	}
+	if strings.IndexFunc(domain, unicode.IsSpace) >= 0 {
+		return "", fmt.Errorf("Outlook 注册邮箱后缀不能包含空白字符")
+	}
+	if len(domain) > 253 {
+		return "", fmt.Errorf("Outlook 注册邮箱后缀过长")
+	}
+	labels := strings.Split(domain, ".")
+	if len(labels) < 2 {
+		return "", fmt.Errorf("Outlook 注册邮箱后缀必须是完整域名，例如 outlook.fr")
+	}
+	for _, label := range labels {
+		if !validDomainLabel(label) {
+			return "", fmt.Errorf("Outlook 注册邮箱后缀格式无效")
+		}
+	}
+	return domain, nil
+}
+
 // GetProxy 返回当前全局代理 URL（空字符串表示直连）。
 func GetProxy() string {
 	_proxyOnce.Do(func() {
@@ -383,6 +441,34 @@ func ResetProxy() {
 	_proxy = ""
 	_proxyOnce = sync.Once{}
 	_proxyOnce.Do(func() {})
+}
+
+// GetEmailProxy 返回邮箱 API 专用代理 URL（空字符串表示直连）。
+func GetEmailProxy() string {
+	m := loadConfigMap()
+	return strings.TrimSpace(m[keyEmailProxy])
+}
+
+// SetEmailProxy 设置邮箱 API 专用代理 URL（会自动归一化常见简写格式）。
+func SetEmailProxy(raw string) (string, error) {
+	normalized := NormalizeProxyAddress(strings.TrimSpace(raw))
+	m := loadConfigMap()
+	if normalized == "" {
+		delete(m, keyEmailProxy)
+	} else {
+		m[keyEmailProxy] = normalized
+	}
+	if err := saveConfigMap(m); err != nil {
+		return "", err
+	}
+	return normalized, nil
+}
+
+// ResetEmailProxy 清空邮箱 API 专用代理配置，恢复直连。
+func ResetEmailProxy() {
+	m := loadConfigMap()
+	delete(m, keyEmailProxy)
+	_ = saveConfigMap(m)
 }
 
 // GetProxyMode 返回当前互斥代理模式。
@@ -511,6 +597,22 @@ func normalizeOutlookScope(scope string) string {
 	default:
 		return ""
 	}
+}
+
+func validDomainLabel(label string) bool {
+	if label == "" || len(label) > 63 {
+		return false
+	}
+	if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+		return false
+	}
+	for _, r := range label {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func looksLikeLocalProxy(raw string) bool {

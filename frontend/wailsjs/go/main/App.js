@@ -34,6 +34,10 @@ export function DetectClashProxy(arg1, arg2) {
   return window['go']['main']['App']['DetectClashProxy'](arg1, arg2);
 }
 
+export function DetectEmailProxy(arg1) {
+  return window['go']['main']['App']['DetectEmailProxy'](arg1);
+}
+
 export function DetectProxy(arg1) {
   return window['go']['main']['App']['DetectProxy'](arg1);
 }
@@ -54,6 +58,10 @@ export function GetDataDir() {
   return window['go']['main']['App']['GetDataDir']();
 }
 
+export function GetEmailProxy() {
+  return window['go']['main']['App']['GetEmailProxy']();
+}
+
 export function GetKillSwitchEnabled() {
   return window['go']['main']['App']['GetKillSwitchEnabled']();
 }
@@ -72,6 +80,10 @@ export function GetMoeMailConfigs() {
 
 export function GetOutlookAccounts() {
   return window['go']['main']['App']['GetOutlookAccounts']();
+}
+
+export function GetOutlookRegisterDomainOverride() {
+  return window['go']['main']['App']['GetOutlookRegisterDomainOverride']();
 }
 
 export function GetOutlookScope() {
@@ -134,6 +146,14 @@ export function ResetDataDir() {
   return window['go']['main']['App']['ResetDataDir']();
 }
 
+export function ResetEmailProxy() {
+  return window['go']['main']['App']['ResetEmailProxy']();
+}
+
+export function ResetOutlookAccountStatuses() {
+  return window['go']['main']['App']['ResetOutlookAccountStatuses']();
+}
+
 export function ResetProxy() {
   return window['go']['main']['App']['ResetProxy']();
 }
@@ -166,8 +186,16 @@ export function SetDataDir(arg1) {
   return window['go']['main']['App']['SetDataDir'](arg1);
 }
 
+export function SetEmailProxy(arg1) {
+  return window['go']['main']['App']['SetEmailProxy'](arg1);
+}
+
 export function SetKillSwitchEnabled(arg1) {
   return window['go']['main']['App']['SetKillSwitchEnabled'](arg1);
+}
+
+export function SetOutlookRegisterDomainOverride(arg1) {
+  return window['go']['main']['App']['SetOutlookRegisterDomainOverride'](arg1);
 }
 
 export function SetOutlookScope(arg1) {
