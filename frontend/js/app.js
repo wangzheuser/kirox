@@ -285,51 +285,6 @@ async function saveOutlookScope() {
   }
 }
 
-// Outlook 注册邮箱后缀覆盖设置
-var outlookRegisterDomainSaveTimer = null;
-var lastSavedOutlookRegisterDomain = '';
-
-async function loadOutlookRegisterDomainOverride() {
-  try {
-    var domain = await window.go.main.App.GetOutlookRegisterDomainOverride();
-    var el = document.getElementById('cfg-outlook-register-domain');
-    if (el) el.value = domain || '';
-    lastSavedOutlookRegisterDomain = domain || '';
-  } catch(e) {}
-}
-
-async function saveOutlookRegisterDomainOverride() {
-  try {
-    var el = document.getElementById('cfg-outlook-register-domain');
-    if (!el) return;
-    var raw = (el.value || '').trim();
-    if (raw === lastSavedOutlookRegisterDomain) {
-      return;
-    }
-    var result = await window.go.main.App.SetOutlookRegisterDomainOverride(raw);
-    if (result.error) {
-      showToast(result.error, 'error');
-      return;
-    }
-    var domain = result.domain || '';
-    el.value = domain;
-    lastSavedOutlookRegisterDomain = domain;
-    showToast(domain ? ('Outlook 注册邮箱将使用 @' + domain) : '已关闭 Outlook 注册邮箱后缀覆盖');
-  } catch(e) {
-    showToast('保存失败: ' + e.message, 'error');
-  }
-}
-
-function scheduleOutlookRegisterDomainSave() {
-  if (outlookRegisterDomainSaveTimer) {
-    clearTimeout(outlookRegisterDomainSaveTimer);
-  }
-  outlookRegisterDomainSaveTimer = setTimeout(function() {
-    outlookRegisterDomainSaveTimer = null;
-    saveOutlookRegisterDomainOverride();
-  }, 450);
-}
-
 function bindSettingsAutosave() {
   ['cfg-page-stay-min-seconds', 'cfg-page-stay-max-seconds'].forEach(function(id) {
     var el = document.getElementById(id);
@@ -343,11 +298,6 @@ function bindSettingsAutosave() {
     outlookScopeEl.addEventListener('change', saveOutlookScope);
   }
 
-  var outlookDomainEl = document.getElementById('cfg-outlook-register-domain');
-  if (outlookDomainEl) {
-    outlookDomainEl.addEventListener('input', scheduleOutlookRegisterDomainSave);
-    outlookDomainEl.addEventListener('change', scheduleOutlookRegisterDomainSave);
-  }
 }
 
 // 代理设置
@@ -737,11 +687,80 @@ function updateUIStatus(running) {
 }
 
 // 配置读写
+var registrationConfigLoaded = false;
+var registrationConfigApplying = false;
+var registrationSaveTimer = null;
+
+function readIntegerInput(id, fallback, min) {
+  var el = document.getElementById(id);
+  var raw = el ? String(el.value).trim() : '';
+  var value = raw === '' ? fallback : parseInt(raw, 10);
+  if (!Number.isFinite(value)) value = fallback;
+  if (typeof min === 'number' && value < min) value = min;
+  return value;
+}
+
+function writeIntegerInput(id, value, fallback) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var n = Number(value);
+  el.value = Number.isFinite(n) ? String(n) : String(fallback);
+}
+
+function getMoeMailSelectionForPersistence() {
+  var selected = Array.isArray(selectedMoeMailDomains) ? selectedMoeMailDomains.slice() : [];
+  if (selected.includes('__all__')) {
+    return { moemailDomainMode: 'all', moemailDomains: [] };
+  }
+  if (selected.includes('__random__') || selected.length === 0) {
+    return { moemailDomainMode: 'random', moemailDomains: [] };
+  }
+  return { moemailDomainMode: 'custom', moemailDomains: selected };
+}
+
+function getRegistrationConfigPayload() {
+  var selection = getMoeMailSelectionForPersistence();
+  return {
+    count: readIntegerInput('cfg-count', 1, 1),
+    concurrency: readIntegerInput('cfg-concurrency', 1, 1),
+    delay: readIntegerInput('cfg-delay', 1, 0),
+    emailProvider: selectedEmailProvider || 'outlook',
+    moemailDomainMode: selection.moemailDomainMode,
+    moemailDomains: selection.moemailDomains
+  };
+}
+
+function moeMailSelectionFromConfig(cfg) {
+  cfg = cfg || {};
+  if (cfg.moemailDomainMode === 'all') return ['__all__'];
+  if (cfg.moemailDomainMode === 'custom' && Array.isArray(cfg.moemailDomains) && cfg.moemailDomains.length) {
+    return cfg.moemailDomains.slice();
+  }
+  return ['__random__'];
+}
+
+function applyRegistrationConfig(cfg) {
+  cfg = cfg || {};
+  registrationConfigApplying = true;
+  writeIntegerInput('cfg-count', cfg.count, 1);
+  writeIntegerInput('cfg-concurrency', cfg.concurrency, 1);
+  writeIntegerInput('cfg-delay', cfg.delay, 1);
+  selectedMoeMailDomains = moeMailSelectionFromConfig(cfg);
+  if (typeof selectEmailProvider === 'function') {
+    selectEmailProvider(cfg.emailProvider || 'outlook', {
+      skipSave: true,
+      moemailSelection: selectedMoeMailDomains
+    });
+  }
+  registrationConfigApplying = false;
+  registrationConfigLoaded = true;
+}
+
 function getFormConfig() {
   const config = {
-    count: parseInt(document.getElementById('cfg-count').value) || 1,
-    concurrency: parseInt(document.getElementById('cfg-concurrency').value) || 1,
-    delay: parseInt(document.getElementById('cfg-delay').value) || 3,
+    count: readIntegerInput('cfg-count', 1, 1),
+    concurrency: readIntegerInput('cfg-concurrency', 1, 1),
+    delay: readIntegerInput('cfg-delay', 1, 0),
     emailProvider: selectedEmailProvider || 'outlook'
   };
 
@@ -777,38 +796,145 @@ function getFormConfig() {
   return config;
 }
 
-function saveConfig() {
+async function saveConfig(options) {
+  options = options || {};
+  if (registrationConfigApplying) return;
   try {
-    var cfg = getFormConfig();
-    cfg.outlookData = document.getElementById('cfg-outlook-data').value;
-    localStorage.setItem('kiro-config', JSON.stringify(cfg));
+    var result = await window.go.main.App.SetRegistrationConfig(getRegistrationConfigPayload());
+    if (result && result.error) {
+      if (!options.silent) showToast(result.error, 'error');
+      return;
+    }
+    if (!options.silent && result && result.config) {
+      applyRegistrationConfig(result.config);
+      showToast('注册配置已保存');
+    }
   } catch(e) {
     console.error('配置保存失败:', e);
+    if (!options.silent) showToast('注册配置保存失败: ' + e.message, 'error');
   }
 }
 
+function scheduleRegistrationConfigSave() {
+  if (!registrationConfigLoaded || registrationConfigApplying) return;
+  if (registrationSaveTimer) clearTimeout(registrationSaveTimer);
+  registrationSaveTimer = setTimeout(function() {
+    registrationSaveTimer = null;
+    saveConfig({ silent: true });
+  }, 300);
+}
 
+async function migrateLegacyRegistrationConfigIfNeeded(cfg) {
+  if (cfg && cfg.saved) return cfg;
+  var savedConfig = null;
+  try {
+    savedConfig = localStorage.getItem('kiro-config');
+  } catch(e) {}
+  if (!savedConfig) return cfg;
+  try {
+    var legacy = JSON.parse(savedConfig);
+    var payload = {
+      count: Number.isFinite(parseInt(legacy.count, 10)) ? parseInt(legacy.count, 10) : 1,
+      concurrency: Number.isFinite(parseInt(legacy.concurrency, 10)) ? parseInt(legacy.concurrency, 10) : 1,
+      delay: legacy.delay === 0 ? 0 : (Number.isFinite(parseInt(legacy.delay, 10)) ? parseInt(legacy.delay, 10) : 1),
+      emailProvider: legacy.emailProvider || 'outlook',
+      moemailDomainMode: 'random',
+      moemailDomains: []
+    };
+    if (Array.isArray(legacy.moemailDomains)) {
+      if (legacy.moemailDomains.includes('__all__')) {
+        payload.moemailDomainMode = 'all';
+      } else if (legacy.moemailDomains.includes('__random__')) {
+        payload.moemailDomainMode = 'random';
+      } else if (legacy.moemailDomains.length) {
+        payload.moemailDomainMode = 'custom';
+        payload.moemailDomains = legacy.moemailDomains;
+      }
+    }
+    var result = await window.go.main.App.SetRegistrationConfig(payload);
+    if (!result || result.error) {
+      console.error('[启动] 迁移旧注册配置失败:', result && result.error);
+      return cfg;
+    }
+    localStorage.removeItem('kiro-config');
+    return result.config || payload;
+  } catch(e) {
+    console.error('[启动] 迁移旧注册配置失败:', e);
+    return cfg;
+  }
+}
+
+async function loadRegistrationConfig() {
+  try {
+    var cfg = await window.go.main.App.GetRegistrationConfig();
+    cfg = await migrateLegacyRegistrationConfigIfNeeded(cfg);
+    applyRegistrationConfig(cfg);
+  } catch(e) {
+    console.error('[启动] 加载注册配置失败:', e);
+    applyRegistrationConfig({
+      count: 1,
+      concurrency: 1,
+      delay: 1,
+      emailProvider: 'outlook',
+      moemailDomainMode: 'random',
+      moemailDomains: []
+    });
+  }
+}
 
 // 自动保存
 ['cfg-count', 'cfg-concurrency', 'cfg-delay'].forEach(function(id) {
   var el = document.getElementById(id);
   if (el) {
-    el.addEventListener('change', saveConfig);
-    el.addEventListener('input', saveConfig);
+    el.addEventListener('change', scheduleRegistrationConfigSave);
+    el.addEventListener('input', scheduleRegistrationConfigSave);
   }
 });
 
 // 提示音开关
-(function() {
+async function loadSoundEnabled() {
   var cb = document.getElementById('cfg-sound');
-  if (cb) {
-    var saved = localStorage.getItem('kiro-sound');
-    cb.checked = saved !== 'false';
-    cb.addEventListener('change', function() {
-      localStorage.setItem('kiro-sound', cb.checked);
-    });
+  if (!cb) return;
+  if (!cb.dataset.soundBound) {
+    cb.addEventListener('change', saveSoundEnabled);
+    cb.dataset.soundBound = '1';
   }
-})();
+  try {
+    var legacy = localStorage.getItem('kiro-sound');
+    if (legacy !== null) {
+      var legacyEnabled = legacy !== 'false';
+      var migrated = await window.go.main.App.SetSoundEnabled(legacyEnabled);
+      if (!migrated || !migrated.error) {
+        localStorage.removeItem('kiro-sound');
+      }
+      cb.checked = legacyEnabled;
+      return;
+    }
+  } catch(e) {}
+  try {
+    var enabled = await window.go.main.App.GetSoundEnabled();
+    cb.checked = enabled !== false;
+  } catch(e) {
+    cb.checked = true;
+  }
+}
+
+async function saveSoundEnabled() {
+  var cb = document.getElementById('cfg-sound');
+  if (!cb) return;
+  try {
+    var result = await window.go.main.App.SetSoundEnabled(!!cb.checked);
+    if (result && result.error) {
+      showToast(result.error, 'error');
+      await loadSoundEnabled();
+      return;
+    }
+    showToast(cb.checked ? '已开启任务结束提示音' : '已关闭任务结束提示音');
+  } catch(e) {
+    showToast('提示音设置保存失败: ' + e.message, 'error');
+    await loadSoundEnabled();
+  }
+}
 
 // 初始化加载
 async function loadConfig() {
@@ -860,29 +986,19 @@ async function loadConfig() {
     console.error('[启动] 找不到 main-container 元素');
   }
   
-  try {
-    var savedConfig = localStorage.getItem('kiro-config');
-    if (savedConfig) {
-      var cfg = JSON.parse(savedConfig);
-      document.getElementById('cfg-count').value = cfg.count || 1;
-      document.getElementById('cfg-concurrency').value = cfg.concurrency || 1;
-      document.getElementById('cfg-delay').value = cfg.delay || 3;
-    }
-  } catch(e) {
-    console.error('[启动] 加载配置失败:', e);
-  }
+  await loadRegistrationConfig();
   loadOutlookAccountsList();
   loadDataDir();
   loadResultOutputDir();
   loadPageStayConfig();
   loadOutlookScope();
-  loadOutlookRegisterDomainOverride();
   loadProxyMode();
   loadProxy();
   loadEmailProxy();
   loadClashProxy();
   loadClashConfig();
   loadKillSwitchEnabled();
+  loadSoundEnabled();
   startOverviewTimer();
   console.log('[启动] 初始化完成');
 }

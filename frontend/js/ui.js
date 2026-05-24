@@ -150,12 +150,13 @@ function escapeHtml(text) {
 
 // 初始化邮箱提供商选择（页面加载时调用）
 function initEmailProviderSelection() {
-  // 默认选中 Outlook
-  selectEmailProvider('outlook');
+  if (typeof registrationConfigLoaded !== 'undefined' && registrationConfigLoaded) return;
+  selectEmailProvider('outlook', { skipSave: true });
 }
 
 // 选择邮箱提供商
-function selectEmailProvider(provider) {
+function selectEmailProvider(provider, options) {
+  options = options || {};
   selectedEmailProvider = provider;
 
   // 更新按钮样式
@@ -174,7 +175,7 @@ function selectEmailProvider(provider) {
   if (provider === 'moemail') {
     moemailConfigDiv.style.display = 'block';
     hintDiv.textContent = '使用 MoeMail 临时邮箱进行注册，每次任务会自动生成新邮箱。';
-    loadMoeMailDomainsToList();
+    loadMoeMailDomainsToList(options.moemailSelection);
   } else if (provider === 'mailporary') {
     moemailConfigDiv.style.display = 'none';
     hintDiv.textContent = '使用 Mailporary 零配置临时邮箱进行注册。';
@@ -182,10 +183,14 @@ function selectEmailProvider(provider) {
     moemailConfigDiv.style.display = 'none';
     hintDiv.textContent = '使用微软邮箱进行注册，代理配置请在设置页设置。';
   }
+
+  if (!options.skipSave && typeof scheduleRegistrationConfigSave === 'function') {
+    scheduleRegistrationConfigSave();
+  }
 }
 
 // 加载 MoeMail 域名到列表
-async function loadMoeMailDomainsToList() {
+async function loadMoeMailDomainsToList(preferredSelection) {
   const listDiv = document.getElementById('cfg-moemail-domains-list');
   if (!listDiv) return;
 
@@ -249,13 +254,24 @@ async function loadMoeMailDomainsToList() {
     html += '</div>';
 
     listDiv.innerHTML = html;
-    selectedMoeMailDomains = ['__random__'];
+    selectedMoeMailDomains = normalizePreferredMoeMailSelection(preferredSelection);
     updateDomainOptionStyles();
 
   } catch (e) {
     console.error('加载 MoeMail 域名失败:', e);
     listDiv.innerHTML = '<div style="text-align:center;color:var(--danger);font-size:12px;padding:12px;">加载失败</div>';
   }
+}
+
+function normalizePreferredMoeMailSelection(preferredSelection) {
+  const available = new Set((allMoeMailDomains || []).map(item => item.domain));
+  const preferred = Array.isArray(preferredSelection) && preferredSelection.length
+    ? preferredSelection
+    : selectedMoeMailDomains;
+  if (preferred && preferred.includes('__all__')) return ['__all__'];
+  if (preferred && preferred.includes('__random__')) return ['__random__'];
+  const custom = (preferred || []).filter(domain => available.has(domain));
+  return custom.length ? custom : ['__random__'];
 }
 
 // 更新域名选项的视觉状态
@@ -291,12 +307,18 @@ function toggleMoeMailDomain(domain, el) {
   }
 
   updateDomainOptionStyles();
+  if (typeof scheduleRegistrationConfigSave === 'function') {
+    scheduleRegistrationConfigSave();
+  }
 }
 
 // 全选域名
 function selectAllMoeMailDomains() {
   selectedMoeMailDomains = allMoeMailDomains.map(item => item.domain);
   updateDomainOptionStyles();
+  if (typeof scheduleRegistrationConfigSave === 'function') {
+    scheduleRegistrationConfigSave();
+  }
 }
 
 // 关闭任务模态框

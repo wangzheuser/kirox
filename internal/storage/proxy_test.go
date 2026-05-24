@@ -124,6 +124,8 @@ func withTempStorageConfig(t *testing.T, content string) {
 	_proxyOnce = sync.Once{}
 	_killSwitchEnabled = false
 	_killSwitchOnce = sync.Once{}
+	_soundEnabled = false
+	_soundOnce = sync.Once{}
 
 	path := getConfigFilePath()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

@@ -157,8 +157,8 @@ async function startTask() {
   try {
     var cfg = getFormConfig();
 
-    if (cfg.useOutlook) {
-      saveConfig();
+    if (typeof saveConfig === 'function') {
+      await saveConfig({ silent: true });
     }
 
     var result = await window.go.main.App.StartTask(cfg);

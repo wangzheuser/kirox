@@ -7,11 +7,11 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"reg_go/internal/proxy"
 )
@@ -27,24 +27,43 @@ const (
 	DefaultPageStayMinMs = 5000
 	DefaultPageStayMaxMs = 8000
 
-	keyDataDir                   = "data_dir"
-	keyResultOutputDir           = "result_output_dir"
-	keyPageStayMinMs             = "page_stay_min_ms"
-	keyPageStayMaxMs             = "page_stay_max_ms"
-	keyOutlookScope              = "outlook_scope"
-	keyOutlookRegisterDomain     = "outlook_register_domain_override"
-	keyProxyMode                 = "proxy_mode"
-	keyProxy                     = "proxy"
-	keyClashProxy                = "clash_proxy"
-	keyEmailProxy                = "email_proxy"
-	keyKillSwitchEnabled         = "kill_switch_enabled"
-	keyClashEnabled              = "clash_enabled"
-	keyClashAPIURL               = "clash_api_url"
-	keyClashAPISecret            = "clash_api_secret"
-	keyClashProxyGroup           = "clash_proxy_group"
-	keyClashTestURL              = "clash_test_url"
-	keyClashTestTimeout          = "clash_test_timeout"
-	keyClashSkipConnectivityTest = "clash_skip_connectivity_test"
+	DefaultRegistrationCount       = 1
+	DefaultRegistrationConcurrency = 1
+	DefaultRegistrationDelay       = 1
+
+	RegistrationEmailProviderOutlook    = "outlook"
+	RegistrationEmailProviderMoeMail    = "moemail"
+	RegistrationEmailProviderMailporary = "mailporary"
+
+	MoeMailDomainModeRandom = "random"
+	MoeMailDomainModeAll    = "all"
+	MoeMailDomainModeCustom = "custom"
+
+	keyDataDir                    = "data_dir"
+	keyResultOutputDir            = "result_output_dir"
+	keyPageStayMinMs              = "page_stay_min_ms"
+	keyPageStayMaxMs              = "page_stay_max_ms"
+	keyOutlookScope               = "outlook_scope"
+	keyProxyMode                  = "proxy_mode"
+	keyProxy                      = "proxy"
+	keyClashProxy                 = "clash_proxy"
+	keyEmailProxy                 = "email_proxy"
+	keyKillSwitchEnabled          = "kill_switch_enabled"
+	keySoundEnabled               = "sound_enabled"
+	keyClashEnabled               = "clash_enabled"
+	keyClashAPIURL                = "clash_api_url"
+	keyClashAPISecret             = "clash_api_secret"
+	keyClashProxyGroup            = "clash_proxy_group"
+	keyClashTestURL               = "clash_test_url"
+	keyClashTestTimeout           = "clash_test_timeout"
+	keyClashSkipConnectivityTest  = "clash_skip_connectivity_test"
+	keyRegistrationConfigSaved    = "registration_config_saved"
+	keyRegistrationCount          = "registration_count"
+	keyRegistrationConcurrency    = "registration_concurrency"
+	keyRegistrationDelay          = "registration_delay"
+	keyRegistrationEmailProvider  = "registration_email_provider"
+	keyRegistrationMoeMailMode    = "registration_moemail_domain_mode"
+	keyRegistrationMoeMailDomains = "registration_moemail_domains"
 )
 
 // PageStayConfig 保存发送验证码前模拟页面停留的随机区间。
@@ -53,7 +72,20 @@ type PageStayConfig struct {
 	MaxMs int `json:"maxMs"`
 }
 
+// RegistrationConfig 保存注册页面的业务配置。
+type RegistrationConfig struct {
+	Count             int      `json:"count"`
+	Concurrency       int      `json:"concurrency"`
+	Delay             int      `json:"delay"`
+	EmailProvider     string   `json:"emailProvider"`
+	MoeMailDomainMode string   `json:"moemailDomainMode"`
+	MoeMailDomains    []string `json:"moemailDomains"`
+	Saved             bool     `json:"saved"`
+}
+
 var (
+	configMu sync.Mutex
+
 	_dataDir           string
 	_dataDirOnce       sync.Once
 	_resultOutputDir   string
@@ -62,7 +94,49 @@ var (
 	_proxyOnce         sync.Once
 	_killSwitchEnabled bool
 	_killSwitchOnce    sync.Once
+	_soundEnabled      bool
+	_soundOnce         sync.Once
 )
+
+var configKeyOrder = []string{
+	keyDataDir,
+	keyResultOutputDir,
+	keyPageStayMinMs,
+	keyPageStayMaxMs,
+	keyOutlookScope,
+	keyProxyMode,
+	keyProxy,
+	keyClashProxy,
+	keyEmailProxy,
+	keyKillSwitchEnabled,
+	keySoundEnabled,
+	keyClashEnabled,
+	keyClashAPIURL,
+	keyClashAPISecret,
+	keyClashProxyGroup,
+	keyClashTestURL,
+	keyClashTestTimeout,
+	keyClashSkipConnectivityTest,
+	keyRegistrationConfigSaved,
+	keyRegistrationCount,
+	keyRegistrationConcurrency,
+	keyRegistrationDelay,
+	keyRegistrationEmailProvider,
+	keyRegistrationMoeMailMode,
+	keyRegistrationMoeMailDomains,
+}
+
+var knownConfigKeys = func() map[string]bool {
+	m := make(map[string]bool, len(configKeyOrder))
+	for _, key := range configKeyOrder {
+		m[key] = true
+	}
+	return m
+}()
+
+var deprecatedConfigKeys = map[string]bool{
+	"outlook_register_domain" + "_override": true,
+}
 
 // GetDefaultDataDir 获取默认应用数据目录
 func GetDefaultDataDir() string {
@@ -80,6 +154,12 @@ func getConfigFilePath() string {
 
 // loadConfigMap 解析 storage.conf 为 KV；兼容旧版（整文件即 data_dir 路径）
 func loadConfigMap() map[string]string {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return loadConfigMapUnlocked()
+}
+
+func loadConfigMapUnlocked() map[string]string {
 	m := map[string]string{}
 	data, err := os.ReadFile(getConfigFilePath())
 	if err != nil {
@@ -112,36 +192,71 @@ func loadConfigMap() map[string]string {
 }
 
 func saveConfigMap(m map[string]string) error {
-	os.MkdirAll(GetDefaultDataDir(), 0755)
-	var b strings.Builder
-	for _, k := range []string{
-		keyDataDir,
-		keyResultOutputDir,
-		keyPageStayMinMs,
-		keyPageStayMaxMs,
-		keyOutlookScope,
-		keyOutlookRegisterDomain,
-		keyProxyMode,
-		keyProxy,
-		keyClashProxy,
-		keyEmailProxy,
-		keyKillSwitchEnabled,
-		keyClashEnabled,
-		keyClashAPIURL,
-		keyClashAPISecret,
-		keyClashProxyGroup,
-		keyClashTestURL,
-		keyClashTestTimeout,
-		keyClashSkipConnectivityTest,
-	} {
-		if v := strings.TrimSpace(m[k]); v != "" {
-			b.WriteString(k)
-			b.WriteByte('=')
-			b.WriteString(v)
-			b.WriteByte('\n')
-		}
+	configMu.Lock()
+	defer configMu.Unlock()
+	return saveConfigMapUnlocked(m)
+}
+
+func saveConfigMapUnlocked(m map[string]string) error {
+	if err := os.MkdirAll(GetDefaultDataDir(), 0755); err != nil {
+		return err
 	}
-	return os.WriteFile(getConfigFilePath(), []byte(b.String()), 0600)
+	var b strings.Builder
+	written := make(map[string]bool, len(m))
+	writeKey := func(k string) {
+		if deprecatedConfigKeys[k] {
+			return
+		}
+		v := strings.TrimSpace(m[k])
+		if v == "" {
+			return
+		}
+		written[k] = true
+		b.WriteString(k)
+		b.WriteByte('=')
+		b.WriteString(v)
+		b.WriteByte('\n')
+	}
+
+	for _, k := range configKeyOrder {
+		writeKey(k)
+	}
+
+	unknown := make([]string, 0)
+	for k := range m {
+		if knownConfigKeys[k] || deprecatedConfigKeys[k] || written[k] {
+			continue
+		}
+		if strings.TrimSpace(m[k]) == "" {
+			continue
+		}
+		unknown = append(unknown, k)
+	}
+	sort.Strings(unknown)
+	for _, k := range unknown {
+		writeKey(k)
+	}
+
+	path := getConfigFilePath()
+	tmp := fmt.Sprintf("%s.tmp.%d.%d", path, os.Getpid(), time.Now().UnixNano())
+	if err := os.WriteFile(tmp, []byte(b.String()), 0600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func modifyConfigMap(fn func(map[string]string) error) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	m := loadConfigMapUnlocked()
+	if err := fn(m); err != nil {
+		return err
+	}
+	return saveConfigMapUnlocked(m)
 }
 
 // GetDataDir 获取应用数据目录（优先使用自定义目录）
@@ -183,9 +298,10 @@ func SetDataDirPath(dir string) (string, error) {
 		}
 	}
 
-	m := loadConfigMap()
-	m[keyDataDir] = dir
-	if err := saveConfigMap(m); err != nil {
+	if err := modifyConfigMap(func(m map[string]string) error {
+		m[keyDataDir] = dir
+		return nil
+	}); err != nil {
 		return "", fmt.Errorf("保存配置失败: %w", err)
 	}
 
@@ -208,9 +324,10 @@ func ResetDataDirPath() string {
 		}
 	}
 
-	m := loadConfigMap()
-	delete(m, keyDataDir)
-	_ = saveConfigMap(m)
+	_ = modifyConfigMap(func(m map[string]string) error {
+		delete(m, keyDataDir)
+		return nil
+	})
 
 	os.MkdirAll(defaultDir, 0755)
 	_dataDir = defaultDir
@@ -260,9 +377,10 @@ func SetResultOutputDir(dir string) (string, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("创建目录失败: %w", err)
 	}
-	m := loadConfigMap()
-	m[keyResultOutputDir] = dir
-	if err := saveConfigMap(m); err != nil {
+	if err := modifyConfigMap(func(m map[string]string) error {
+		m[keyResultOutputDir] = dir
+		return nil
+	}); err != nil {
 		return "", fmt.Errorf("保存配置失败: %w", err)
 	}
 	_resultOutputDir = dir
@@ -273,9 +391,10 @@ func SetResultOutputDir(dir string) (string, error) {
 
 // ResetResultOutputDir 重置为默认输出目录（用户文档目录下的 Kirox）
 func ResetResultOutputDir() string {
-	m := loadConfigMap()
-	delete(m, keyResultOutputDir)
-	_ = saveConfigMap(m)
+	_ = modifyConfigMap(func(m map[string]string) error {
+		delete(m, keyResultOutputDir)
+		return nil
+	})
 
 	defaultDir := getDefaultResultOutputDir()
 	os.MkdirAll(defaultDir, 0755)
@@ -313,10 +432,11 @@ func SetPageStayConfig(cfg PageStayConfig) error {
 	if err := ValidatePageStayConfig(cfg); err != nil {
 		return err
 	}
-	m := loadConfigMap()
-	m[keyPageStayMinMs] = strconv.Itoa(cfg.MinMs)
-	m[keyPageStayMaxMs] = strconv.Itoa(cfg.MaxMs)
-	return saveConfigMap(m)
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyPageStayMinMs] = strconv.Itoa(cfg.MinMs)
+		m[keyPageStayMaxMs] = strconv.Itoa(cfg.MaxMs)
+		return nil
+	})
 }
 
 // ValidatePageStayConfig 校验模拟页面停留时间配置。
@@ -348,62 +468,10 @@ func SetOutlookScope(scope string) error {
 	if normalized == "" {
 		return fmt.Errorf("未知 Outlook 读取方式")
 	}
-	m := loadConfigMap()
-	m[keyOutlookScope] = normalized
-	return saveConfigMap(m)
-}
-
-// GetOutlookRegisterDomainOverride 返回 Outlook 注册邮箱后缀覆盖配置，空字符串表示关闭。
-func GetOutlookRegisterDomainOverride() string {
-	m := loadConfigMap()
-	domain, err := NormalizeOutlookRegisterDomainOverride(m[keyOutlookRegisterDomain])
-	if err != nil {
-		return ""
-	}
-	return domain
-}
-
-// SetOutlookRegisterDomainOverride 保存 Outlook 注册邮箱后缀覆盖配置。
-func SetOutlookRegisterDomainOverride(raw string) (string, error) {
-	domain, err := NormalizeOutlookRegisterDomainOverride(raw)
-	if err != nil {
-		return "", err
-	}
-	m := loadConfigMap()
-	if domain == "" {
-		delete(m, keyOutlookRegisterDomain)
-	} else {
-		m[keyOutlookRegisterDomain] = domain
-	}
-	return domain, saveConfigMap(m)
-}
-
-// NormalizeOutlookRegisterDomainOverride 规范化并校验 Outlook 注册邮箱后缀覆盖域名。
-func NormalizeOutlookRegisterDomainOverride(raw string) (string, error) {
-	domain := strings.ToLower(strings.TrimSpace(raw))
-	domain = strings.TrimPrefix(domain, "@")
-	if domain == "" {
-		return "", nil
-	}
-	if strings.Contains(domain, "://") || strings.ContainsAny(domain, "/\\?#@:") {
-		return "", fmt.Errorf("Outlook 注册邮箱后缀只能填写域名，例如 outlook.fr")
-	}
-	if strings.IndexFunc(domain, unicode.IsSpace) >= 0 {
-		return "", fmt.Errorf("Outlook 注册邮箱后缀不能包含空白字符")
-	}
-	if len(domain) > 253 {
-		return "", fmt.Errorf("Outlook 注册邮箱后缀过长")
-	}
-	labels := strings.Split(domain, ".")
-	if len(labels) < 2 {
-		return "", fmt.Errorf("Outlook 注册邮箱后缀必须是完整域名，例如 outlook.fr")
-	}
-	for _, label := range labels {
-		if !validDomainLabel(label) {
-			return "", fmt.Errorf("Outlook 注册邮箱后缀格式无效")
-		}
-	}
-	return domain, nil
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyOutlookScope] = normalized
+		return nil
+	})
 }
 
 // GetProxy 返回当前全局代理 URL（空字符串表示直连）。
@@ -418,13 +486,14 @@ func GetProxy() string {
 // SetProxy 设置全局代理 URL（会自动归一化常见简写格式）。
 func SetProxy(raw string) (string, error) {
 	normalized := NormalizeProxyAddress(strings.TrimSpace(raw))
-	m := loadConfigMap()
-	if normalized == "" {
-		delete(m, keyProxy)
-	} else {
-		m[keyProxy] = normalized
-	}
-	if err := saveConfigMap(m); err != nil {
+	if err := modifyConfigMap(func(m map[string]string) error {
+		if normalized == "" {
+			delete(m, keyProxy)
+		} else {
+			m[keyProxy] = normalized
+		}
+		return nil
+	}); err != nil {
 		return "", err
 	}
 	_proxy = normalized
@@ -435,9 +504,10 @@ func SetProxy(raw string) (string, error) {
 
 // ResetProxy 清空代理配置，恢复直连。
 func ResetProxy() {
-	m := loadConfigMap()
-	delete(m, keyProxy)
-	_ = saveConfigMap(m)
+	_ = modifyConfigMap(func(m map[string]string) error {
+		delete(m, keyProxy)
+		return nil
+	})
 	_proxy = ""
 	_proxyOnce = sync.Once{}
 	_proxyOnce.Do(func() {})
@@ -452,13 +522,14 @@ func GetEmailProxy() string {
 // SetEmailProxy 设置邮箱 API 专用代理 URL（会自动归一化常见简写格式）。
 func SetEmailProxy(raw string) (string, error) {
 	normalized := NormalizeProxyAddress(strings.TrimSpace(raw))
-	m := loadConfigMap()
-	if normalized == "" {
-		delete(m, keyEmailProxy)
-	} else {
-		m[keyEmailProxy] = normalized
-	}
-	if err := saveConfigMap(m); err != nil {
+	if err := modifyConfigMap(func(m map[string]string) error {
+		if normalized == "" {
+			delete(m, keyEmailProxy)
+		} else {
+			m[keyEmailProxy] = normalized
+		}
+		return nil
+	}); err != nil {
 		return "", err
 	}
 	return normalized, nil
@@ -466,9 +537,10 @@ func SetEmailProxy(raw string) (string, error) {
 
 // ResetEmailProxy 清空邮箱 API 专用代理配置，恢复直连。
 func ResetEmailProxy() {
-	m := loadConfigMap()
-	delete(m, keyEmailProxy)
-	_ = saveConfigMap(m)
+	_ = modifyConfigMap(func(m map[string]string) error {
+		delete(m, keyEmailProxy)
+		return nil
+	})
 }
 
 // GetProxyMode 返回当前互斥代理模式。
@@ -492,9 +564,10 @@ func SetProxyMode(mode string) error {
 	if mode == "" {
 		return fmt.Errorf("未知代理模式")
 	}
-	m := loadConfigMap()
-	m[keyProxyMode] = mode
-	return saveConfigMap(m)
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyProxyMode] = mode
+		return nil
+	})
 }
 
 // GetClashProxy 返回 Clash 本地代理地址。
@@ -512,13 +585,14 @@ func GetClashProxy() string {
 // SetClashProxy 设置 Clash 本地代理地址。
 func SetClashProxy(raw string) (string, error) {
 	normalized := NormalizeProxyAddress(strings.TrimSpace(raw))
-	m := loadConfigMap()
-	if normalized == "" {
-		delete(m, keyClashProxy)
-	} else {
-		m[keyClashProxy] = normalized
-	}
-	if err := saveConfigMap(m); err != nil {
+	if err := modifyConfigMap(func(m map[string]string) error {
+		if normalized == "" {
+			delete(m, keyClashProxy)
+		} else {
+			m[keyClashProxy] = normalized
+		}
+		return nil
+	}); err != nil {
 		return "", err
 	}
 	return normalized, nil
@@ -542,15 +616,16 @@ func GetClashConfig() proxy.ClashConfig {
 // SetClashConfig 保存 Clash API 自动切换配置。
 func SetClashConfig(config proxy.ClashConfig) error {
 	config = proxy.NormalizeClashConfig(config)
-	m := loadConfigMap()
-	m[keyClashEnabled] = strconv.FormatBool(config.Enabled)
-	m[keyClashAPIURL] = config.APIURL
-	m[keyClashAPISecret] = config.APISecret
-	m[keyClashProxyGroup] = config.ProxyGroup
-	m[keyClashTestURL] = config.TestURL
-	m[keyClashTestTimeout] = strconv.Itoa(config.TestTimeout)
-	m[keyClashSkipConnectivityTest] = strconv.FormatBool(config.SkipConnectivityTest)
-	return saveConfigMap(m)
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyClashEnabled] = strconv.FormatBool(config.Enabled)
+		m[keyClashAPIURL] = config.APIURL
+		m[keyClashAPISecret] = config.APISecret
+		m[keyClashProxyGroup] = config.ProxyGroup
+		m[keyClashTestURL] = config.TestURL
+		m[keyClashTestTimeout] = strconv.Itoa(config.TestTimeout)
+		m[keyClashSkipConnectivityTest] = strconv.FormatBool(config.SkipConnectivityTest)
+		return nil
+	})
 }
 
 // GetKillSwitchEnabled 返回熔断级错误自动停止开关状态，默认开启。
@@ -561,6 +636,104 @@ func GetKillSwitchEnabled() bool {
 		_killSwitchEnabled = raw != "false" && raw != "0" && raw != "no" && raw != "off"
 	})
 	return _killSwitchEnabled
+}
+
+// GetSoundEnabled 返回任务结束提示音开关状态，默认开启。
+func GetSoundEnabled() bool {
+	_soundOnce.Do(func() {
+		m := loadConfigMap()
+		raw := strings.ToLower(strings.TrimSpace(m[keySoundEnabled]))
+		_soundEnabled = raw != "false" && raw != "0" && raw != "no" && raw != "off"
+	})
+	return _soundEnabled
+}
+
+// SetSoundEnabled 保存任务结束提示音开关状态。
+func SetSoundEnabled(enabled bool) error {
+	if err := modifyConfigMap(func(m map[string]string) error {
+		m[keySoundEnabled] = strconv.FormatBool(enabled)
+		return nil
+	}); err != nil {
+		return err
+	}
+	_soundEnabled = enabled
+	_soundOnce = sync.Once{}
+	_soundOnce.Do(func() {})
+	return nil
+}
+
+// GetRegistrationConfig 返回注册页业务配置。
+func GetRegistrationConfig() RegistrationConfig {
+	m := loadConfigMap()
+	cfg := defaultRegistrationConfig()
+	cfg.Saved = parseBool(m[keyRegistrationConfigSaved])
+
+	if raw := strings.TrimSpace(m[keyRegistrationCount]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
+			cfg.Count = value
+			cfg.Saved = true
+		}
+	}
+	if raw := strings.TrimSpace(m[keyRegistrationConcurrency]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
+			cfg.Concurrency = value
+			cfg.Saved = true
+		}
+	}
+	if raw := strings.TrimSpace(m[keyRegistrationDelay]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 0 {
+			cfg.Delay = value
+			cfg.Saved = true
+		}
+	}
+	if raw := strings.TrimSpace(m[keyRegistrationEmailProvider]); raw != "" {
+		if provider := normalizeRegistrationEmailProvider(raw); provider != "" {
+			cfg.EmailProvider = provider
+			cfg.Saved = true
+		}
+	}
+	if raw := strings.TrimSpace(m[keyRegistrationMoeMailMode]); raw != "" {
+		if mode := normalizeMoeMailDomainMode(raw); mode != "" {
+			cfg.MoeMailDomainMode = mode
+			cfg.Saved = true
+		}
+	}
+	if domains := decodeStringList(m[keyRegistrationMoeMailDomains]); len(domains) > 0 {
+		cfg.MoeMailDomains = domains
+		cfg.Saved = true
+		if cfg.MoeMailDomainMode == "" || cfg.MoeMailDomainMode == MoeMailDomainModeRandom {
+			cfg.MoeMailDomainMode = MoeMailDomainModeCustom
+		}
+	}
+
+	normalized, err := normalizeRegistrationConfig(cfg)
+	if err != nil {
+		return defaultRegistrationConfig()
+	}
+	normalized.Saved = cfg.Saved
+	return normalized
+}
+
+// SetRegistrationConfig 保存注册页业务配置。
+func SetRegistrationConfig(cfg RegistrationConfig) error {
+	normalized, err := normalizeRegistrationConfig(cfg)
+	if err != nil {
+		return err
+	}
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyRegistrationConfigSaved] = "true"
+		m[keyRegistrationCount] = strconv.Itoa(normalized.Count)
+		m[keyRegistrationConcurrency] = strconv.Itoa(normalized.Concurrency)
+		m[keyRegistrationDelay] = strconv.Itoa(normalized.Delay)
+		m[keyRegistrationEmailProvider] = normalized.EmailProvider
+		m[keyRegistrationMoeMailMode] = normalized.MoeMailDomainMode
+		if len(normalized.MoeMailDomains) == 0 {
+			delete(m, keyRegistrationMoeMailDomains)
+		} else {
+			m[keyRegistrationMoeMailDomains] = encodeStringList(normalized.MoeMailDomains)
+		}
+		return nil
+	})
 }
 
 func parseBool(raw string) bool {
@@ -599,20 +772,127 @@ func normalizeOutlookScope(scope string) string {
 	}
 }
 
-func validDomainLabel(label string) bool {
-	if label == "" || len(label) > 63 {
-		return false
+func defaultRegistrationConfig() RegistrationConfig {
+	return RegistrationConfig{
+		Count:             DefaultRegistrationCount,
+		Concurrency:       DefaultRegistrationConcurrency,
+		Delay:             DefaultRegistrationDelay,
+		EmailProvider:     RegistrationEmailProviderOutlook,
+		MoeMailDomainMode: MoeMailDomainModeRandom,
+		MoeMailDomains:    []string{},
+		Saved:             false,
 	}
-	if strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
-		return false
+}
+
+func normalizeRegistrationConfig(cfg RegistrationConfig) (RegistrationConfig, error) {
+	out := cfg
+	if out.Count < 1 {
+		return RegistrationConfig{}, fmt.Errorf("注册数量必须大于或等于 1")
 	}
-	for _, r := range label {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+	if out.Concurrency < 1 {
+		return RegistrationConfig{}, fmt.Errorf("并发数必须大于或等于 1")
+	}
+	if out.Delay < 0 {
+		return RegistrationConfig{}, fmt.Errorf("任务间隔不能小于 0")
+	}
+
+	provider := normalizeRegistrationEmailProvider(out.EmailProvider)
+	if provider == "" {
+		return RegistrationConfig{}, fmt.Errorf("未知邮箱提供商")
+	}
+	out.EmailProvider = provider
+
+	domains, sentinelMode := normalizeMoeMailDomains(out.MoeMailDomains)
+	mode := normalizeMoeMailDomainMode(out.MoeMailDomainMode)
+	if sentinelMode != "" {
+		mode = sentinelMode
+	}
+	if mode == "" {
+		if len(domains) > 0 {
+			mode = MoeMailDomainModeCustom
+		} else {
+			mode = MoeMailDomainModeRandom
+		}
+	}
+	out.MoeMailDomainMode = mode
+	if mode == MoeMailDomainModeCustom {
+		out.MoeMailDomains = domains
+	} else {
+		out.MoeMailDomains = []string{}
+	}
+	return out, nil
+}
+
+func normalizeRegistrationEmailProvider(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "", RegistrationEmailProviderOutlook:
+		return RegistrationEmailProviderOutlook
+	case RegistrationEmailProviderMoeMail:
+		return RegistrationEmailProviderMoeMail
+	case RegistrationEmailProviderMailporary:
+		return RegistrationEmailProviderMailporary
+	default:
+		return ""
+	}
+}
+
+func normalizeMoeMailDomainMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", MoeMailDomainModeRandom:
+		return MoeMailDomainModeRandom
+	case MoeMailDomainModeAll:
+		return MoeMailDomainModeAll
+	case MoeMailDomainModeCustom:
+		return MoeMailDomainModeCustom
+	default:
+		return ""
+	}
+}
+
+func normalizeMoeMailDomains(raw []string) ([]string, string) {
+	out := make([]string, 0, len(raw))
+	seen := map[string]bool{}
+	sentinelMode := ""
+	for _, item := range raw {
+		domain := strings.ToLower(strings.TrimSpace(item))
+		switch domain {
+		case "", "__random__":
+			if domain == "__random__" {
+				sentinelMode = MoeMailDomainModeRandom
+			}
+			continue
+		case "__all__":
+			sentinelMode = MoeMailDomainModeAll
 			continue
 		}
-		return false
+		if seen[domain] {
+			continue
+		}
+		seen[domain] = true
+		out = append(out, domain)
 	}
-	return true
+	return out, sentinelMode
+}
+
+func encodeStringList(items []string) string {
+	data, err := json.Marshal(items)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func decodeStringList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []string
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil
+	}
+	out, _ := normalizeMoeMailDomains(items)
+	return out
 }
 
 func looksLikeLocalProxy(raw string) bool {
@@ -641,13 +921,14 @@ func looksLikeLocalProxy(raw string) bool {
 
 // SetKillSwitchEnabled 设置熔断级错误自动停止开关状态。
 func SetKillSwitchEnabled(enabled bool) error {
-	m := loadConfigMap()
-	if enabled {
-		m[keyKillSwitchEnabled] = "true"
-	} else {
-		m[keyKillSwitchEnabled] = "false"
-	}
-	if err := saveConfigMap(m); err != nil {
+	if err := modifyConfigMap(func(m map[string]string) error {
+		if enabled {
+			m[keyKillSwitchEnabled] = "true"
+		} else {
+			m[keyKillSwitchEnabled] = "false"
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 	_killSwitchEnabled = enabled

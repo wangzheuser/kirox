@@ -305,13 +305,8 @@ func (r *Registrar) Step2Device() error {
 func (r *Registrar) Step3Email() error {
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
 		log.Println("[3] 使用 Outlook 邮箱")
-		originalEmail := strings.TrimSpace(r.Cfg.OutlookAccount.Email)
-		r.Email = BuildOutlookRegistrationEmail(originalEmail, r.Cfg.OutlookRegisterDomainOverride)
-		if !strings.EqualFold(originalEmail, r.Email) {
-			log.Printf("email=%s (原始账号=%s)", r.Email, originalEmail)
-		} else {
-			log.Printf("email=%s", r.Email)
-		}
+		r.Email = strings.TrimSpace(r.Cfg.OutlookAccount.Email)
+		log.Printf("email=%s", r.Email)
 		return nil
 	}
 

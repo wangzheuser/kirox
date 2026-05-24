@@ -306,20 +306,6 @@ func (a *App) SetOutlookScope(scope string) map[string]interface{} {
 	return map[string]interface{}{"success": true, "scope": storage.GetOutlookScope()}
 }
 
-// GetOutlookRegisterDomainOverride 获取 Outlook 注册邮箱后缀覆盖配置。
-func (a *App) GetOutlookRegisterDomainOverride() string {
-	return storage.GetOutlookRegisterDomainOverride()
-}
-
-// SetOutlookRegisterDomainOverride 保存 Outlook 注册邮箱后缀覆盖配置。
-func (a *App) SetOutlookRegisterDomainOverride(raw string) map[string]interface{} {
-	domain, err := storage.SetOutlookRegisterDomainOverride(raw)
-	if err != nil {
-		return map[string]interface{}{"error": err.Error()}
-	}
-	return map[string]interface{}{"success": true, "domain": domain}
-}
-
 // GetProxy 返回当前全局代理（空字符串=直连）
 func (a *App) GetProxy() string {
 	return storage.GetProxy()
@@ -438,6 +424,32 @@ func (a *App) SetKillSwitchEnabled(enabled bool) map[string]interface{} {
 		return map[string]interface{}{"error": err.Error()}
 	}
 	return map[string]interface{}{"success": true, "enabled": enabled}
+}
+
+// GetSoundEnabled 返回任务结束提示音开关状态
+func (a *App) GetSoundEnabled() bool {
+	return storage.GetSoundEnabled()
+}
+
+// SetSoundEnabled 保存任务结束提示音开关状态
+func (a *App) SetSoundEnabled(enabled bool) map[string]interface{} {
+	if err := storage.SetSoundEnabled(enabled); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "enabled": storage.GetSoundEnabled()}
+}
+
+// GetRegistrationConfig 返回注册页业务配置
+func (a *App) GetRegistrationConfig() storage.RegistrationConfig {
+	return storage.GetRegistrationConfig()
+}
+
+// SetRegistrationConfig 保存注册页业务配置
+func (a *App) SetRegistrationConfig(config storage.RegistrationConfig) map[string]interface{} {
+	if err := storage.SetRegistrationConfig(config); err != nil {
+		return map[string]interface{}{"error": err.Error(), "config": storage.GetRegistrationConfig()}
+	}
+	return map[string]interface{}{"success": true, "config": storage.GetRegistrationConfig()}
 }
 
 // StartTask 启动注册任务

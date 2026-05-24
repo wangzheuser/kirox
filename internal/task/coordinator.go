@@ -176,7 +176,6 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	taskConfig.EmailProvider = emailProvider
 	taskConfig.EmailProxy = storage.GetEmailProxy()
 	taskConfig.OutlookScope = storage.GetOutlookScope()
-	taskConfig.OutlookRegisterDomainOverride = storage.GetOutlookRegisterDomainOverride()
 	pageStayConfig := storage.GetPageStayConfig()
 	taskConfig.PageStayMinMs = pageStayConfig.MinMs
 	taskConfig.PageStayMaxMs = pageStayConfig.MaxMs
@@ -264,9 +263,6 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	} else if emailProvider == "outlook" {
 		taskConfig.UseOutlook = true
 		log.Printf("[Kiro] Outlook 读取方式: %s", taskConfig.OutlookScope)
-		if taskConfig.OutlookRegisterDomainOverride != "" {
-			log.Printf("[Kiro] Outlook 注册邮箱后缀覆盖: @%s", taskConfig.OutlookRegisterDomainOverride)
-		}
 	} else if emailProvider == "mailporary" {
 		log.Println("[Kiro] Mailporary 零配置邮箱模式")
 	}
@@ -324,10 +320,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		var accountEmail string
 		var currentEmail string
 		setOutlookAccount := func(acc email.OutlookAccount) {
-			// 账号池状态始终按原始邮箱更新；注册邮箱可按配置临时替换后缀。
 			taskCfg.OutlookAccount = &acc
 			accountEmail = acc.Email
-			currentEmail = core.BuildOutlookRegistrationEmail(acc.Email, taskCfg.OutlookRegisterDomainOverride)
+			currentEmail = acc.Email
 		}
 
 		// 根据邮箱提供商类型获取邮箱

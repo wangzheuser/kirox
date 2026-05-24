@@ -86,10 +86,6 @@ export function GetOutlookAccounts() {
   return window['go']['main']['App']['GetOutlookAccounts']();
 }
 
-export function GetOutlookRegisterDomainOverride() {
-  return window['go']['main']['App']['GetOutlookRegisterDomainOverride']();
-}
-
 export function GetOutlookScope() {
   return window['go']['main']['App']['GetOutlookScope']();
 }
@@ -110,8 +106,16 @@ export function GetProxyMode() {
   return window['go']['main']['App']['GetProxyMode']();
 }
 
+export function GetRegistrationConfig() {
+  return window['go']['main']['App']['GetRegistrationConfig']();
+}
+
 export function GetResultOutputDir() {
   return window['go']['main']['App']['GetResultOutputDir']();
+}
+
+export function GetSoundEnabled() {
+  return window['go']['main']['App']['GetSoundEnabled']();
 }
 
 export function GetStatus() {
@@ -206,10 +210,6 @@ export function SetKillSwitchEnabled(arg1) {
   return window['go']['main']['App']['SetKillSwitchEnabled'](arg1);
 }
 
-export function SetOutlookRegisterDomainOverride(arg1) {
-  return window['go']['main']['App']['SetOutlookRegisterDomainOverride'](arg1);
-}
-
 export function SetOutlookScope(arg1) {
   return window['go']['main']['App']['SetOutlookScope'](arg1);
 }
@@ -226,8 +226,16 @@ export function SetProxyMode(arg1) {
   return window['go']['main']['App']['SetProxyMode'](arg1);
 }
 
+export function SetRegistrationConfig(arg1) {
+  return window['go']['main']['App']['SetRegistrationConfig'](arg1);
+}
+
 export function SetResultOutputDir(arg1) {
   return window['go']['main']['App']['SetResultOutputDir'](arg1);
+}
+
+export function SetSoundEnabled(arg1) {
+  return window['go']['main']['App']['SetSoundEnabled'](arg1);
 }
 
 export function StartTask(arg1) {

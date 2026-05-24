@@ -47,8 +47,6 @@ export function GetMoeMailConfigs():Promise<Array<email.MoeMailConfig>>;
 
 export function GetOutlookAccounts():Promise<Array<Record<string, any>>>;
 
-export function GetOutlookRegisterDomainOverride():Promise<string>;
-
 export function GetOutlookScope():Promise<string>;
 
 export function GetOverview():Promise<Record<string, any>>;
@@ -59,7 +57,11 @@ export function GetProxy():Promise<string>;
 
 export function GetProxyMode():Promise<string>;
 
+export function GetRegistrationConfig():Promise<storage.RegistrationConfig>;
+
 export function GetResultOutputDir():Promise<string>;
+
+export function GetSoundEnabled():Promise<boolean>;
 
 export function GetStatus():Promise<Record<string, any>>;
 
@@ -107,8 +109,6 @@ export function SetEmailProxy(arg1:string):Promise<Record<string, any>>;
 
 export function SetKillSwitchEnabled(arg1:boolean):Promise<Record<string, any>>;
 
-export function SetOutlookRegisterDomainOverride(arg1:string):Promise<Record<string, any>>;
-
 export function SetOutlookScope(arg1:string):Promise<Record<string, any>>;
 
 export function SetPageStayConfig(arg1:storage.PageStayConfig):Promise<Record<string, any>>;
@@ -117,7 +117,11 @@ export function SetProxy(arg1:string):Promise<Record<string, any>>;
 
 export function SetProxyMode(arg1:string):Promise<Record<string, any>>;
 
+export function SetRegistrationConfig(arg1:storage.RegistrationConfig):Promise<Record<string, any>>;
+
 export function SetResultOutputDir(arg1:string):Promise<Record<string, any>>;
+
+export function SetSoundEnabled(arg1:boolean):Promise<Record<string, any>>;
 
 export function StartTask(arg1:task.StartTaskRequest):Promise<Record<string, any>>;
 
