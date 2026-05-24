@@ -500,6 +500,50 @@ func (a *App) LoadOutputAccounts() map[string]interface{} {
 	return map[string]interface{}{"success": true, "accounts": items, "outputDir": storage.GetResultOutputDir()}
 }
 
+// ListAccountPool 读取订阅账号池（复用结果输出目录 accounts.json）。
+func (a *App) ListAccountPool() map[string]interface{} {
+	items, err := data.ListAccountPool(storage.GetResultOutputDir())
+	if err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error(), "outputDir": storage.GetResultOutputDir()}
+	}
+	return map[string]interface{}{"success": true, "accounts": items, "outputDir": storage.GetResultOutputDir()}
+}
+
+// ImportAccountPoolJSON 导入参考插件导出的账号 JSON。
+func (a *App) ImportAccountPoolJSON(raw string) map[string]interface{} {
+	summary, err := data.ImportAccountPoolJSON(storage.GetResultOutputDir(), raw)
+	if err != nil {
+		return map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+			"summary": summary,
+		}
+	}
+	return map[string]interface{}{
+		"success":  true,
+		"imported": summary.Imported,
+		"updated":  summary.Updated,
+		"skipped":  summary.Skipped,
+		"total":    summary.Total,
+		"summary":  summary,
+	}
+}
+
+// ExportAccountPoolJSON 导出参考插件兼容的账号 JSON。
+func (a *App) ExportAccountPoolJSON() map[string]interface{} {
+	jsonText, count, err := data.ExportAccountPoolJSON(storage.GetResultOutputDir())
+	if err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	return map[string]interface{}{
+		"success":   true,
+		"data":      jsonText,
+		"json":      jsonText,
+		"count":     count,
+		"outputDir": storage.GetResultOutputDir(),
+	}
+}
+
 // GetSubscriptionPlans 用第一个有效账号拉取可用订阅计划（可指定邮箱）
 func (a *App) GetSubscriptionPlans(email string) map[string]interface{} {
 	items, err := data.LoadAccounts(storage.GetResultOutputDir())

@@ -1,7 +1,7 @@
 // ===== 核心：导航 / 标签页 / 下拉框 / 配置 / 卡密 / Toast / 窗口控制 =====
 
 // 页面切换
-var pageTitles = { overview: '概览', logs: '运行日志', register: '注册', accounts: '邮箱池', subscription: '获取订阅支付链接', info: '关于', settings: '设置' };
+var pageTitles = { overview: '概览', logs: '运行日志', register: '注册', accounts: '邮箱池', subscription: '获取订阅支付链接', 'account-pool': '账号池', info: '关于', settings: '设置' };
 function switchPage(pageId) {
   document.querySelectorAll('.page, .page-placeholder, .page-iframe').forEach(function(p) {
     p.classList.remove('active');
@@ -28,6 +28,9 @@ function switchPage(pageId) {
   }
   if (pageId === 'subscription') {
     reloadSubscriptionAccounts();
+  }
+  if (pageId === 'account-pool') {
+    loadAccountPool();
   }
 }
 

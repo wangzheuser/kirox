@@ -25,14 +25,18 @@ func SaveKiroSuccess(result map[string]interface{}, outDir string) error {
 		at = map[string]interface{}{}
 	}
 	verify, _ := result["verify"].(map[string]interface{})
+	now := time.Now().Format("2006-01-02 15:04:05")
 	item := map[string]interface{}{
+		"password":     result["password"],
+		"accessToken":  at["accessToken"],
 		"refreshToken": at["refreshToken"],
 		"provider":     "BuilderId",
 		"clientId":     result["client_id"],
 		"clientSecret": result["client_secret"],
 		"region":       "us-east-1",
 		"email":        emailAddr,
-		"time":         time.Now().Format("2006-01-02 15:04:05"),
+		"time":         now,
+		"priority":     calculateAccountPriority(now),
 	}
 	if verify != nil {
 		item["creditUsed"] = verify["credit_used"]

@@ -46,6 +46,10 @@ export function DownloadUpdate() {
   return window['go']['main']['App']['DownloadUpdate']();
 }
 
+export function ExportAccountPoolJSON() {
+  return window['go']['main']['App']['ExportAccountPoolJSON']();
+}
+
 export function GetClashConfig() {
   return window['go']['main']['App']['GetClashConfig']();
 }
@@ -126,8 +130,16 @@ export function GetTaskStatus() {
   return window['go']['main']['App']['GetTaskStatus']();
 }
 
+export function ImportAccountPoolJSON(arg1) {
+  return window['go']['main']['App']['ImportAccountPoolJSON'](arg1);
+}
+
 export function ImportOutlookFile(arg1) {
   return window['go']['main']['App']['ImportOutlookFile'](arg1);
+}
+
+export function ListAccountPool() {
+  return window['go']['main']['App']['ListAccountPool']();
 }
 
 export function LoadOutputAccounts() {

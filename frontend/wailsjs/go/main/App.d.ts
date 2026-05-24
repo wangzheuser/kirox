@@ -27,6 +27,8 @@ export function DetectProxy(arg1:string):Promise<proxy.Info>;
 
 export function DownloadUpdate():Promise<Record<string, any>>;
 
+export function ExportAccountPoolJSON():Promise<Record<string, any>>;
+
 export function GetClashConfig():Promise<proxy.ClashConfig>;
 
 export function GetClashProxy():Promise<string>;
@@ -67,7 +69,11 @@ export function GetSubscriptionPlans(arg1:string):Promise<Record<string, any>>;
 
 export function GetTaskStatus():Promise<Record<string, any>>;
 
+export function ImportAccountPoolJSON(arg1:string):Promise<Record<string, any>>;
+
 export function ImportOutlookFile(arg1:string):Promise<Record<string, any>>;
+
+export function ListAccountPool():Promise<Record<string, any>>;
 
 export function LoadOutputAccounts():Promise<Record<string, any>>;
 
