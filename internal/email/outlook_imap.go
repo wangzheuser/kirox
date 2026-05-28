@@ -2,6 +2,7 @@ package email
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -396,12 +397,13 @@ func (c *imapClient) fetchLatestBody(seq int) (string, error) {
 }
 
 // WaitForOTP 通过 IMAP 轮询等待 AWS 验证码
-func WaitForOTP(acc OutlookAccount, beforeCount, timeout, interval int) (string, error) {
-	return WaitForOTPWithProxy(acc, beforeCount, timeout, interval, storage.GetEmailProxy())
+func WaitForOTP(ctx context.Context, acc OutlookAccount, beforeCount, timeout, interval int) (string, error) {
+	return WaitForOTPWithProxy(ctx, acc, beforeCount, timeout, interval, storage.GetEmailProxy())
 }
 
 // WaitForOTPWithProxy 通过指定代理轮询等待 AWS 验证码。
-func WaitForOTPWithProxy(acc OutlookAccount, beforeCount, timeout, interval int, proxyURL string) (string, error) {
+// 支持 context 取消，任务停止时立即中断轮询。
+func WaitForOTPWithProxy(ctx context.Context, acc OutlookAccount, beforeCount, timeout, interval int, proxyURL string) (string, error) {
 	log.Printf("[Outlook IMAP] 等待验证码, 邮箱=%s, 发送前邮件数=%d", acc.Email, beforeCount)
 
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
@@ -415,19 +417,33 @@ func WaitForOTPWithProxy(acc OutlookAccount, beforeCount, timeout, interval int,
 	consecutiveSelectFail := 0
 	maxConsecutiveSelectFail := 3 // 连续 3 次 SELECT 失败则提前放弃，避免单账号卡住整批
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// 每次轮询前检查 context 是否已取消
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
 		client, err := newIMAPClientWithProxy(runtimeProxyURL)
 		if err != nil {
 			if attempt%5 == 0 {
 				log.Printf("[Outlook IMAP] 连接失败: %v, 重试中...", err)
 			}
-			time.Sleep(time.Duration(interval) * time.Second)
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(interval) * time.Second):
+			}
 			continue
 		}
 
 		if err := client.authenticate(acc.Email, accessToken); err != nil {
 			client.close()
 			accessToken, _ = RefreshOutlookTokenWithProxy(acc, runtimeProxyURL)
-			time.Sleep(time.Duration(interval) * time.Second)
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(interval) * time.Second):
+			}
 			continue
 		}
 
@@ -440,7 +456,11 @@ func WaitForOTPWithProxy(acc OutlookAccount, beforeCount, timeout, interval int,
 				return "", fmt.Errorf("IMAP SELECT 连续失败 %d 次: %v", consecutiveSelectFail, err)
 			}
 			log.Printf("[Outlook IMAP] SELECT 失败 (%d/%d): %v", consecutiveSelectFail, maxConsecutiveSelectFail, err)
-			time.Sleep(time.Duration(interval) * time.Second)
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(interval) * time.Second):
+			}
 			continue
 		}
 		consecutiveSelectFail = 0 // 成功则重置
@@ -450,7 +470,11 @@ func WaitForOTPWithProxy(acc OutlookAccount, beforeCount, timeout, interval int,
 			if attempt%5 == 0 {
 				log.Printf("[Outlook IMAP] [%d/%d] 暂无新邮件 (当前%d封)...", attempt, maxRetries, total)
 			}
-			time.Sleep(time.Duration(interval) * time.Second)
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(time.Duration(interval) * time.Second):
+			}
 			continue
 		}
 
@@ -471,7 +495,11 @@ func WaitForOTPWithProxy(acc OutlookAccount, beforeCount, timeout, interval int,
 		if attempt%5 == 0 {
 			log.Printf("[Outlook IMAP] [%d/%d] 新邮件中未找到验证码...", attempt, maxRetries)
 		}
-		time.Sleep(time.Duration(interval) * time.Second)
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(time.Duration(interval) * time.Second):
+		}
 	}
 	return "", fmt.Errorf("等待验证码超时 (%ds)", timeout)
 }

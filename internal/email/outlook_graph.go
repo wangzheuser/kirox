@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -68,7 +69,8 @@ func RefreshOutlookGraphTokenWithProxy(acc OutlookAccount, proxyURL string) (str
 }
 
 // WaitForOTPGraphWithProxy 通过 Microsoft Graph 轮询等待 AWS 验证码。
-func WaitForOTPGraphWithProxy(acc OutlookAccount, after time.Time, timeout, interval int, proxyURL string) (string, error) {
+// 支持 context 取消，任务停止时立即中断轮询。
+func WaitForOTPGraphWithProxy(ctx context.Context, acc OutlookAccount, after time.Time, timeout, interval int, proxyURL string) (string, error) {
 	if interval <= 0 {
 		interval = 5
 	}
@@ -94,6 +96,12 @@ func WaitForOTPGraphWithProxy(acc OutlookAccount, after time.Time, timeout, inte
 		maxRetries = 1
 	}
 	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// 每次轮询前检查 context 是否已取消
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
 		code, err := findGraphOTP(accessToken, after, codeRegex, runtimeProxyURL)
 		if err != nil && attempt%5 == 0 {
 			log.Printf("[Outlook Graph] 查询失败: %v, 重试中...", err)
@@ -105,7 +113,12 @@ func WaitForOTPGraphWithProxy(acc OutlookAccount, after time.Time, timeout, inte
 		if attempt%5 == 0 {
 			log.Printf("[Outlook Graph] [%d/%d] 暂未找到新验证码...", attempt, maxRetries)
 		}
-		time.Sleep(time.Duration(interval) * time.Second)
+		// 使用 select 等待，支持 context 取消时立即中断
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(time.Duration(interval) * time.Second):
+		}
 	}
 	return "", fmt.Errorf("等待验证码超时 (%ds)", timeout)
 }

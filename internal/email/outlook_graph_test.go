@@ -1,6 +1,7 @@
 package email
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -88,7 +89,7 @@ func TestWaitForOTPGraphExtractsCodeAndIgnoresOldMessages(t *testing.T) {
 		outlookGraphAPIBase = oldAPIBase
 	})
 
-	code, err := WaitForOTPGraphWithProxy(OutlookAccount{
+	code, err := WaitForOTPGraphWithProxy(context.Background(), OutlookAccount{
 		Email:        "user@outlook.com",
 		ClientID:     "client-id",
 		RefreshToken: "refresh-token",

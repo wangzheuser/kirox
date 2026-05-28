@@ -61,17 +61,6 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 		return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
 	}
 
-	kiroRefreshBody, _ := json.Marshal(map[string]string{
-		"clientId":     r.ClientID,
-		"clientSecret": r.ClientSecret,
-		"refreshToken": refreshToken,
-		"grantType":    "refresh_token",
-	})
-	kiroRes := queryPostEndpoint(client, "https://prod.us-east-1.auth.desktop.kiro.dev/refreshToken", kiroRefreshBody)
-	if kiroRes.suspended {
-		return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
-	}
-
 	return r.parseUsage(usageRes.body)
 }
 

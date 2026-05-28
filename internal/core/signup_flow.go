@@ -332,9 +332,9 @@ func (r *Registrar) Step10GetOTP() (string, error) {
 			err  error
 		)
 		if r.Cfg.UseOutlookGraph() {
-			code, err = email.WaitForOTPGraphWithProxy(*r.Cfg.OutlookAccount, r.Cfg.OutlookOTPAfter, 120, 5, r.Cfg.EmailProxy)
+			code, err = email.WaitForOTPGraphWithProxy(r.Ctx, *r.Cfg.OutlookAccount, r.Cfg.OutlookOTPAfter, 120, 5, r.Cfg.EmailProxy)
 		} else {
-			code, err = email.WaitForOTPWithProxy(*r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5, r.Cfg.EmailProxy)
+			code, err = email.WaitForOTPWithProxy(r.Ctx, *r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5, r.Cfg.EmailProxy)
 		}
 		if err != nil {
 			return "", err
