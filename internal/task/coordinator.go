@@ -96,8 +96,11 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 
 		if len(outlookAccounts) < req.Count {
 			Manager.mu.Unlock()
+			// 返回确认类型响应，由前端弹窗让用户选择是否继续
 			return map[string]interface{}{
-				"error": fmt.Sprintf("可用 Outlook 账号不足: 需要 %d, 仅有 %d", req.Count, len(outlookAccounts)),
+				"confirm":   "outlook_insufficient",
+				"message":   fmt.Sprintf("可用 Outlook 账号不足: 需要 %d, 仅有 %d。是否使用 %d 个可用账号继续？", req.Count, len(outlookAccounts), len(outlookAccounts)),
+				"available": len(outlookAccounts),
 			}
 		}
 	}

@@ -162,6 +162,29 @@ async function startTask() {
     }
 
     var result = await window.go.main.App.StartTask(cfg);
+    // 账号不足时弹窗确认，用户选择继续则以可用数量启动
+    if (result.confirm === 'outlook_insufficient') {
+      showConfirmModal('账号不足', result.message, '继续注册', function() {
+        cfg.count = result.available;
+        startTaskWithConfig(cfg);
+      });
+      return;
+    }
+    if (result.error) {
+      showToast(result.error, 'error');
+      return;
+    }
+    updateUIStatus(true);
+    showToast('任务已启动');
+  } catch(e) {
+    showToast('启动失败: ' + e.message, 'error');
+  }
+}
+
+// 以指定配置启动任务（确认弹窗回调用）
+async function startTaskWithConfig(cfg) {
+  try {
+    var result = await window.go.main.App.StartTask(cfg);
     if (result.error) {
       showToast(result.error, 'error');
       return;
