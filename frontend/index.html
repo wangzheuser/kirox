@@ -916,6 +916,12 @@
               <button onclick="clearAllOutlookAccounts()" class="btn btn-danger btn-sm">清空全部</button>
             </div>
           </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <button class="btn btn-sm outlook-filter-btn filter-active" data-filter="all" onclick="setOutlookStatusFilter('all')">全部</button>
+            <button class="btn btn-sm outlook-filter-btn" data-filter="unregistered" onclick="setOutlookStatusFilter('unregistered')">未注册</button>
+            <button class="btn btn-sm outlook-filter-btn" data-filter="success" onclick="setOutlookStatusFilter('success')">成功</button>
+            <button class="btn btn-sm outlook-filter-btn" data-filter="failed" onclick="setOutlookStatusFilter('failed')">失败</button>
+          </div>
           <div style="flex:1;overflow-x:auto;min-height:0;">
             <table style="width:100%;">
               <thead><tr>

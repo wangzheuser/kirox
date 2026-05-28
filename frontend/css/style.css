@@ -390,6 +390,12 @@ iframe::-webkit-scrollbar {
   border-radius: 8px;
 }
 
+.outlook-filter-btn.filter-active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
 .progress-bg { 
   background: #f3f3f3; 
   height: 4px; 

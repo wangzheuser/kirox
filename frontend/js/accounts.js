@@ -3,6 +3,7 @@
 var outlookCurrentPage = 1;
 var outlookPageSize = 10;
 var outlookAllAccounts = [];
+var outlookStatusFilter = 'all';
 
 function openAddOutlookModal() {
   document.getElementById('add-outlook-modal').classList.add('show');
@@ -65,8 +66,27 @@ async function loadOutlookAccountsList() {
   }
 }
 
+function setOutlookStatusFilter(status) {
+  outlookStatusFilter = status;
+  outlookCurrentPage = 1;
+  renderOutlookPage();
+  document.querySelectorAll('.outlook-filter-btn').forEach(function(btn) {
+    btn.classList.toggle('filter-active', btn.dataset.filter === status);
+  });
+}
+
 function renderOutlookPage() {
   var accounts = outlookAllAccounts;
+
+  // 状态筛选
+  if (outlookStatusFilter === 'unregistered') {
+    accounts = accounts.filter(function(a) { return !a.registered; });
+  } else if (outlookStatusFilter === 'success') {
+    accounts = accounts.filter(function(a) { return a.registered && a.success; });
+  } else if (outlookStatusFilter === 'failed') {
+    accounts = accounts.filter(function(a) { return a.registered && !a.success; });
+  }
+
   var tbody = document.getElementById('parsed-outlook-body');
   var pager = document.getElementById('outlook-pager');
   var countEl = document.getElementById('outlook-count');
