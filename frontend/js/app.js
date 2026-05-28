@@ -724,6 +724,7 @@ function getRegistrationConfigPayload() {
     count: readIntegerInput('cfg-count', 1, 1),
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
+    retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     emailProvider: selectedEmailProvider || 'outlook',
     moemailDomainMode: selection.moemailDomainMode,
     moemailDomains: selection.moemailDomains
@@ -745,6 +746,7 @@ function applyRegistrationConfig(cfg) {
   writeIntegerInput('cfg-count', cfg.count, 1);
   writeIntegerInput('cfg-concurrency', cfg.concurrency, 1);
   writeIntegerInput('cfg-delay', cfg.delay, 1);
+  writeIntegerInput('cfg-retry-count', cfg.retryCount, 1);
   selectedMoeMailDomains = moeMailSelectionFromConfig(cfg);
   if (typeof selectEmailProvider === 'function') {
     selectEmailProvider(cfg.emailProvider || 'outlook', {
@@ -761,6 +763,7 @@ function getFormConfig() {
     count: readIntegerInput('cfg-count', 1, 1),
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
+    retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     emailProvider: selectedEmailProvider || 'outlook'
   };
 
@@ -875,6 +878,7 @@ async function loadRegistrationConfig() {
       count: 1,
       concurrency: 1,
       delay: 1,
+      retryCount: 1,
       emailProvider: 'outlook',
       moemailDomainMode: 'random',
       moemailDomains: []
@@ -883,7 +887,7 @@ async function loadRegistrationConfig() {
 }
 
 // 自动保存
-['cfg-count', 'cfg-concurrency', 'cfg-delay'].forEach(function(id) {
+['cfg-count', 'cfg-concurrency', 'cfg-delay', 'cfg-retry-count'].forEach(function(id) {
   var el = document.getElementById(id);
   if (el) {
     el.addEventListener('change', scheduleRegistrationConfigSave);

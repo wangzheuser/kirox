@@ -61,6 +61,7 @@ const (
 	keyRegistrationCount          = "registration_count"
 	keyRegistrationConcurrency    = "registration_concurrency"
 	keyRegistrationDelay          = "registration_delay"
+	keyRegistrationRetryCount     = "registration_retry_count"
 	keyRegistrationEmailProvider  = "registration_email_provider"
 	keyRegistrationMoeMailMode    = "registration_moemail_domain_mode"
 	keyRegistrationMoeMailDomains = "registration_moemail_domains"
@@ -77,6 +78,7 @@ type RegistrationConfig struct {
 	Count             int      `json:"count"`
 	Concurrency       int      `json:"concurrency"`
 	Delay             int      `json:"delay"`
+	RetryCount        int      `json:"retryCount"`
 	EmailProvider     string   `json:"emailProvider"`
 	MoeMailDomainMode string   `json:"moemailDomainMode"`
 	MoeMailDomains    []string `json:"moemailDomains"`
@@ -686,6 +688,12 @@ func GetRegistrationConfig() RegistrationConfig {
 			cfg.Saved = true
 		}
 	}
+	if raw := strings.TrimSpace(m[keyRegistrationRetryCount]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 0 && value <= 5 {
+			cfg.RetryCount = value
+			cfg.Saved = true
+		}
+	}
 	if raw := strings.TrimSpace(m[keyRegistrationEmailProvider]); raw != "" {
 		if provider := normalizeRegistrationEmailProvider(raw); provider != "" {
 			cfg.EmailProvider = provider
@@ -725,6 +733,7 @@ func SetRegistrationConfig(cfg RegistrationConfig) error {
 		m[keyRegistrationCount] = strconv.Itoa(normalized.Count)
 		m[keyRegistrationConcurrency] = strconv.Itoa(normalized.Concurrency)
 		m[keyRegistrationDelay] = strconv.Itoa(normalized.Delay)
+		m[keyRegistrationRetryCount] = strconv.Itoa(normalized.RetryCount)
 		m[keyRegistrationEmailProvider] = normalized.EmailProvider
 		m[keyRegistrationMoeMailMode] = normalized.MoeMailDomainMode
 		if len(normalized.MoeMailDomains) == 0 {
@@ -777,6 +786,7 @@ func defaultRegistrationConfig() RegistrationConfig {
 		Count:             DefaultRegistrationCount,
 		Concurrency:       DefaultRegistrationConcurrency,
 		Delay:             DefaultRegistrationDelay,
+		RetryCount:        1,
 		EmailProvider:     RegistrationEmailProviderOutlook,
 		MoeMailDomainMode: MoeMailDomainModeRandom,
 		MoeMailDomains:    []string{},
@@ -794,6 +804,9 @@ func normalizeRegistrationConfig(cfg RegistrationConfig) (RegistrationConfig, er
 	}
 	if out.Delay < 0 {
 		return RegistrationConfig{}, fmt.Errorf("任务间隔不能小于 0")
+	}
+	if out.RetryCount < 0 || out.RetryCount > 5 {
+		return RegistrationConfig{}, fmt.Errorf("重试次数必须在 0-5 之间")
 	}
 
 	provider := normalizeRegistrationEmailProvider(out.EmailProvider)

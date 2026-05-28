@@ -22,6 +22,7 @@ type StartTaskRequest struct {
 	Count             int                              `json:"count"`
 	Concurrency       int                              `json:"concurrency"`
 	Delay             int                              `json:"delay"`
+	RetryCount        int                              `json:"retryCount"`
 	OutputPath        string                           `json:"outputPath"`
 	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail" 或 "mailporary"
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
@@ -372,7 +373,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Printf("[Kiro][%d/%d] 开始注册", i+1, req.Count)
 		itemStart := time.Now()
 
-		const maxAttempts = 2
+		maxAttempts := req.RetryCount + 1
 		const maxProxySwitches = 3
 
 		var result map[string]interface{}

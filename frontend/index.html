@@ -745,7 +745,7 @@
           </div>
 
           <!-- 并发 & 延迟 & 数量 -->
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
             <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">注册数量</label>
               <input type="number" id="cfg-count" value="1" min="1" class="form-input" style="height:38px;">
@@ -757,6 +757,10 @@
             <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">延迟 (秒)</label>
               <input type="number" id="cfg-delay" value="1" min="0" class="form-input" style="height:38px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">重试次数</label>
+              <input type="number" id="cfg-retry-count" value="1" min="0" max="5" class="form-input" style="height:38px;">
             </div>
           </div>
           <div class="form-group" style="margin-bottom:16px;">
