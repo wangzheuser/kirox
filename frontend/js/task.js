@@ -105,7 +105,7 @@ function renderUnifiedLogs() {
   } else {
     html = logs.map(function(l) {
       return _formatLogLine(l.replace(/^\s+/, ''));
-    }).join('\n');
+    }).join('');
   }
 
   if (box.innerHTML !== html) {
