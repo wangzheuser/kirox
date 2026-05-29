@@ -9,8 +9,8 @@
 当前项目的日志仅存在于内存（最近 500 条）和控制台输出，程序关闭后日志丢失。需要添加日志文件持久化功能，满足以下要求：
 
 - 日志文件保存在结果输出目录（与 `storage.GetResultOutputDir()` 相同）
-- 单文件循环覆盖，文件大小限制 64M
-- 实时写入，每条日志立即 flush 到磁盘
+- 单文件自动轮转，文件大小限制 64M
+- 实时写入（lumberjack 内部缓冲，约 4KB 或数秒后自动刷盘）
 - 固定文件名 `app.log`
 - 内存日志保持现状（500 条），与文件日志独立
 
@@ -32,18 +32,15 @@
 log.Printf()
   ↓
 logWriter.Write()
-  ↓
-io.MultiWriter
   ├→ task.Manager.AppendLog() (内存，最近 500 条)
-  └→ lumberjack.Logger.Write() (文件，64M 循环)
-  ↓
-os.Stderr.Write() (控制台输出)
+  │   └→ lumberjack.Logger.Write() (文件，64M 轮转)
+  └→ os.Stderr.Write() (控制台输出)
 ```
 
 **核心变更：**
 
 1. `task.State` 增加 `logFile *lumberjack.Logger` 字段
-2. `logWriter.Write()` 改为双写（内存 + 文件）
+2. `AppendLog()` 方法同时写入内存和文件
 3. 任务启动时初始化日志文件，任务结束时关闭
 
 ## 3. 详细设计
@@ -68,8 +65,7 @@ type State struct {
     logsMu     sync.Mutex
     
     // 新增字段
-    logFile      *lumberjack.Logger  // 日志文件写入器
-    logFileError error                // 日志文件初始化错误
+    logFile *lumberjack.Logger  // 日志文件写入器
 }
 ```
 
@@ -85,26 +81,20 @@ func (s *State) InitLogFile(outputDir string) error {
     
     // 确保目录存在
     if err := os.MkdirAll(outputDir, 0755); err != nil {
-        s.logFileError = err
         return err
     }
     
     logPath := filepath.Join(outputDir, "app.log")
     
-    // 清理旧的备份文件（lumberjack 会创建 .1 备份）
-    backupPath := logPath + ".1"
-    os.Remove(backupPath)
-    
     s.logFile = &lumberjack.Logger{
         Filename:   logPath,
         MaxSize:    64,        // MB
-        MaxBackups: 0,         // 不保留备份
+        MaxBackups: 0,         // 不保留备份（lumberjack 会自动清理）
         MaxAge:     0,         // 不按时间清理
         Compress:   false,     // 不压缩
         LocalTime:  true,      // 使用本地时间
     }
     
-    s.logFileError = nil
     return nil
 }
 ```
@@ -209,7 +199,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 **场景：** 目录不存在、权限不足、磁盘空间不足
 
 **处理：**
-- 记录错误到 `State.logFileError`
+- 记录错误到 stderr
 - 降级为仅内存日志，不阻断任务启动
 - 在控制台输出警告信息
 
@@ -229,10 +219,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 2. 关闭当前 `app.log`
 3. 重命名为 `app.log.1`
 4. 创建新的 `app.log`
+5. 由于 `MaxBackups: 0`，自动删除 `app.log.1`
 
-**清理策略：**
-- 由于 `MaxBackups: 0`，每次初始化时手动删除 `app.log.1`
-- 确保磁盘上最多只有 `app.log` 和临时的 `app.log.1`（轮转瞬间）
+**磁盘占用：**
+- 稳定状态：最多 64MB（单个 `app.log`）
+- 轮转瞬间：可能短暂达到 128MB（`app.log` + `app.log.1`）
 
 ### 4.4 并发安全
 
@@ -331,9 +322,12 @@ require (
 ## 7. 性能影响
 
 **写入性能：**
-- 每条日志增加一次文件 I/O（lumberjack 内部有缓冲）
-- 预计单条日志写入延迟 < 1ms
+- 每条日志增加一次文件 I/O
+- lumberjack 内部有约 4KB 缓冲，数秒或缓冲满时自动刷盘
+- 预计单条日志写入延迟 < 0.1ms（内存缓冲）
 - 对任务整体性能影响可忽略（日志非热路径）
+
+**注意：** 如果程序崩溃，缓冲区中的日志（最后数秒）可能丢失。如需绝对可靠性，可在 `AppendLog()` 中每次调用 `logFile.Sync()` 强制刷盘，但会降低性能（每条日志约 1-5ms）。
 
 **内存占用：**
 - lumberjack 内部缓冲约 4KB
@@ -341,8 +335,8 @@ require (
 - 总增加内存 < 10KB
 
 **磁盘占用：**
-- 最大 64MB（单文件）
-- 轮转瞬间可能短暂达到 128MB（`app.log` + `app.log.1`）
+- 稳定状态：最多 64MB
+- 轮转瞬间：可能短暂达到 128MB
 
 ## 8. 向后兼容性
 
@@ -396,9 +390,9 @@ require (
 本设计采用成熟的 lumberjack 库实现日志文件持久化，满足所有需求：
 
 - ✅ 保存在结果输出目录
-- ✅ 单文件循环覆盖，64M 限制
-- ✅ 实时写入，无缓冲
+- ✅ 单文件自动轮转，64M 限制
+- ✅ 实时写入（内部缓冲，数秒后刷盘）
 - ✅ 固定文件名 `app.log`
 - ✅ 内存日志独立保持 500 条
 
-实现简单（约 50 行新增代码）、性能影响小、向后兼容，风险可控。
+实现简单（约 40 行新增代码）、性能影响小、向后兼容，风险可控。
