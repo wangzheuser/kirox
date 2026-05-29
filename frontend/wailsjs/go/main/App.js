@@ -74,6 +74,10 @@ export function GetKillSwitchEnabled() {
   return window['go']['main']['App']['GetKillSwitchEnabled']();
 }
 
+export function GetKiroRSConfig() {
+  return window['go']['main']['App']['GetKiroRSConfig']();
+}
+
 export function GetLicenseInfo() {
   return window['go']['main']['App']['GetLicenseInfo']();
 }
@@ -214,6 +218,10 @@ export function SetKillSwitchEnabled(arg1) {
   return window['go']['main']['App']['SetKillSwitchEnabled'](arg1);
 }
 
+export function SetKiroRSConfig(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetKiroRSConfig'](arg1, arg2, arg3);
+}
+
 export function SetOutlookScope(arg1) {
   return window['go']['main']['App']['SetOutlookScope'](arg1);
 }
@@ -248,6 +256,14 @@ export function StartTask(arg1) {
 
 export function StopTask() {
   return window['go']['main']['App']['StopTask']();
+}
+
+export function SyncAccountPoolToKiroRS() {
+  return window['go']['main']['App']['SyncAccountPoolToKiroRS']();
+}
+
+export function TestKiroRSConnection(arg1, arg2) {
+  return window['go']['main']['App']['TestKiroRSConnection'](arg1, arg2);
 }
 
 export function TestMoeMailConnection(arg1) {

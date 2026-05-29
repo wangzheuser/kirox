@@ -14,6 +14,7 @@ import (
 	"reg_go/internal/core"
 	"reg_go/internal/data"
 	"reg_go/internal/email"
+	"reg_go/internal/kirorsync"
 	"reg_go/internal/proxy"
 	"reg_go/internal/storage"
 )
@@ -629,11 +630,14 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		wg.Wait()
 	} else {
 		log.Printf("[Kiro] 启动串行任务: %d 个任务", req.Count)
+	serialLoop:
 		for i := 0; i < req.Count; i++ {
 			select {
 			case <-Manager.stopCh:
 				log.Println("任务已停止")
-				return
+				// 跳出循环而非直接 return，确保走到末尾的统计与自动同步逻辑，
+				// 与并发模式行为一致：停止前已成功的账号仍会被同步。
+				break serialLoop
 			default:
 			}
 			doTask(i)
@@ -689,6 +693,23 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Printf("[Kiro] 成功结果: %s", outDir)
 	}
 	log.Println("[Kiro] ═══════════════════════════════")
+
+	// 自动同步到 kiro.rs
+	if sucCount > 0 && storage.GetKiroRSAutoSync() && storage.GetKiroRSAPIURL() != "" {
+		accounts, _ := data.LoadAccounts(outDir)
+		if len(accounts) > 0 {
+			log.Printf("[Kiro] 开始自动同步 %d 个账号到 kiro.rs", len(accounts))
+			syncResult := kirorsync.SyncAccounts(
+				storage.GetKiroRSAPIURL(),
+				storage.GetKiroRSAPIKey(),
+				accounts,
+			)
+			log.Printf("[Kiro] kiro.rs 同步完成: 成功 %d / 失败 %d", syncResult.Success, syncResult.Failed)
+			if Manager.OnSyncResult != nil {
+				Manager.OnSyncResult(syncResult)
+			}
+		}
+	}
 }
 
 // classifyError 根据错误信息粗分类，用于统计展示。

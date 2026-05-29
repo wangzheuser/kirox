@@ -66,6 +66,9 @@ const (
 	keyRegistrationEmailProvider  = "registration_email_provider"
 	keyRegistrationMoeMailMode    = "registration_moemail_domain_mode"
 	keyRegistrationMoeMailDomains = "registration_moemail_domains"
+	keyKiroRSAPIURL              = "kiro_rs_api_url"
+	keyKiroRSAPIKey              = "kiro_rs_api_key"
+	keyKiroRSAutoSync            = "kiro_rs_auto_sync"
 )
 
 // PageStayConfig 保存发送验证码前模拟页面停留的随机区间。
@@ -130,6 +133,9 @@ var configKeyOrder = []string{
 	keyRegistrationEmailProvider,
 	keyRegistrationMoeMailMode,
 	keyRegistrationMoeMailDomains,
+	keyKiroRSAPIURL,
+	keyKiroRSAPIKey,
+	keyKiroRSAutoSync,
 }
 
 var knownConfigKeys = func() map[string]bool {
@@ -158,7 +164,11 @@ func getConfigFilePath() string {
 	return filepath.Join(GetDefaultDataDir(), "storage.conf")
 }
 
-// loadConfigMap 解析 storage.conf 为 KV；兼容旧版（整文件即 data_dir 路径）
+// readConfigFile 读取配置文件的底层函数，抽成变量便于测试注入读失败场景。
+var readConfigFile = os.ReadFile
+
+// loadConfigMap 解析 storage.conf 为 KV；兼容旧版（整文件即 data_dir 路径）。
+// 读取/解析失败时返回默认空配置，供只读 getter 容错使用。
 func loadConfigMap() map[string]string {
 	configMu.Lock()
 	defer configMu.Unlock()
@@ -166,18 +176,30 @@ func loadConfigMap() map[string]string {
 }
 
 func loadConfigMapUnlocked() map[string]string {
+	m, _ := loadConfigMapStrict()
+	return m
+}
+
+// loadConfigMapStrict 严格读取配置：
+//   - 文件不存在（全新安装）→ 返回空 map, nil（合法初始状态）
+//   - 文件存在但读取失败（被占用/权限等瞬时故障）→ 返回 nil 和错误，
+//     供 modifyConfigMap 中止保存，避免用不完整数据覆盖磁盘上的完整配置。
+func loadConfigMapStrict() (map[string]string, error) {
 	m := map[string]string{}
-	data, err := os.ReadFile(getConfigFilePath())
+	data, err := readConfigFile(getConfigFilePath())
 	if err != nil {
-		return m
+		if os.IsNotExist(err) {
+			return m, nil
+		}
+		return nil, err
 	}
 	text := strings.TrimSpace(string(data))
 	if text == "" {
-		return m
+		return m, nil
 	}
 	if !strings.ContainsRune(text, '=') {
 		m[keyDataDir] = text
-		return m
+		return m, nil
 	}
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
@@ -194,7 +216,7 @@ func loadConfigMapUnlocked() map[string]string {
 			m[k] = v
 		}
 	}
-	return m
+	return m, nil
 }
 
 func saveConfigMap(m map[string]string) error {
@@ -244,6 +266,12 @@ func saveConfigMapUnlocked(m map[string]string) error {
 	}
 
 	path := getConfigFilePath()
+
+	// 写入前对现有配置做一次 .bak 备份，作为意外损坏时的恢复点（best-effort，失败不阻断保存）。
+	if existing, err := readConfigFile(path); err == nil && len(existing) > 0 {
+		_ = os.WriteFile(path+".bak", existing, 0600)
+	}
+
 	tmp := fmt.Sprintf("%s.tmp.%d.%d", path, os.Getpid(), time.Now().UnixNano())
 	if err := os.WriteFile(tmp, []byte(b.String()), 0600); err != nil {
 		return err
@@ -258,7 +286,12 @@ func saveConfigMapUnlocked(m map[string]string) error {
 func modifyConfigMap(fn func(map[string]string) error) error {
 	configMu.Lock()
 	defer configMu.Unlock()
-	m := loadConfigMapUnlocked()
+	// 严格读取：若现有配置读取失败（被占用等瞬时故障），立即中止，
+	// 绝不用不完整的内存数据覆盖磁盘，避免清空全部配置。
+	m, err := loadConfigMapStrict()
+	if err != nil {
+		return fmt.Errorf("读取现有配置失败，已中止保存以防数据丢失: %w", err)
+	}
 	if err := fn(m); err != nil {
 		return err
 	}
@@ -666,6 +699,48 @@ func SetSoundEnabled(enabled bool) error {
 	_soundOnce = sync.Once{}
 	_soundOnce.Do(func() {})
 	return nil
+}
+
+// GetKiroRSAPIURL 返回 kiro.rs API 地址。
+func GetKiroRSAPIURL() string {
+	m := loadConfigMap()
+	return strings.TrimSpace(m[keyKiroRSAPIURL])
+}
+
+// SetKiroRSAPIURL 保存 kiro.rs API 地址。
+func SetKiroRSAPIURL(url string) error {
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyKiroRSAPIURL] = strings.TrimSpace(url)
+		return nil
+	})
+}
+
+// GetKiroRSAPIKey 返回 kiro.rs Admin API Key。
+func GetKiroRSAPIKey() string {
+	m := loadConfigMap()
+	return strings.TrimSpace(m[keyKiroRSAPIKey])
+}
+
+// SetKiroRSAPIKey 保存 kiro.rs Admin API Key。
+func SetKiroRSAPIKey(key string) error {
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyKiroRSAPIKey] = strings.TrimSpace(key)
+		return nil
+	})
+}
+
+// GetKiroRSAutoSync 返回注册完成后是否自动同步到 kiro.rs。
+func GetKiroRSAutoSync() bool {
+	m := loadConfigMap()
+	return parseBool(m[keyKiroRSAutoSync])
+}
+
+// SetKiroRSAutoSync 保存自动同步开关状态。
+func SetKiroRSAutoSync(enabled bool) error {
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyKiroRSAutoSync] = strconv.FormatBool(enabled)
+		return nil
+	})
 }
 
 // GetRegistrationConfig 返回注册页业务配置。

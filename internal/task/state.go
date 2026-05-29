@@ -25,6 +25,8 @@ type State struct {
 	logs       []string
 	logsMu     sync.Mutex
 	logFile    *lumberjack.Logger // 日志文件写入器，支持自动轮转
+	// OnSyncResult 同步完成回调（由 app.go 注入，用于通知前端）
+	OnSyncResult func(interface{})
 }
 
 var Manager = &State{

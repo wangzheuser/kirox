@@ -141,3 +141,21 @@ async function exportAccountPoolToClipboard() {
     showToast('导出失败: ' + e.message, 'error');
   }
 }
+
+async function syncAccountPoolToKiroRS() {
+  var btn = document.getElementById('btn-sync-kiro-rs');
+  if (btn) btn.disabled = true;
+  try {
+    var result = await window.go.main.App.SyncAccountPoolToKiroRS();
+    if (result.error) {
+      showToast(result.error, 'error');
+      return;
+    }
+    var msg = 'kiro.rs 同步完成：成功 ' + result.syncSuccess + ' / 失败 ' + result.syncFailed;
+    showToast(msg, result.syncFailed > 0 ? 'error' : 'success');
+  } catch (e) {
+    showToast('同步失败: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}

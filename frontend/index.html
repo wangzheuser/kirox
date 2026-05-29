@@ -473,7 +473,7 @@
 
                   <div id="proxy-normal-panel" style="display:none;flex-direction:column;gap:8px;">
                     <div style="display:flex;gap:8px;">
-                      <input type="text" id="cfg-proxy" placeholder="例如 https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443" class="form-input" style="flex:1;">
+                      <input type="text" id="cfg-proxy" placeholder="例如 http://127.0.0.1:7890" class="form-input" style="flex:1;">
                       <button onclick="saveProxy()" class="btn btn-secondary btn-sm">保存普通代理</button>
                       <button onclick="resetProxy()" class="btn btn-secondary btn-sm">清除</button>
                     </div>
@@ -555,6 +555,56 @@
                     <span class="toggle-slider"></span>
                   </div>
                 </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- kiro.rs 同步 -->
+        <div class="card" style="margin-bottom:20px;">
+          <div class="settings-group">
+            <div class="settings-group-title">kiro.rs 同步</div>
+
+            <div class="settings-item">
+              <div class="settings-item-main">
+                <div class="settings-item-title">API 地址</div>
+                <div class="settings-item-desc">kiro.rs 服务的访问地址</div>
+              </div>
+              <div class="settings-item-action" style="min-width:320px;">
+                <input type="text" id="cfg-kiro-rs-url" placeholder="http://host:port" class="form-input" style="width:100%;">
+              </div>
+            </div>
+
+            <div class="settings-item">
+              <div class="settings-item-main">
+                <div class="settings-item-title">API Key</div>
+                <div class="settings-item-desc">kiro.rs Admin API 认证密钥</div>
+              </div>
+              <div class="settings-item-action" style="min-width:320px;">
+                <input type="password" id="cfg-kiro-rs-key" placeholder="Admin API Key" class="form-input" style="width:100%;">
+              </div>
+            </div>
+
+            <div class="settings-item">
+              <div class="settings-item-main">
+                <div class="settings-item-title">注册后自动同步</div>
+                <div class="settings-item-desc">批量注册任务完成后自动将成功账号推送到 kiro.rs</div>
+              </div>
+              <div class="settings-item-action">
+                <label style="cursor:pointer;">
+                  <div class="toggle-switch">
+                    <input type="checkbox" id="cfg-kiro-rs-auto-sync">
+                    <span class="toggle-slider"></span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-item">
+              <div class="settings-item-main" style="flex:0;">
+              </div>
+              <div class="settings-item-action" style="display:flex;gap:8px;">
+                <button onclick="testKiroRSConnection()" class="btn btn-secondary btn-sm">测试连接</button>
               </div>
             </div>
           </div>
@@ -650,6 +700,7 @@
             </div>
 
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--border);">
+              <button id="btn-sync-kiro-rs" onclick="syncAccountPoolToKiroRS()" class="btn btn-dark btn-sm">同步到 kiro.rs</button>
               <button onclick="openAccountPoolImportModal()" class="btn btn-dark btn-sm">导入账号</button>
               <button onclick="exportAccountPoolToClipboard()" class="btn btn-secondary btn-sm">导出到剪切板</button>
               <button onclick="loadAccountPool()" class="btn btn-secondary btn-sm">重新加载</button>

@@ -241,6 +241,14 @@ if (window.runtime) {
   window.runtime.EventsOn('update-progress', function(progress, downloaded, total) {
     updateDownloadProgress(progress, downloaded, total);
   });
+  window.runtime.EventsOn('kiro-rs-sync-result', function(result) {
+    if (result.error) {
+      showToast('kiro.rs 同步失败: ' + result.error, 'error');
+      return;
+    }
+    var msg = 'kiro.rs 同步完成：成功 ' + result.success + ' / 失败 ' + result.failed;
+    showToast(msg, result.failed > 0 ? 'error' : 'success');
+  });
 }
 
 function showUpdateModal(data) {

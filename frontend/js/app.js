@@ -298,6 +298,18 @@ function bindSettingsAutosave() {
     outlookScopeEl.addEventListener('change', saveOutlookScope);
   }
 
+  // kiro.rs 同步：文本框防抖静默保存，开关即时保存
+  ['cfg-kiro-rs-url', 'cfg-kiro-rs-key'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', scheduleKiroRSConfigSave);
+    el.addEventListener('change', scheduleKiroRSConfigSave);
+  });
+  var kiroAutoEl = document.getElementById('cfg-kiro-rs-auto-sync');
+  if (kiroAutoEl) {
+    kiroAutoEl.addEventListener('change', function() { saveKiroRSConfig(true); });
+  }
+
 }
 
 // 代理设置
@@ -678,6 +690,82 @@ async function saveKillSwitchEnabled() {
   }
 }
 
+// ===== kiro.rs 同步配置 =====
+
+var kiroRSSaveTimer = null;
+var lastSavedKiroRSPayload = null;
+
+async function loadKiroRSConfig() {
+  try {
+    var cfg = await window.go.main.App.GetKiroRSConfig();
+    var urlEl = document.getElementById('cfg-kiro-rs-url');
+    var keyEl = document.getElementById('cfg-kiro-rs-key');
+    var autoEl = document.getElementById('cfg-kiro-rs-auto-sync');
+    if (urlEl) urlEl.value = cfg.apiURL || '';
+    if (keyEl) keyEl.value = cfg.apiKey || '';
+    if (autoEl) autoEl.checked = !!cfg.autoSync;
+    // 记录已保存快照，避免初始化或无变化时重复写盘
+    lastSavedKiroRSPayload = JSON.stringify({
+      url: (cfg.apiURL || '').trim(),
+      key: (cfg.apiKey || '').trim(),
+      autoSync: !!cfg.autoSync
+    });
+  } catch(e) {}
+}
+
+// 防抖触发文本框（API 地址 / Key）的静默自动保存
+function scheduleKiroRSConfigSave() {
+  if (kiroRSSaveTimer) {
+    clearTimeout(kiroRSSaveTimer);
+  }
+  kiroRSSaveTimer = setTimeout(function() {
+    kiroRSSaveTimer = null;
+    saveKiroRSConfig(false);
+  }, 450);
+}
+
+// saveKiroRSConfig 保存 kiro.rs 配置。
+// withToast=true 时给出明确反馈（用于开关切换）；文本框自动保存则静默。
+async function saveKiroRSConfig(withToast) {
+  var url = ((document.getElementById('cfg-kiro-rs-url') || {}).value || '').trim();
+  var key = ((document.getElementById('cfg-kiro-rs-key') || {}).value || '').trim();
+  var autoSync = !!(document.getElementById('cfg-kiro-rs-auto-sync') || {}).checked;
+  var payloadKey = JSON.stringify({ url: url, key: key, autoSync: autoSync });
+  if (payloadKey === lastSavedKiroRSPayload) {
+    return; // 无变化，跳过
+  }
+  try {
+    var result = await window.go.main.App.SetKiroRSConfig(url, key, autoSync);
+    if (result.error) {
+      showToast(result.error, 'error');
+      await loadKiroRSConfig();
+      return;
+    }
+    lastSavedKiroRSPayload = payloadKey;
+    if (withToast) {
+      showToast(autoSync ? '已开启注册后自动同步' : '已关闭注册后自动同步');
+    }
+  } catch(e) {
+    showToast('保存失败: ' + e.message, 'error');
+    await loadKiroRSConfig();
+  }
+}
+
+async function testKiroRSConnection() {
+  var url = (document.getElementById('cfg-kiro-rs-url') || {}).value || '';
+  var key = (document.getElementById('cfg-kiro-rs-key') || {}).value || '';
+  try {
+    var result = await window.go.main.App.TestKiroRSConnection(url.trim(), key.trim());
+    if (result.success) {
+      showToast('连接成功', 'success');
+    } else {
+      showToast(result.error || '连接失败', 'error');
+    }
+  } catch(e) {
+    showToast('测试失败: ' + e.message, 'error');
+  }
+}
+
 // UI 状态
 function updateUIStatus(running) {
   var btnStart = document.getElementById('btn-start');
@@ -1007,6 +1095,7 @@ async function loadConfig() {
   loadClashConfig();
   loadKillSwitchEnabled();
   loadSoundEnabled();
+  loadKiroRSConfig();
   startOverviewTimer();
   console.log('[启动] 初始化完成');
 }

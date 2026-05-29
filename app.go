@@ -7,6 +7,7 @@ import (
 	"os"
 	"reg_go/internal/data"
 	"reg_go/internal/email"
+	"reg_go/internal/kirorsync"
 	"reg_go/internal/proxy"
 	"reg_go/internal/subscription"
 
@@ -40,6 +41,11 @@ func (a *App) startup(ctx context.Context) {
 
 	// 清理上次更新可能遗留的临时文件
 	go updater.CleanupTemp()
+
+	// 注入 kiro.rs 同步完成回调
+	task.Manager.OnSyncResult = func(result interface{}) {
+		runtime.EventsEmit(ctx, "kiro-rs-sync-result", result)
+	}
 }
 
 // shutdown 在应用关闭时调用
@@ -557,6 +563,74 @@ func (a *App) ExportAccountPoolJSON() map[string]interface{} {
 		"json":      jsonText,
 		"count":     count,
 		"outputDir": storage.GetResultOutputDir(),
+	}
+}
+
+// GetKiroRSConfig 获取 kiro.rs 同步配置
+func (a *App) GetKiroRSConfig() map[string]interface{} {
+	return map[string]interface{}{
+		"apiURL":   storage.GetKiroRSAPIURL(),
+		"apiKey":   storage.GetKiroRSAPIKey(),
+		"autoSync": storage.GetKiroRSAutoSync(),
+	}
+}
+
+// SetKiroRSConfig 保存 kiro.rs 同步配置
+func (a *App) SetKiroRSConfig(url, key string, autoSync bool) map[string]interface{} {
+	if err := storage.SetKiroRSAPIURL(url); err != nil {
+		return map[string]interface{}{"error": "保存 API 地址失败: " + err.Error()}
+	}
+	if err := storage.SetKiroRSAPIKey(key); err != nil {
+		return map[string]interface{}{"error": "保存 API Key 失败: " + err.Error()}
+	}
+	if err := storage.SetKiroRSAutoSync(autoSync); err != nil {
+		return map[string]interface{}{"error": "保存自动同步设置失败: " + err.Error()}
+	}
+	return map[string]interface{}{"success": true}
+}
+
+// TestKiroRSConnection 测试 kiro.rs 连接
+func (a *App) TestKiroRSConnection(url, key string) map[string]interface{} {
+	if url == "" {
+		return map[string]interface{}{"success": false, "error": "请输入 API 地址"}
+	}
+	if key == "" {
+		return map[string]interface{}{"success": false, "error": "请输入 API Key"}
+	}
+	if err := kirorsync.TestConnection(url, key); err != nil {
+		return map[string]interface{}{"success": false, "error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "message": "连接成功"}
+}
+
+// SyncAccountPoolToKiroRS 手动触发全量同步到 kiro.rs
+func (a *App) SyncAccountPoolToKiroRS() map[string]interface{} {
+	apiURL := storage.GetKiroRSAPIURL()
+	apiKey := storage.GetKiroRSAPIKey()
+	if apiURL == "" {
+		return map[string]interface{}{"error": "请先配置 kiro.rs API 地址"}
+	}
+	if apiKey == "" {
+		return map[string]interface{}{"error": "请先配置 kiro.rs API Key"}
+	}
+
+	accounts, err := data.LoadAccounts(storage.GetResultOutputDir())
+	if err != nil {
+		return map[string]interface{}{"error": "加载账号池失败: " + err.Error()}
+	}
+	if len(accounts) == 0 {
+		return map[string]interface{}{"error": "账号池为空，无可同步账号"}
+	}
+
+	result := kirorsync.SyncAccounts(apiURL, apiKey, accounts)
+	if result.Error != "" {
+		return map[string]interface{}{"error": result.Error}
+	}
+	return map[string]interface{}{
+		"success":     true,
+		"total":       result.Total,
+		"syncSuccess": result.Success,
+		"syncFailed":  result.Failed,
 	}
 }
 

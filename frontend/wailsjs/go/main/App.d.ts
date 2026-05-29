@@ -41,6 +41,8 @@ export function GetEmailProxy():Promise<string>;
 
 export function GetKillSwitchEnabled():Promise<boolean>;
 
+export function GetKiroRSConfig():Promise<Record<string, any>>;
+
 export function GetLicenseInfo():Promise<Record<string, any>>;
 
 export function GetLogs():Promise<Array<string>>;
@@ -111,6 +113,8 @@ export function SetEmailProxy(arg1:string):Promise<Record<string, any>>;
 
 export function SetKillSwitchEnabled(arg1:boolean):Promise<Record<string, any>>;
 
+export function SetKiroRSConfig(arg1:string,arg2:string,arg3:boolean):Promise<Record<string, any>>;
+
 export function SetOutlookScope(arg1:string):Promise<Record<string, any>>;
 
 export function SetPageStayConfig(arg1:storage.PageStayConfig):Promise<Record<string, any>>;
@@ -128,6 +132,10 @@ export function SetSoundEnabled(arg1:boolean):Promise<Record<string, any>>;
 export function StartTask(arg1:task.StartTaskRequest):Promise<Record<string, any>>;
 
 export function StopTask():Promise<Record<string, any>>;
+
+export function SyncAccountPoolToKiroRS():Promise<Record<string, any>>;
+
+export function TestKiroRSConnection(arg1:string,arg2:string):Promise<Record<string, any>>;
 
 export function TestMoeMailConnection(arg1:string):Promise<Record<string, any>>;
 
