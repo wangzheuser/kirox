@@ -79,23 +79,30 @@ func SyncAccounts(apiURL, apiKey string, accounts []map[string]interface{}) Sync
 	}
 
 	if len(validAccounts) == 0 {
+		log.Printf("[Kiro] kiro.rs 同步: 无有效账号（缺少 refreshToken），已跳过")
 		return SyncResult{Total: 0, Success: 0, Failed: 0}
 	}
 
-	result := SyncResult{Total: len(validAccounts)}
+	total := len(validAccounts)
+	result := SyncResult{Total: total}
 	var retryable []map[string]interface{}
 
+	log.Printf("[Kiro] kiro.rs 同步开始: 共 %d 个有效账号", total)
+
 	// 第一轮推送
-	for _, acc := range validAccounts {
+	for i, acc := range validAccounts {
 		detail := pushOne(apiURL, apiKey, acc)
 		if detail.Success {
 			result.Success++
+			log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 成功", i+1, total, detail.Email)
 		} else {
 			// 仅网络错误和 5xx 可重试
 			if isRetryableError(detail.Error) {
 				retryable = append(retryable, acc)
+				log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 失败(待重试): %s", i+1, total, detail.Email, detail.Error)
 			} else {
 				result.Failed++
+				log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 失败: %s", i+1, total, detail.Email, detail.Error)
 			}
 		}
 		result.Details = append(result.Details, detail)
@@ -103,9 +110,10 @@ func SyncAccounts(apiURL, apiKey string, accounts []map[string]interface{}) Sync
 
 	// 重试轮：等待 2s 后统一重试
 	if len(retryable) > 0 {
-		log.Printf("[Kiro] kiro.rs 同步重试: %d 条失败记录", len(retryable))
+		retryTotal := len(retryable)
+		log.Printf("[Kiro] kiro.rs 同步重试: %d 条失败记录，2s 后重试", retryTotal)
 		time.Sleep(2 * time.Second)
-		for _, acc := range retryable {
+		for i, acc := range retryable {
 			detail := pushOne(apiURL, apiKey, acc)
 			// 更新对应的 detail（找到同 email 的失败记录替换）
 			email, _ := acc["email"].(string)
@@ -117,8 +125,10 @@ func SyncAccounts(apiURL, apiKey string, accounts []map[string]interface{}) Sync
 			}
 			if detail.Success {
 				result.Success++
+				log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 成功", i+1, retryTotal, detail.Email)
 			} else {
 				result.Failed++
+				log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 失败: %s", i+1, retryTotal, detail.Email, detail.Error)
 			}
 		}
 	}

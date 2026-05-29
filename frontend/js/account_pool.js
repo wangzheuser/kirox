@@ -144,7 +144,9 @@ async function exportAccountPoolToClipboard() {
 
 async function syncAccountPoolToKiroRS() {
   var btn = document.getElementById('btn-sync-kiro-rs');
-  if (btn) btn.disabled = true;
+  var originalText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '同步中...'; }
+  showToast('已开始同步到 kiro.rs，进度见运行日志', 'success');
   try {
     var result = await window.go.main.App.SyncAccountPoolToKiroRS();
     if (result.error) {
@@ -156,6 +158,6 @@ async function syncAccountPoolToKiroRS() {
   } catch (e) {
     showToast('同步失败: ' + e.message, 'error');
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) { btn.disabled = false; btn.textContent = originalText || '同步到 kiro.rs'; }
   }
 }

@@ -622,10 +622,13 @@ func (a *App) SyncAccountPoolToKiroRS() map[string]interface{} {
 		return map[string]interface{}{"error": "账号池为空，无可同步账号"}
 	}
 
+	log.Printf("[Kiro] 手动同步账号池到 kiro.rs：共加载 %d 个账号", len(accounts))
 	result := kirorsync.SyncAccounts(apiURL, apiKey, accounts)
 	if result.Error != "" {
+		log.Printf("[Kiro] 手动同步未执行: %s", result.Error)
 		return map[string]interface{}{"error": result.Error}
 	}
+	log.Printf("[Kiro] 手动同步完成: 成功 %d / 失败 %d", result.Success, result.Failed)
 	return map[string]interface{}{
 		"success":     true,
 		"total":       result.Total,
