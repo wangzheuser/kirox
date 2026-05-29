@@ -170,6 +170,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		Manager.running = false
 		Manager.cancelFunc = nil
 		Manager.mu.Unlock()
+
+		// 关闭日志文件
+		if err := Manager.CloseLogFile(); err != nil {
+			log.Printf("[Kiro] 日志文件关闭失败: %v", err)
+		}
 	}()
 
 	outDir := req.OutputPath
@@ -177,6 +182,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		outDir = storage.GetResultOutputDir()
 	}
 	os.MkdirAll(outDir, 0755)
+
+	// 初始化日志文件持久化（失败不阻断任务，降级为仅内存日志）
+	if err := Manager.InitLogFile(outDir); err != nil {
+		log.Printf("[Kiro] 日志文件初始化失败，降级为仅内存日志: %v", err)
+	}
 
 	taskConfig := core.NewConfig()
 	taskConfig.EmailProvider = emailProvider
@@ -494,7 +504,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			// 邮箱已注册：标记当前账号，换号重来（重置 attempt）
 			if taskConfig.UseOutlook && strings.Contains(errorMsg, "邮箱已注册过") {
 				log.Printf("[Kiro][%d/%d] %s 已注册，标记并换号", i+1, req.Count, currentEmail)
-				email.UpdateAccountStatus(accountEmail, true, false)
+				email.UpdateAccountStatus(accountEmail, true, false, "邮箱已注册")
 				acc, ok := nextAccount()
 				if ok {
 					setOutlookAccount(acc)
@@ -559,12 +569,14 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		completedCount := Manager.completed
 		Manager.mu.Unlock()
 
-		// 统计分类
+		// 统计分类：失败时计算分类原因，供统计打印与邮箱状态标记复用
+		var failReason string
 		statsMu.Lock()
 		taskDurations = append(taskDurations, itemDuration)
 		if !success {
 			errorMsg, _ := result["error"].(string)
-			failCategories[classifyError(errorMsg)]++
+			failReason = classifyError(errorMsg)
+			failCategories[failReason]++
 		}
 		statsMu.Unlock()
 
@@ -575,14 +587,18 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 		}
 
-		// 只有设置完密码后（passwordSet=true）才标记邮箱为已注册
-		// 之前步骤失败的邮箱不标记，等同于归还到邮箱池
+		// 邮箱状态标记：registered 仍仅在设密码后置为 true（保持可重试语义不变），
+		// 但失败原因 failReason 无论失败发生在哪个阶段都记录，供前端按类型筛选。
 		if taskConfig.UseOutlook && accountEmail != "" {
 			passwordSet, _ := result["passwordSet"].(bool)
 			if passwordSet {
-				email.UpdateAccountStatus(accountEmail, true, success)
+				// 已走到设密码步骤：正式标记 registered，成功则清除失败原因
+				email.UpdateAccountStatus(accountEmail, true, success, failReason)
+			} else if !success {
+				// 前置阶段失败（如验证码超时）：不标记 registered，邮箱可被下次任务重试，
+				// 仅记录最近一次失败原因。
+				email.MarkAccountFailReason(accountEmail, failReason)
 			}
-			// 未设密码的失败邮箱不标记 registered，下次任务可继续使用
 		}
 		if success {
 			if err := data.SaveKiroSuccess(result, outDir); err != nil {

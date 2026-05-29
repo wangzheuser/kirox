@@ -64,28 +64,73 @@ async function loadOutlookAccountsList() {
   try {
     var accounts = await window.go.main.App.GetOutlookAccounts();
     outlookAllAccounts = accounts || [];
+    rebuildOutlookFilterOptions();
     renderOutlookPage();
   } catch(e) {
     console.error('加载账号列表失败:', e);
   }
 }
 
-// 状态筛选下拉各选项的中文标签
-var outlookFilterLabels = { all: '全部', unregistered: '未注册', success: '成功', failed: '失败' };
+// 状态筛选下拉固定选项的中文标签；具体失败原因(failReason)作为动态选项，标签即其自身
+var outlookFilterLabels = { all: '全部', success: '成功', unregistered: '未注册' };
+
+// 重建状态筛选下拉：固定项(全部/成功/未注册) + 当前账号中出现过的失败原因(动态去重)
+function rebuildOutlookFilterOptions() {
+  var optionsEl = document.querySelector('#outlook-filter-dropdown .dropdown-options');
+  if (!optionsEl) return;
+
+  // 收集去重的失败原因，保持稳定顺序便于查看
+  var reasons = [];
+  var seen = {};
+  outlookAllAccounts.forEach(function(a) {
+    if (a.failReason && !seen[a.failReason]) {
+      seen[a.failReason] = true;
+      reasons.push(a.failReason);
+    }
+  });
+  reasons.sort();
+
+  // 固定项 + 动态失败原因项
+  var items = [
+    { value: 'all', label: '全部' },
+    { value: 'success', label: '成功' },
+    { value: 'unregistered', label: '未注册' }
+  ];
+  reasons.forEach(function(r) { items.push({ value: r, label: r }); });
+
+  // 若当前筛选值已不在选项中(失败原因消失)，回退到全部
+  var valid = items.some(function(it) { return it.value === outlookStatusFilter; });
+  if (!valid) outlookStatusFilter = 'all';
+
+  var html = '';
+  items.forEach(function(it) {
+    var sel = it.value === outlookStatusFilter ? ' selected' : '';
+    // 用单引号包裹 value，避免与 onclick 外层双引号冲突
+    var escaped = it.value.replace(/'/g, "\\'");
+    html += '<div class="dropdown-option' + sel + '" onclick="setOutlookStatusFilter(\'' +
+      escaped + '\')">' + it.label + '</div>';
+  });
+  optionsEl.innerHTML = html;
+
+  // 同步下拉显示文案
+  var labelEl = document.getElementById('outlook-filter-label');
+  if (labelEl) labelEl.textContent = outlookFilterLabels[outlookStatusFilter] || outlookStatusFilter;
+}
 
 function setOutlookStatusFilter(status) {
   outlookStatusFilter = status;
   outlookCurrentPage = 1;
 
-  // 更新下拉框显示文案
+  // 更新下拉框显示文案：固定项查表，动态失败原因项直接用其值
   var labelEl = document.getElementById('outlook-filter-label');
-  if (labelEl) labelEl.textContent = outlookFilterLabels[status] || '全部';
+  if (labelEl) labelEl.textContent = outlookFilterLabels[status] || status;
 
   // 更新下拉选项高亮，并收起下拉
   var dropdown = document.getElementById('outlook-filter-dropdown');
   if (dropdown) {
     dropdown.querySelectorAll('.dropdown-option').forEach(function(opt) {
-      var optStatus = (opt.getAttribute('onclick') || '').indexOf("'" + status + "'") !== -1;
+      var onclick = opt.getAttribute('onclick') || '';
+      var optStatus = onclick.indexOf("'" + status + "'") !== -1;
       opt.classList.toggle('selected', optStatus);
     });
     var sel = dropdown.querySelector('.dropdown-selected');
@@ -101,12 +146,14 @@ function renderOutlookPage() {
   var accounts = outlookAllAccounts;
 
   // 状态筛选
-  if (outlookStatusFilter === 'unregistered') {
-    accounts = accounts.filter(function(a) { return !a.registered; });
-  } else if (outlookStatusFilter === 'success') {
+  // all: 全部；success: 注册成功；unregistered: 从未跑过(无失败原因且未注册)；
+  // 其余值视为具体失败原因(failReason)，按原因精确匹配。
+  if (outlookStatusFilter === 'success') {
     accounts = accounts.filter(function(a) { return a.registered && a.success; });
-  } else if (outlookStatusFilter === 'failed') {
-    accounts = accounts.filter(function(a) { return a.registered && !a.success; });
+  } else if (outlookStatusFilter === 'unregistered') {
+    accounts = accounts.filter(function(a) { return !a.registered && !a.failReason; });
+  } else if (outlookStatusFilter !== 'all') {
+    accounts = accounts.filter(function(a) { return a.failReason === outlookStatusFilter; });
   }
 
   // 暂存筛选后的全部结果（非分页），供全选/反选/批量删除使用
@@ -138,8 +185,19 @@ function renderOutlookPage() {
     var html = '';
     pageAccounts.forEach(function(acc, i) {
       var globalIdx = start + i;
-      var status = acc.registered ? (acc.success ? '成功' : '失败') : '未注册';
-      var statusColor = acc.registered ? (acc.success ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)';
+      // 状态显示优先级：成功 > 失败原因(failReason) > 未注册
+      var status, statusColor;
+      if (acc.registered && acc.success) {
+        status = '成功';
+        statusColor = 'var(--success)';
+      } else if (acc.failReason) {
+        // 失败原因优先：即便 registered 仍为 false(待重试)，也直接展示具体失败原因
+        status = acc.failReason;
+        statusColor = 'var(--danger)';
+      } else {
+        status = '未注册';
+        statusColor = 'var(--text-muted)';
+      }
       var addedTime = acc.addedAt ? acc.addedAt.substring(5, 16) : '-';
       var checked = outlookSelectedEmails[acc.email] ? ' checked' : '';
       html += '<tr><td style="padding:8px 16px;"><input type="checkbox" class="outlook-row-cb" data-email="' + acc.email + '" onclick="toggleOutlookRow(this)"' + checked + '></td>';

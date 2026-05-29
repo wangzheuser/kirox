@@ -126,11 +126,11 @@ export namespace storage {
 	    moemailDomainMode: string;
 	    moemailDomains: string[];
 	    saved: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RegistrationConfig(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.count = source["count"];
@@ -160,11 +160,11 @@ export namespace task {
 	    moemailDomains: string[];
 	    moemailConfigs: Record<string, Array<email.MoeMailConfig>>;
 	    moemailRandomMode: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new StartTaskRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.count = source["count"];

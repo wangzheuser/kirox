@@ -71,7 +71,8 @@ func GetOutlookAccounts() []map[string]interface{} {
 }
 
 // UpdateAccountStatus 更新账号注册状态（纯内存操作，异步刷盘）
-func UpdateAccountStatus(email string, registered bool, success bool) map[string]interface{} {
+// failReason 记录最近一次失败的分类原因；成功或无失败时传空字符串，会清除旧原因。
+func UpdateAccountStatus(email string, registered bool, success bool, failReason string) map[string]interface{} {
 	found := false
 	now := time.Now().Format("2006-01-02 15:04:05")
 	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
@@ -80,6 +81,36 @@ func UpdateAccountStatus(email string, registered bool, success bool) map[string
 				accounts[i]["registered"] = registered
 				accounts[i]["success"] = success
 				accounts[i]["registeredAt"] = now
+				// 成功时清除失败原因，失败时记录最近一次原因
+				if failReason == "" {
+					delete(accounts[i], "failReason")
+				} else {
+					accounts[i]["failReason"] = failReason
+				}
+				found = true
+				break
+			}
+		}
+		return accounts
+	})
+	if !found {
+		return map[string]interface{}{"error": "账号不存在"}
+	}
+	return map[string]interface{}{"status": "updated"}
+}
+
+// MarkAccountFailReason 仅记录账号最近一次失败原因，不改变 registered/success。
+// 用于验证码等前置阶段失败：邮箱仍可被下次任务领取重试（registered 保持 false），
+// 但需保留失败原因供前端筛选展示。
+func MarkAccountFailReason(email string, failReason string) map[string]interface{} {
+	if failReason == "" {
+		return map[string]interface{}{"status": "skipped"}
+	}
+	found := false
+	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
+		for i, acc := range accounts {
+			if acc["email"] == email {
+				accounts[i]["failReason"] = failReason
 				found = true
 				break
 			}
@@ -180,6 +211,7 @@ func ResetOutlookAccountStatuses() map[string]interface{} {
 			accounts[i]["registered"] = false
 			accounts[i]["success"] = false
 			delete(accounts[i], "registeredAt")
+			delete(accounts[i], "failReason")
 			reset++
 		}
 		return accounts

@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/wailsapp/wails/v2 v2.12.0
 	golang.org/x/net v0.48.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (

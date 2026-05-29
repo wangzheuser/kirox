@@ -927,10 +927,10 @@
                 <span id="outlook-filter-label">全部</span><span class="dropdown-arrow"></span>
               </div>
               <div class="dropdown-options">
+                <!-- 选项由 rebuildOutlookFilterOptions() 动态生成：固定项(全部/成功/未注册) + 失败原因细分 -->
                 <div class="dropdown-option selected" onclick="setOutlookStatusFilter('all')">全部</div>
-                <div class="dropdown-option" onclick="setOutlookStatusFilter('unregistered')">未注册</div>
                 <div class="dropdown-option" onclick="setOutlookStatusFilter('success')">成功</div>
-                <div class="dropdown-option" onclick="setOutlookStatusFilter('failed')">失败</div>
+                <div class="dropdown-option" onclick="setOutlookStatusFilter('unregistered')">未注册</div>
               </div>
             </div>
             <!-- 批量操作区 -->
