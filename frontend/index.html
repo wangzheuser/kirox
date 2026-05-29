@@ -920,15 +920,29 @@
               <button onclick="clearAllOutlookAccounts()" class="btn btn-danger btn-sm">清空全部</button>
             </div>
           </div>
-          <div style="display:flex;gap:6px;margin-bottom:10px;">
-            <button class="btn btn-sm outlook-filter-btn filter-active" data-filter="all" onclick="setOutlookStatusFilter('all')">全部</button>
-            <button class="btn btn-sm outlook-filter-btn" data-filter="unregistered" onclick="setOutlookStatusFilter('unregistered')">未注册</button>
-            <button class="btn btn-sm outlook-filter-btn" data-filter="success" onclick="setOutlookStatusFilter('success')">成功</button>
-            <button class="btn btn-sm outlook-filter-btn" data-filter="failed" onclick="setOutlookStatusFilter('failed')">失败</button>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;">
+            <!-- 状态筛选下拉，复用通用 .custom-dropdown 组件 -->
+            <div class="custom-dropdown" id="outlook-filter-dropdown" style="width:130px;">
+              <div class="dropdown-selected" onclick="toggleDropdown('outlook-filter-dropdown')">
+                <span id="outlook-filter-label">全部</span><span class="dropdown-arrow"></span>
+              </div>
+              <div class="dropdown-options">
+                <div class="dropdown-option selected" onclick="setOutlookStatusFilter('all')">全部</div>
+                <div class="dropdown-option" onclick="setOutlookStatusFilter('unregistered')">未注册</div>
+                <div class="dropdown-option" onclick="setOutlookStatusFilter('success')">成功</div>
+                <div class="dropdown-option" onclick="setOutlookStatusFilter('failed')">失败</div>
+              </div>
+            </div>
+            <!-- 批量操作区 -->
+            <div style="display:flex;align-items:center;gap:8px;">
+              <button class="btn btn-secondary btn-sm" onclick="invertOutlookSelection()">反选</button>
+              <button id="outlook-batch-delete-btn" class="btn btn-danger btn-sm" onclick="batchDeleteOutlookAccounts()" disabled>批量删除 (<span id="outlook-selected-count">0</span>)</button>
+            </div>
           </div>
           <div style="flex:1;overflow-x:auto;min-height:0;">
             <table style="width:100%;">
               <thead><tr>
+                <th style="width:36px;padding:10px 16px;"><input type="checkbox" id="outlook-select-all" onclick="toggleOutlookSelectAll(this)"></th>
                 <th style="width:40px;padding:10px 16px;">#</th>
                 <th style="padding:10px 8px;">邮箱地址</th>
                 <th style="width:80px;padding:10px 8px;">状态</th>

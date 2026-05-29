@@ -4,6 +4,10 @@ var outlookCurrentPage = 1;
 var outlookPageSize = 10;
 var outlookAllAccounts = [];
 var outlookStatusFilter = 'all';
+// 当前筛选条件下的全部结果（非分页），供全选/反选/批量删除使用
+var outlookFilteredAccounts = [];
+// 选中账号集合：以 email 为键当 Set 用，独立于渲染，避免 3 秒自动刷新重渲染时丢失选中
+var outlookSelectedEmails = {};
 
 function openAddOutlookModal() {
   document.getElementById('add-outlook-modal').classList.add('show');
@@ -66,13 +70,31 @@ async function loadOutlookAccountsList() {
   }
 }
 
+// 状态筛选下拉各选项的中文标签
+var outlookFilterLabels = { all: '全部', unregistered: '未注册', success: '成功', failed: '失败' };
+
 function setOutlookStatusFilter(status) {
   outlookStatusFilter = status;
   outlookCurrentPage = 1;
+
+  // 更新下拉框显示文案
+  var labelEl = document.getElementById('outlook-filter-label');
+  if (labelEl) labelEl.textContent = outlookFilterLabels[status] || '全部';
+
+  // 更新下拉选项高亮，并收起下拉
+  var dropdown = document.getElementById('outlook-filter-dropdown');
+  if (dropdown) {
+    dropdown.querySelectorAll('.dropdown-option').forEach(function(opt) {
+      var optStatus = (opt.getAttribute('onclick') || '').indexOf("'" + status + "'") !== -1;
+      opt.classList.toggle('selected', optStatus);
+    });
+    var sel = dropdown.querySelector('.dropdown-selected');
+    var opts = dropdown.querySelector('.dropdown-options');
+    if (sel) sel.classList.remove('active');
+    if (opts) opts.classList.remove('show');
+  }
+
   renderOutlookPage();
-  document.querySelectorAll('.outlook-filter-btn').forEach(function(btn) {
-    btn.classList.toggle('filter-active', btn.dataset.filter === status);
-  });
 }
 
 function renderOutlookPage() {
@@ -86,6 +108,16 @@ function renderOutlookPage() {
   } else if (outlookStatusFilter === 'failed') {
     accounts = accounts.filter(function(a) { return a.registered && !a.success; });
   }
+
+  // 暂存筛选后的全部结果（非分页），供全选/反选/批量删除使用
+  outlookFilteredAccounts = accounts;
+
+  // 清理选中集合中已不存在的 email（账号被删/清空后防止脏数据），范围为全量账号
+  var existingEmails = {};
+  outlookAllAccounts.forEach(function(a) { existingEmails[a.email] = true; });
+  Object.keys(outlookSelectedEmails).forEach(function(em) {
+    if (!existingEmails[em]) delete outlookSelectedEmails[em];
+  });
 
   var tbody = document.getElementById('parsed-outlook-body');
   var pager = document.getElementById('outlook-pager');
@@ -109,7 +141,9 @@ function renderOutlookPage() {
       var status = acc.registered ? (acc.success ? '成功' : '失败') : '未注册';
       var statusColor = acc.registered ? (acc.success ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)';
       var addedTime = acc.addedAt ? acc.addedAt.substring(5, 16) : '-';
-      html += '<tr><td>' + (globalIdx+1) + '</td><td>' + acc.email + '</td>';
+      var checked = outlookSelectedEmails[acc.email] ? ' checked' : '';
+      html += '<tr><td style="padding:8px 16px;"><input type="checkbox" class="outlook-row-cb" data-email="' + acc.email + '" onclick="toggleOutlookRow(this)"' + checked + '></td>';
+      html += '<td>' + (globalIdx+1) + '</td><td>' + acc.email + '</td>';
       html += '<td style="color:' + statusColor + ';font-weight:600;">' + status + '</td>';
       html += '<td style="font-size:11px;color:var(--text-muted);font-family:var(--font-mono);">' + addedTime + '</td>';
       html += '<td style="text-align:right;"><a href="javascript:void(0)" onclick="deleteOutlookAccount(\'' + acc.email + '\')" style="color:var(--danger);">删除</a></td></tr>';
@@ -125,15 +159,104 @@ function renderOutlookPage() {
       pager.style.display = 'none';
     }
   } else {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">暂无邮箱账号</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">暂无邮箱账号</td></tr>';
     pager.style.display = 'none';
   }
+
+  // 同步全选框状态、选中计数与批量删除按钮可用性
+  refreshOutlookSelectionUI();
 }
 
 function changeOutlookPage(delta) {
   outlookCurrentPage += delta;
   if (outlookCurrentPage < 1) outlookCurrentPage = 1;
   renderOutlookPage();
+}
+
+// 切换单行选中状态
+function toggleOutlookRow(cb) {
+  var email = cb.getAttribute('data-email');
+  if (cb.checked) {
+    outlookSelectedEmails[email] = true;
+  } else {
+    delete outlookSelectedEmails[email];
+  }
+  refreshOutlookSelectionUI();
+}
+
+// 表头全选/取消：作用于当前筛选条件下的全部结果（跨页）
+function toggleOutlookSelectAll(cb) {
+  if (cb.checked) {
+    outlookFilteredAccounts.forEach(function(a) { outlookSelectedEmails[a.email] = true; });
+  } else {
+    outlookFilteredAccounts.forEach(function(a) { delete outlookSelectedEmails[a.email]; });
+  }
+  // 仅当前页有 DOM 复选框，重渲染同步勾选状态
+  renderOutlookPage();
+}
+
+// 反选：对当前筛选结果逐个翻转选中状态
+function invertOutlookSelection() {
+  outlookFilteredAccounts.forEach(function(a) {
+    if (outlookSelectedEmails[a.email]) {
+      delete outlookSelectedEmails[a.email];
+    } else {
+      outlookSelectedEmails[a.email] = true;
+    }
+  });
+  renderOutlookPage();
+}
+
+// 同步选中计数、批量删除按钮可用性，以及全选框的选中/半选状态
+function refreshOutlookSelectionUI() {
+  var selectedCount = Object.keys(outlookSelectedEmails).length;
+  var countEl = document.getElementById('outlook-selected-count');
+  if (countEl) countEl.textContent = selectedCount;
+
+  var btn = document.getElementById('outlook-batch-delete-btn');
+  if (btn) btn.disabled = selectedCount === 0;
+
+  // 按「筛选结果中被选中的数量」决定全选框状态
+  var selectAll = document.getElementById('outlook-select-all');
+  if (selectAll) {
+    var filteredTotal = outlookFilteredAccounts.length;
+    var selectedInFiltered = outlookFilteredAccounts.filter(function(a) {
+      return outlookSelectedEmails[a.email];
+    }).length;
+    if (filteredTotal === 0 || selectedInFiltered === 0) {
+      selectAll.checked = false;
+      selectAll.indeterminate = false;
+    } else if (selectedInFiltered === filteredTotal) {
+      selectAll.checked = true;
+      selectAll.indeterminate = false;
+    } else {
+      selectAll.checked = false;
+      selectAll.indeterminate = true;
+    }
+  }
+}
+
+// 批量删除选中账号
+function batchDeleteOutlookAccounts() {
+  var emails = Object.keys(outlookSelectedEmails);
+  if (emails.length === 0) {
+    showToast('请先选择要删除的账号');
+    return;
+  }
+  showConfirmModal('批量删除', '确认删除选中的 ' + emails.length + ' 个账号？此操作不可恢复！', '确认删除', async function() {
+    try {
+      var result = await window.go.main.App.DeleteOutlookAccounts(emails);
+      if (result.error) {
+        showToast(result.error, 'error');
+        return;
+      }
+      outlookSelectedEmails = {};
+      await loadOutlookAccountsList();
+      showToast('已删除 ' + (result.removed || 0) + ' 个账号');
+    } catch(e) {
+      showToast('批量删除失败: ' + e.message, 'error');
+    }
+  });
 }
 
 async function deleteOutlookAccount(email) {

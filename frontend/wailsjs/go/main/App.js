@@ -30,6 +30,10 @@ export function DeleteOutlookAccount(arg1) {
   return window['go']['main']['App']['DeleteOutlookAccount'](arg1);
 }
 
+export function DeleteOutlookAccounts(arg1) {
+  return window['go']['main']['App']['DeleteOutlookAccounts'](arg1);
+}
+
 export function DetectClashProxy(arg1, arg2) {
   return window['go']['main']['App']['DetectClashProxy'](arg1, arg2);
 }

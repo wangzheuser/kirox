@@ -183,6 +183,10 @@ func (a *App) DeleteOutlookAccount(em string) map[string]interface{} {
 	return email.DeleteOutlookAccount(em)
 }
 
+func (a *App) DeleteOutlookAccounts(emails []string) map[string]interface{} {
+	return email.DeleteOutlookAccounts(emails)
+}
+
 func (a *App) ClearOutlookAccounts() map[string]interface{} {
 	return email.ClearOutlookAccounts()
 }

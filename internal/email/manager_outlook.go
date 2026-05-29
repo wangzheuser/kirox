@@ -117,6 +117,32 @@ func DeleteOutlookAccount(email string) map[string]interface{} {
 	}
 }
 
+// DeleteOutlookAccounts 批量删除多个 Outlook 账号（纯内存操作，异步刷盘）
+func DeleteOutlookAccounts(emails []string) map[string]interface{} {
+	// 先把待删邮箱放入 set，匹配复杂度降到 O(1)，整体删除为 O(n)
+	target := make(map[string]struct{}, len(emails))
+	for _, e := range emails {
+		target[e] = struct{}{}
+	}
+	removed := 0
+	newLen := 0
+	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
+		out := make([]map[string]interface{}, 0, len(accounts))
+		for _, acc := range accounts {
+			if em, _ := acc["email"].(string); em != "" {
+				if _, ok := target[em]; ok {
+					removed++
+					continue
+				}
+			}
+			out = append(out, acc)
+		}
+		newLen = len(out)
+		return out
+	})
+	return map[string]interface{}{"status": "deleted", "removed": removed, "total": newLen}
+}
+
 // ClearOutlookAccounts 清空所有 Outlook 账号
 func ClearOutlookAccounts() map[string]interface{} {
 	storage.SetAccountsCached([]map[string]interface{}{})

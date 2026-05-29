@@ -19,6 +19,8 @@ export function ClearRegisteredOutlookAccounts():Promise<Record<string, any>>;
 
 export function DeleteOutlookAccount(arg1:string):Promise<Record<string, any>>;
 
+export function DeleteOutlookAccounts(arg1:Array<string>):Promise<Record<string, any>>;
+
 export function DetectClashProxy(arg1:string,arg2:proxy.ClashConfig):Promise<proxy.Info>;
 
 export function DetectEmailProxy(arg1:string):Promise<proxy.Info>;
