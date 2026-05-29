@@ -22,7 +22,7 @@
 
 - **库：** `gopkg.in/natefinch/lumberjack.v2`
 - **理由：** 成熟稳定、自动处理并发安全、代码量少
-- **配置：** `MaxSize: 64MB`，`MaxBackups: 0`（不保留备份）
+- **配置：** `MaxSize: 64MB`，`MaxBackups: 1`（只保留当前文件）
 
 ### 2.2 架构设计
 
@@ -89,7 +89,7 @@ func (s *State) InitLogFile(outputDir string) error {
     s.logFile = &lumberjack.Logger{
         Filename:   logPath,
         MaxSize:    64,        // MB
-        MaxBackups: 0,         // 不保留备份（lumberjack 会自动清理）
+        MaxBackups: 1,         // 只保留当前文件，轮转时删除旧备份
         MaxAge:     0,         // 不按时间清理
         Compress:   false,     // 不压缩
         LocalTime:  true,      // 使用本地时间
@@ -220,11 +220,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 2. 关闭当前 `app.log`
 3. 重命名为 `app.log.1`
 4. 创建新的 `app.log`
-5. 由于 `MaxBackups: 0`，自动删除 `app.log.1`
+5. 由于 `MaxBackups: 1`，在下次轮转时删除旧的 `app.log.1`
 
 **磁盘占用：**
-- 稳定状态：最多 64MB（单个 `app.log`）
-- 轮转瞬间：可能短暂达到 128MB（`app.log` + `app.log.1`）
+- 稳定状态：最多 128MB（`app.log` + `app.log.1`）
+- 轮转瞬间：可能短暂达到 192MB（三个文件）
 
 ### 4.4 并发安全
 
@@ -301,7 +301,7 @@ func TestLogFileConcurrency(t *testing.T) {
 1. 启动任务，观察 `app.log` 文件创建
 2. 运行长时间任务，生成大量日志
 3. 验证文件大小不超过 64M
-4. 验证轮转后只保留 `app.log`，不存在 `app.log.1` 备份文件
+4. 验证轮转后存在 `app.log` 和 `app.log.1` 两个文件
 5. 对比内存日志（前端展示）与文件日志内容一致性
 
 ## 6. 依赖管理
@@ -328,7 +328,7 @@ require (
 - 预计单条日志写入延迟 < 0.1ms（内存缓冲）
 - 对任务整体性能影响可忽略（日志非热路径）
 
-**注意：** 如果程序崩溃，缓冲区中的日志（最后数秒）可能丢失。如需绝对可靠性，可在 `AppendLog()` 中每次调用 `logFile.Sync()` 强制刷盘，但会降低性能（每条日志约 1-5ms）。
+**注意：** 如果程序崩溃，缓冲区中的日志（最后数秒）可能丢失。lumberjack 不直接暴露 `Sync()` 方法，如需强制刷盘需要使用 `os.File` 包装或定期调用 `Close()` + 重新打开。
 
 **内存占用：**
 - lumberjack 内部缓冲约 4KB
@@ -336,8 +336,8 @@ require (
 - 总增加内存 < 10KB
 
 **磁盘占用：**
-- 稳定状态：最多 64MB
-- 轮转瞬间：可能短暂达到 128MB
+- 稳定状态：最多 128MB（`app.log` + `app.log.1`）
+- 轮转瞬间：可能短暂达到 192MB
 
 ## 8. 向后兼容性
 
@@ -367,7 +367,7 @@ require (
 | 磁盘空间不足 | 日志写入失败 | 降级为仅内存日志，不阻断任务 |
 | 文件权限问题 | 无法创建日志文件 | 初始化时检测并记录错误 |
 | 并发写入冲突 | 数据竞争 | lumberjack 内部已加锁 |
-| 日志文件过大 | 占用磁盘空间 | 64M 硬限制 + 自动轮转 |
+| 日志文件过大 | 占用磁盘空间 | 64M 硬限制 + 自动轮转，最多 128MB |
 
 ## 11. 实施计划
 
