@@ -33,6 +33,11 @@ type graphMessage struct {
 	Body             struct {
 		Content string `json:"content"`
 	} `json:"body"`
+	ToRecipients []struct {
+		EmailAddress struct {
+			Address string `json:"address"`
+		} `json:"emailAddress"`
+	} `json:"toRecipients"`
 }
 
 // RefreshOutlookGraphTokenWithProxy 用 OutlookRegister 的 Graph scope 刷新 access_token。
@@ -136,6 +141,13 @@ func findGraphOTP(accessToken string, after time.Time, codeRegex *regexp.Regexp,
 			if err != nil || receivedAt.Before(after) {
 				continue
 			}
+			// [DEBUG] 验证 To 字段内容
+			var toAddrs []string
+			for _, r := range message.ToRecipients {
+				toAddrs = append(toAddrs, r.EmailAddress.Address)
+			}
+			log.Printf("[Outlook Graph][DEBUG] 邮件 Subject=%q, To=%v, ReceivedAt=%s", message.Subject, toAddrs, message.ReceivedDateTime)
+
 			text := strings.Join([]string{message.Subject, message.BodyPreview, message.Body.Content}, " ")
 			if code := extractCodeFromText(text, codeRegex); code != "" {
 				return code, nil
@@ -149,7 +161,7 @@ func fetchGraphMessages(accessToken, folder, proxyURL string) ([]graphMessage, e
 	params := url.Values{}
 	params.Set("$top", "10")
 	params.Set("$orderby", "receivedDateTime desc")
-	params.Set("$select", "subject,bodyPreview,body,receivedDateTime")
+	params.Set("$select", "subject,bodyPreview,body,receivedDateTime,toRecipients")
 	endpoint := strings.TrimRight(outlookGraphAPIBase, "/") +
 		"/me/mailFolders/" + url.PathEscape(folder) + "/messages?" + params.Encode()
 

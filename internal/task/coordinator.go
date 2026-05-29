@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ type StartTaskRequest struct {
 	Concurrency       int                              `json:"concurrency"`
 	Delay             int                              `json:"delay"`
 	RetryCount        int                              `json:"retryCount"`
+	OTPTimeout        int                              `json:"otpTimeout"`
 	OutputPath        string                           `json:"outputPath"`
 	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail" 或 "mailporary"
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
@@ -180,6 +182,10 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	taskConfig.EmailProvider = emailProvider
 	taskConfig.EmailProxy = storage.GetEmailProxy()
 	taskConfig.OutlookScope = storage.GetOutlookScope()
+	taskConfig.OTPTimeout = req.OTPTimeout
+	if taskConfig.OTPTimeout < 30 {
+		taskConfig.OTPTimeout = 120
+	}
 	pageStayConfig := storage.GetPageStayConfig()
 	taskConfig.PageStayMinMs = pageStayConfig.MinMs
 	taskConfig.PageStayMaxMs = pageStayConfig.MaxMs
@@ -274,7 +280,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	// 统计计数器
 	var statsMu sync.Mutex
 	var taskDurations []float64
-	var failRegistered, failNetwork, failBanned, failOther int
+	failCategories := make(map[string]int)
 	taskStartTime := time.Now()
 
 	// 共享账号池（并发安全），goroutine 动态领取账号（仅 Outlook 模式使用）
@@ -558,19 +564,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		taskDurations = append(taskDurations, itemDuration)
 		if !success {
 			errorMsg, _ := result["error"].(string)
-			errClass := classifyError(errorMsg)
-			switch errClass {
-			case "registered":
-				failRegistered++
-			case "banned":
-				failBanned++
-			default:
-				if strings.Contains(errorMsg, "timeout") || strings.Contains(errorMsg, "网络") || strings.Contains(errorMsg, "connection") || strings.Contains(errorMsg, "TLS") {
-					failNetwork++
-				} else {
-					failOther++
-				}
-			}
+			failCategories[classifyError(errorMsg)]++
 		}
 		statsMu.Unlock()
 
@@ -660,17 +654,19 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	}
 	if failCount > 0 {
 		log.Printf("[Kiro] 失败明细:")
-		if failRegistered > 0 {
-			log.Printf("[Kiro]   邮箱已注册: %d (%.0f%%)", failRegistered, float64(failRegistered)/float64(totalCount)*100)
+		type failEntry struct {
+			name  string
+			count int
 		}
-		if failBanned > 0 {
-			log.Printf("[Kiro]   账号封禁: %d (%.0f%%)", failBanned, float64(failBanned)/float64(totalCount)*100)
+		var entries []failEntry
+		for name, count := range failCategories {
+			entries = append(entries, failEntry{name, count})
 		}
-		if failNetwork > 0 {
-			log.Printf("[Kiro]   网络问题: %d (%.0f%%)", failNetwork, float64(failNetwork)/float64(totalCount)*100)
-		}
-		if failOther > 0 {
-			log.Printf("[Kiro]   其他错误: %d (%.0f%%)", failOther, float64(failOther)/float64(totalCount)*100)
+		sort.Slice(entries, func(i, j int) bool {
+			return entries[i].count > entries[j].count
+		})
+		for _, e := range entries {
+			log.Printf("[Kiro]   %s: %d (%.0f%%)", e.name, e.count, float64(e.count)/float64(totalCount)*100)
 		}
 	}
 	if sucCount > 0 {
@@ -682,15 +678,43 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 // classifyError 根据错误信息粗分类，用于统计展示。
 func classifyError(errorMsg string) string {
 	if errorMsg == "" {
-		return "failed"
+		return "未知错误"
 	}
-	if strings.Contains(errorMsg, "suspended") {
-		return "banned"
+	if strings.Contains(errorMsg, "suspended") || strings.Contains(errorMsg, "封禁") {
+		return "账号封禁"
 	}
-	if strings.Contains(errorMsg, "邮箱已注册过") || strings.Contains(errorMsg, "临时邮箱不可能已存在") {
-		return "registered"
+	if strings.Contains(errorMsg, "邮箱已注册") || strings.Contains(errorMsg, "临时邮箱不可能已存在") {
+		return "邮箱已注册"
 	}
-	return "failed"
+	if strings.Contains(errorMsg, "验证码接收超时") || strings.Contains(errorMsg, "等待验证码超时") {
+		return "验证码超时"
+	}
+	if strings.Contains(errorMsg, "INVALID_OTP") || strings.Contains(errorMsg, "验证码错误") || strings.Contains(errorMsg, "验证码无效") {
+		return "验证码无效"
+	}
+	if strings.Contains(errorMsg, "IP或浏览器指纹") || strings.Contains(errorMsg, "注册被拦截") || strings.Contains(errorMsg, "BLOCKED") {
+		return "IP/指纹风控"
+	}
+	if strings.Contains(errorMsg, "请求过于频繁") {
+		return "请求频率限制"
+	}
+	if strings.Contains(errorMsg, "邮箱服务异常") || strings.Contains(errorMsg, "获取邮件失败") || strings.Contains(errorMsg, "邮箱创建失败") {
+		return "邮箱服务异常"
+	}
+	if strings.Contains(errorMsg, "服务暂时不可用") {
+		return "服务不可用"
+	}
+	if strings.Contains(errorMsg, "任务已取消") {
+		return "任务取消"
+	}
+	if strings.Contains(errorMsg, "加密失败") || strings.Contains(errorMsg, "JWE") {
+		return "加密服务异常"
+	}
+	lower := strings.ToLower(errorMsg)
+	if strings.Contains(lower, "timeout") || strings.Contains(errorMsg, "网络") || strings.Contains(lower, "connection") || strings.Contains(lower, "tls") || strings.Contains(errorMsg, "代理") {
+		return "网络/代理问题"
+	}
+	return "其他错误"
 }
 
 // isProxyNetworkError 判断错误是否更像代理节点不可用，而不是业务风控或邮箱问题。

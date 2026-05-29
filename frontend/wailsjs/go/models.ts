@@ -1,14 +1,14 @@
 export namespace email {
-
+	
 	export class MoeMailConfig {
 	    name: string;
 	    url: string;
 	    apiKey: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new MoeMailConfig(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -20,7 +20,7 @@ export namespace email {
 }
 
 export namespace proxy {
-
+	
 	export class ClashConfig {
 	    enabled: boolean;
 	    apiUrl: string;
@@ -29,11 +29,11 @@ export namespace proxy {
 	    testUrl: string;
 	    testTimeout: number;
 	    skipConnectivityTest: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ClashConfig(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.enabled = source["enabled"];
@@ -67,11 +67,11 @@ export namespace proxy {
 	    clashNode?: string;
 	    clashDelayMs?: number;
 	    clashSkipped?: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Info(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
@@ -101,15 +101,15 @@ export namespace proxy {
 }
 
 export namespace storage {
-
+	
 	export class PageStayConfig {
 	    minMs: number;
 	    maxMs: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new PageStayConfig(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.minMs = source["minMs"];
@@ -120,6 +120,8 @@ export namespace storage {
 	    count: number;
 	    concurrency: number;
 	    delay: number;
+	    retryCount: number;
+	    otpTimeout: number;
 	    emailProvider: string;
 	    moemailDomainMode: string;
 	    moemailDomains: string[];
@@ -134,6 +136,8 @@ export namespace storage {
 	        this.count = source["count"];
 	        this.concurrency = source["concurrency"];
 	        this.delay = source["delay"];
+	        this.retryCount = source["retryCount"];
+	        this.otpTimeout = source["otpTimeout"];
 	        this.emailProvider = source["emailProvider"];
 	        this.moemailDomainMode = source["moemailDomainMode"];
 	        this.moemailDomains = source["moemailDomains"];
@@ -144,11 +148,13 @@ export namespace storage {
 }
 
 export namespace task {
-
+	
 	export class StartTaskRequest {
 	    count: number;
 	    concurrency: number;
 	    delay: number;
+	    retryCount: number;
+	    otpTimeout: number;
 	    outputPath: string;
 	    emailProvider: string;
 	    moemailDomains: string[];
@@ -164,13 +170,15 @@ export namespace task {
 	        this.count = source["count"];
 	        this.concurrency = source["concurrency"];
 	        this.delay = source["delay"];
+	        this.retryCount = source["retryCount"];
+	        this.otpTimeout = source["otpTimeout"];
 	        this.outputPath = source["outputPath"];
 	        this.emailProvider = source["emailProvider"];
 	        this.moemailDomains = source["moemailDomains"];
 	        this.moemailConfigs = this.convertValues(source["moemailConfigs"], Array<email.MoeMailConfig>, true);
 	        this.moemailRandomMode = source["moemailRandomMode"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;

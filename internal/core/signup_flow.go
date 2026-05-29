@@ -332,9 +332,9 @@ func (r *Registrar) Step10GetOTP() (string, error) {
 			err  error
 		)
 		if r.Cfg.UseOutlookGraph() {
-			code, err = email.WaitForOTPGraphWithProxy(r.Ctx, *r.Cfg.OutlookAccount, r.Cfg.OutlookOTPAfter, 120, 5, r.Cfg.EmailProxy)
+			code, err = email.WaitForOTPGraphWithProxy(r.Ctx, *r.Cfg.OutlookAccount, r.Cfg.OutlookOTPAfter, r.Cfg.OTPTimeout, 5, r.Cfg.EmailProxy)
 		} else {
-			code, err = email.WaitForOTPWithProxy(r.Ctx, *r.Cfg.OutlookAccount, r.OutlookMailCount, 120, 5, r.Cfg.EmailProxy)
+			code, err = email.WaitForOTPWithProxy(r.Ctx, *r.Cfg.OutlookAccount, r.OutlookMailCount, r.Cfg.OTPTimeout, 5, r.Cfg.EmailProxy)
 		}
 		if err != nil {
 			return "", err
@@ -342,7 +342,7 @@ func (r *Registrar) Step10GetOTP() (string, error) {
 		log.Printf("验证码: %s", code)
 		return code, nil
 	}
-	code, err := r.EmailSvc.WaitForCode(120, 3)
+	code, err := r.EmailSvc.WaitForCode(r.Cfg.OTPTimeout, 3)
 	if err != nil {
 		return "", err
 	}

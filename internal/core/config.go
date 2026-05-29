@@ -46,6 +46,7 @@ type Config struct {
 	OutlookAccount  *email.OutlookAccount
 	OutlookScope    string
 	OutlookOTPAfter time.Time
+	OTPTimeout      int
 
 	UseMoeMail      bool
 	MoeMailConfig   *email.MoeMailConfig

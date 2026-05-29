@@ -326,6 +326,31 @@ func (c *imapClient) close() {
 	c.conn.Close()
 }
 
+// fetchHeader 获取指定邮件的某个 header 字段值
+func (c *imapClient) fetchHeader(seq int, field string) (string, error) {
+	if seq <= 0 {
+		return "", fmt.Errorf("无效的邮件序号")
+	}
+	tag, err := c.sendCommand(fmt.Sprintf("FETCH %d (BODY.PEEK[HEADER.FIELDS (%s)])", seq, field))
+	if err != nil {
+		return "", err
+	}
+	lines, result, err := c.readUntilTag(tag)
+	if err != nil {
+		return "", err
+	}
+	if !strings.Contains(result, "OK") {
+		return "", fmt.Errorf("FETCH HEADER 失败: %s", result)
+	}
+	for _, line := range lines {
+		lower := strings.ToLower(line)
+		if strings.HasPrefix(lower, strings.ToLower(field)+":") {
+			return strings.TrimSpace(line[len(field)+1:]), nil
+		}
+	}
+	return "", nil
+}
+
 // fetchLatestBody 获取指定邮件的正文并解码
 func (c *imapClient) fetchLatestBody(seq int) (string, error) {
 	if seq <= 0 {
@@ -479,6 +504,12 @@ func WaitForOTPWithProxy(ctx context.Context, acc OutlookAccount, beforeCount, t
 		}
 
 		for i := total; i > beforeCount; i-- {
+			// [DEBUG] 获取 To header 验证收件人地址
+			toHeader, _ := client.fetchHeader(i, "TO")
+			if toHeader != "" {
+				log.Printf("[Outlook IMAP][DEBUG] 邮件 seq=%d, To=%s", i, strings.TrimSpace(toHeader))
+			}
+
 			body, err := client.fetchLatestBody(i)
 			if err != nil {
 				continue
