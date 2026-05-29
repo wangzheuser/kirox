@@ -107,7 +107,7 @@ func WaitForOTPGraphWithProxy(ctx context.Context, acc OutlookAccount, after tim
 			return "", ctx.Err()
 		default:
 		}
-		code, err := findGraphOTP(accessToken, after, codeRegex, runtimeProxyURL)
+		code, err := findGraphOTP(accessToken, acc.Email, after, codeRegex, runtimeProxyURL)
 		if err != nil && attempt%5 == 0 {
 			log.Printf("[Outlook Graph] 查询失败: %v, 重试中...", err)
 		}
@@ -128,7 +128,7 @@ func WaitForOTPGraphWithProxy(ctx context.Context, acc OutlookAccount, after tim
 	return "", fmt.Errorf("等待验证码超时 (%ds)", timeout)
 }
 
-func findGraphOTP(accessToken string, after time.Time, codeRegex *regexp.Regexp, proxyURL string) (string, error) {
+func findGraphOTP(accessToken, targetEmail string, after time.Time, codeRegex *regexp.Regexp, proxyURL string) (string, error) {
 	var lastErr error
 	for _, folder := range []string{"inbox", "junkemail"} {
 		messages, err := fetchGraphMessages(accessToken, folder, proxyURL)
@@ -141,12 +141,21 @@ func findGraphOTP(accessToken string, after time.Time, codeRegex *regexp.Regexp,
 			if err != nil || receivedAt.Before(after) {
 				continue
 			}
-			// [DEBUG] 验证 To 字段内容
+			// 校验邮件收件人是否为当前注册的别名邮箱。
+			// 共享收件箱下并发注册时，需按收件人过滤，避免拿到其他别名的验证码。
 			var toAddrs []string
 			for _, r := range message.ToRecipients {
 				toAddrs = append(toAddrs, r.EmailAddress.Address)
 			}
-			log.Printf("[Outlook Graph][DEBUG] 邮件 Subject=%q, To=%v, ReceivedAt=%s", message.Subject, toAddrs, message.ReceivedDateTime)
+			toField := strings.Join(toAddrs, ",")
+			if toField == "" {
+				// To 缺失时无法判别归属，保留旧行为继续尝试，但记录告警以便排查。
+				log.Printf("[Outlook Graph] 警告: 邮件 Subject=%q 缺少 To 字段，无法校验收件人，按旧逻辑处理", message.Subject)
+			} else if !recipientMatches(toField, targetEmail) {
+				// 收件人不匹配当前别名，跳过该邮件，避免验证码错配。
+				log.Printf("[Outlook Graph] 跳过非本别名邮件: Subject=%q, To=%v, 期望=%s", message.Subject, toAddrs, targetEmail)
+				continue
+			}
 
 			text := strings.Join([]string{message.Subject, message.BodyPreview, message.Body.Content}, " ")
 			if code := extractCodeFromText(text, codeRegex); code != "" {

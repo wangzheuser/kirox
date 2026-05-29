@@ -29,6 +29,21 @@ type OutlookAccount struct {
 	RefreshToken string
 }
 
+// recipientMatches 判断邮件收件人是否命中当前注册的别名邮箱。
+// 别名邮箱（如 a001@outlook.jp 与 a002@outlook.jp）共享同一物理收件箱，
+// 并发注册时收件箱会同时收到发往不同别名的验证码邮件，必须按收件人区分，
+// 否则会把别的别名的验证码误当成自己的。
+// toField 可能是 "Name <a001@outlook.jp>"、"a001@outlook.jp" 或逗号分隔的多个地址，
+// 故采用规范化(小写+去空格)后的包含匹配而非全等。
+// 注意：当 target 为空（理论上不应发生）时返回 true 以保留旧行为，避免误伤。
+func recipientMatches(toField, target string) bool {
+	target = strings.ToLower(strings.TrimSpace(target))
+	if target == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(toField), target)
+}
+
 // ParseOutlookCSV 解析 outlook.csv
 func ParseOutlookCSV(path string) ([]OutlookAccount, error) {
 	data, err := os.ReadFile(path)
@@ -504,10 +519,17 @@ func WaitForOTPWithProxy(ctx context.Context, acc OutlookAccount, beforeCount, t
 		}
 
 		for i := total; i > beforeCount; i-- {
-			// [DEBUG] 获取 To header 验证收件人地址
+			// 获取 To header，校验邮件收件人是否为当前注册的别名邮箱。
+			// 共享收件箱下并发注册时，需按收件人过滤，避免拿到其他别名的验证码。
 			toHeader, _ := client.fetchHeader(i, "TO")
-			if toHeader != "" {
-				log.Printf("[Outlook IMAP][DEBUG] 邮件 seq=%d, To=%s", i, strings.TrimSpace(toHeader))
+			toHeader = strings.TrimSpace(toHeader)
+			if toHeader == "" {
+				// To 缺失时无法判别归属，保留旧行为继续尝试，但记录告警以便排查。
+				log.Printf("[Outlook IMAP] 警告: 邮件 seq=%d 缺少 To 字段，无法校验收件人，按旧逻辑处理", i)
+			} else if !recipientMatches(toHeader, acc.Email) {
+				// 收件人不匹配当前别名，跳过该邮件，避免验证码错配。
+				log.Printf("[Outlook IMAP] 跳过非本别名邮件: seq=%d, To=%s, 期望=%s", i, toHeader, acc.Email)
+				continue
 			}
 
 			body, err := client.fetchLatestBody(i)
