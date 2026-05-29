@@ -132,6 +132,7 @@ func (s *State) AppendLog(msg string) {
     
     // 文件日志（新增）
     if s.logFile != nil {
+        // 忽略写入错误，降级为仅内存日志（见 4.2 错误处理）
         s.logFile.Write([]byte(msg))
     }
 }
@@ -300,7 +301,7 @@ func TestLogFileConcurrency(t *testing.T) {
 1. 启动任务，观察 `app.log` 文件创建
 2. 运行长时间任务，生成大量日志
 3. 验证文件大小不超过 64M
-4. 检查 `app.log.1` 备份文件在下次启动时被清理
+4. 验证轮转后只保留 `app.log`，不存在 `app.log.1` 备份文件
 5. 对比内存日志（前端展示）与文件日志内容一致性
 
 ## 6. 依赖管理
