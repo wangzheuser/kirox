@@ -10,10 +10,12 @@ import (
 	"reg_go/internal/kirorsync"
 	"reg_go/internal/proxy"
 	"reg_go/internal/subscription"
+	"regexp"
 
 	"reg_go/internal/storage"
 	"reg_go/internal/task"
 	"reg_go/internal/updater"
+	goruntime "runtime"
 	"strings"
 	"time"
 )
@@ -65,9 +67,62 @@ type logWriter struct {
 }
 
 func (w *logWriter) Write(p []byte) (int, error) {
-	msg := string(p)
+	msg := addGoroutineLabel(string(p))
 	task.Manager.AppendLog(msg)
-	return os.Stderr.Write(p)
+	_, err := os.Stderr.Write([]byte(msg))
+	return len(p), err
+}
+
+var (
+	goroutineHeaderRE = regexp.MustCompile(`^goroutine ([0-9]+) `)
+	logTimestampRE    = regexp.MustCompile(`^(\d{2}:\d{2}:\d{2})(\s+)`)
+)
+
+func addGoroutineLabel(msg string) string {
+	if msg == "" {
+		return msg
+	}
+
+	label := currentGoroutineLabel()
+	var b strings.Builder
+	start := 0
+	for start < len(msg) {
+		newlineOffset := strings.IndexByte(msg[start:], '\n')
+		if newlineOffset == -1 {
+			b.WriteString(addGoroutineLabelToLine(msg[start:], label))
+			break
+		}
+
+		end := start + newlineOffset
+		line := msg[start:end]
+		if strings.HasSuffix(line, "\r") {
+			b.WriteString(addGoroutineLabelToLine(strings.TrimSuffix(line, "\r"), label))
+			b.WriteString("\r\n")
+		} else {
+			b.WriteString(addGoroutineLabelToLine(line, label))
+			b.WriteByte('\n')
+		}
+		start = end + 1
+	}
+	return b.String()
+}
+
+func currentGoroutineLabel() string {
+	buf := make([]byte, 64)
+	n := goruntime.Stack(buf, false)
+	m := goroutineHeaderRE.FindStringSubmatch(string(buf[:n]))
+	if len(m) == 2 {
+		return "[g" + m[1] + "]"
+	}
+	return "[g?]"
+}
+
+func addGoroutineLabelToLine(line, label string) string {
+	m := logTimestampRE.FindStringSubmatchIndex(line)
+	if m == nil {
+		return label + " " + line
+	}
+	return line[:m[3]] + " " + label + " " + line[m[5]:]
 }
 
 // GetStatus 获取任务状态

@@ -85,60 +85,39 @@ func SyncAccounts(apiURL, apiKey string, accounts []map[string]interface{}) Sync
 
 	total := len(validAccounts)
 	result := SyncResult{Total: total}
-	var retryable []map[string]interface{}
 
 	log.Printf("[Kiro] kiro.rs 同步开始: 共 %d 个有效账号", total)
 
-	// 第一轮推送
+	// 逐条推送；可重试错误在当前账号上立即重试一次，避免后续账号日志插入导致难以对应。
 	for i, acc := range validAccounts {
 		detail := pushOne(apiURL, apiKey, acc)
+		retried := false
+		if !detail.Success && isRetryableError(detail.Error) {
+			log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 失败(重试1/1): %s", i+1, total, detail.Email, detail.Error)
+			detail = pushOne(apiURL, apiKey, acc)
+			retried = true
+		}
+
 		if detail.Success {
 			result.Success++
+			prefix := "[Kiro] kiro.rs 同步"
+			if retried {
+				prefix = "[Kiro] kiro.rs 重试"
+			}
 			if detail.Error != "" {
-				log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 已存在，视为成功", i+1, total, detail.Email)
+				log.Printf("%s [%d/%d] %s -> 已存在，视为成功", prefix, i+1, total, detail.Email)
 			} else {
-				log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 成功", i+1, total, detail.Email)
+				log.Printf("%s [%d/%d] %s -> 成功", prefix, i+1, total, detail.Email)
 			}
 		} else {
-			// 仅网络错误和 5xx 可重试
-			if isRetryableError(detail.Error) {
-				retryable = append(retryable, acc)
-				log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 失败(待重试): %s", i+1, total, detail.Email, detail.Error)
+			result.Failed++
+			if retried {
+				log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 失败: %s", i+1, total, detail.Email, detail.Error)
 			} else {
-				result.Failed++
 				log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 失败: %s", i+1, total, detail.Email, detail.Error)
 			}
 		}
 		result.Details = append(result.Details, detail)
-	}
-
-	// 重试轮：等待 2s 后统一重试
-	if len(retryable) > 0 {
-		retryTotal := len(retryable)
-		log.Printf("[Kiro] kiro.rs 同步重试: %d 条失败记录，2s 后重试", retryTotal)
-		time.Sleep(2 * time.Second)
-		for i, acc := range retryable {
-			detail := pushOne(apiURL, apiKey, acc)
-			// 更新对应的 detail（找到同 email 的失败记录替换）
-			email, _ := acc["email"].(string)
-			for j := range result.Details {
-				if result.Details[j].Email == email && !result.Details[j].Success {
-					result.Details[j] = detail
-					break
-				}
-			}
-			if detail.Success {
-				result.Success++
-				if detail.Error != "" {
-					log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 已存在，视为成功", i+1, retryTotal, detail.Email)
-				} else {
-					log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 成功", i+1, retryTotal, detail.Email)
-				}
-			} else {
-				result.Failed++
-				log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 失败: %s", i+1, retryTotal, detail.Email, detail.Error)
-			}
-		}
 	}
 
 	return result
