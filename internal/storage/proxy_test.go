@@ -114,8 +114,10 @@ func TestSetEmailProxyKeepsTemplateURL(t *testing.T) {
 
 func withTempStorageConfig(t *testing.T, content string) {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", "")
+	tempRoot := t.TempDir()
+	for key, value := range storageTestEnvVars(tempRoot) {
+		t.Setenv(key, value)
+	}
 	_dataDir = ""
 	_dataDirOnce = sync.Once{}
 	_resultOutputDir = ""
@@ -133,5 +135,28 @@ func withTempStorageConfig(t *testing.T, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func storageTestEnvVars(tempRoot string) map[string]string {
+	return map[string]string{
+		"APPDATA":         tempRoot,
+		"XDG_CONFIG_HOME": tempRoot,
+		"HOME":            tempRoot,
+		"USERPROFILE":     tempRoot,
+	}
+}
+
+func TestStorageTestEnvVarsIncludeWindowsAppData(t *testing.T) {
+	tmp := t.TempDir()
+	env := storageTestEnvVars(tmp)
+	if env["APPDATA"] != tmp {
+		t.Fatalf("APPDATA must be isolated on Windows: %#v", env)
+	}
+	if env["XDG_CONFIG_HOME"] != tmp {
+		t.Fatalf("XDG_CONFIG_HOME must be isolated on Unix: %#v", env)
+	}
+	if env["HOME"] != tmp {
+		t.Fatalf("HOME must be isolated for fallback paths: %#v", env)
 	}
 }
