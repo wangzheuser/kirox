@@ -133,7 +133,7 @@ export function StartTask(arg1:task.StartTaskRequest):Promise<Record<string, any
 
 export function StopTask():Promise<Record<string, any>>;
 
-export function SyncAccountPoolToKiroRS():Promise<Record<string, any>>;
+export function SyncAccountPoolToKiroRS(arg1:string):Promise<Record<string, any>>;
 
 export function TestKiroRSConnection(arg1:string,arg2:string):Promise<Record<string, any>>;
 

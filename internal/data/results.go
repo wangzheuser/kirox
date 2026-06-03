@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,7 @@ func SaveKiroSuccess(result map[string]interface{}, outDir string) error {
 		"password":     result["password"],
 		"accessToken":  at["accessToken"],
 		"refreshToken": at["refreshToken"],
+		"kiroRsSynced": false,
 		"provider":     "BuilderId",
 		"clientId":     result["client_id"],
 		"clientSecret": result["client_secret"],
@@ -57,6 +59,13 @@ func SaveKiroSuccess(result map[string]interface{}, outDir string) error {
 	merged := make([]map[string]interface{}, 0, len(existing)+1)
 	for _, e := range existing {
 		if em, _ := e["email"].(string); em == emailAddr {
+			oldRefresh, _ := e["refreshToken"].(string)
+			newRefresh, _ := item["refreshToken"].(string)
+			if oldRefresh == newRefresh {
+				if synced, _ := e["kiroRsSynced"].(bool); synced {
+					item["kiroRsSynced"] = true
+				}
+			}
 			continue
 		}
 		merged = append(merged, e)
@@ -73,6 +82,47 @@ func SaveKiroSuccess(result map[string]interface{}, outDir string) error {
 // LoadAccounts 读取 outDir/accounts.json 中保存的账号列表（按写入顺序返回）。
 func LoadAccounts(outDir string) ([]map[string]interface{}, error) {
 	return loadJSONArray(filepath.Join(outDir, "accounts.json"))
+}
+
+// MarkKiroRSSynced 将指定邮箱的账号标记为已同步到 kiro.rs。
+func MarkKiroRSSynced(outDir string, emails []string) (int, error) {
+	if len(emails) == 0 {
+		return 0, nil
+	}
+	wanted := make(map[string]struct{}, len(emails))
+	for _, email := range emails {
+		if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
+			wanted[email] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return 0, nil
+	}
+
+	path := filepath.Join(outDir, "accounts.json")
+	existing, err := loadJSONArray(path)
+	if err != nil || len(existing) == 0 {
+		return 0, err
+	}
+
+	updated := 0
+	for _, item := range existing {
+		email, _ := item["email"].(string)
+		if _, ok := wanted[strings.ToLower(strings.TrimSpace(email))]; !ok {
+			continue
+		}
+		if synced, _ := item["kiroRsSynced"].(bool); !synced {
+			updated++
+		}
+		item["kiroRsSynced"] = true
+	}
+	if updated == 0 {
+		return 0, nil
+	}
+	if err := writeJSONArrayAtomic(path, existing); err != nil {
+		return 0, err
+	}
+	return updated, nil
 }
 
 // DeleteAccount 从 outDir/accounts.json 中移除指定邮箱的账号；返回是否实际删除。

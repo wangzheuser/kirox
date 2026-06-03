@@ -293,6 +293,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	var taskDurations []float64
 	failCategories := make(map[string]int)
 	taskStartTime := time.Now()
+	var batchSuccessMu sync.Mutex
+	batchSuccessEmails := make([]string, 0, req.Count)
+	batchSuccessSet := make(map[string]struct{})
 
 	// 共享账号池（并发安全），goroutine 动态领取账号（仅 Outlook 模式使用）
 	var accountPoolMu sync.Mutex
@@ -604,6 +607,14 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		if success {
 			if err := data.SaveKiroSuccess(result, outDir); err != nil {
 				log.Printf("[Kiro] 保存结果失败: %v", err)
+			} else if emailAddr, _ := result["email"].(string); strings.TrimSpace(emailAddr) != "" {
+				batchSuccessMu.Lock()
+				emailKey := strings.ToLower(strings.TrimSpace(emailAddr))
+				if _, exists := batchSuccessSet[emailKey]; !exists {
+					batchSuccessSet[emailKey] = struct{}{}
+					batchSuccessEmails = append(batchSuccessEmails, emailAddr)
+				}
+				batchSuccessMu.Unlock()
 			}
 		}
 	}
@@ -696,20 +707,60 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	// 自动同步到 kiro.rs
 	if sucCount > 0 && storage.GetKiroRSAutoSync() && storage.GetKiroRSAPIURL() != "" {
+		batchSuccessMu.Lock()
+		currentBatchSuccessEmails := append([]string(nil), batchSuccessEmails...)
+		batchSuccessMu.Unlock()
+
 		accounts, _ := data.LoadAccounts(outDir)
-		if len(accounts) > 0 {
-			log.Printf("[Kiro] 开始自动同步 %d 个账号到 kiro.rs", len(accounts))
+		selectedAccounts := filterAccountsByEmail(accounts, currentBatchSuccessEmails)
+		if len(selectedAccounts) > 0 {
+			log.Printf("[Kiro] 开始自动同步 %d 个账号到 kiro.rs", len(selectedAccounts))
 			syncResult := kirorsync.SyncAccounts(
 				storage.GetKiroRSAPIURL(),
 				storage.GetKiroRSAPIKey(),
-				accounts,
+				selectedAccounts,
 			)
+			if updated, err := data.MarkKiroRSSynced(outDir, successfulSyncEmails(syncResult)); err != nil {
+				log.Printf("[Kiro] kiro.rs 同步状态更新失败: %v", err)
+			} else if updated > 0 {
+				log.Printf("[Kiro] kiro.rs 同步状态已更新: %d 个账号标记为已同步", updated)
+			}
 			log.Printf("[Kiro] kiro.rs 同步完成: 成功 %d / 失败 %d", syncResult.Success, syncResult.Failed)
 			if Manager.OnSyncResult != nil {
 				Manager.OnSyncResult(syncResult)
 			}
 		}
 	}
+}
+
+func filterAccountsByEmail(accounts []map[string]interface{}, emails []string) []map[string]interface{} {
+	if len(accounts) == 0 || len(emails) == 0 {
+		return nil
+	}
+	wanted := make(map[string]struct{}, len(emails))
+	for _, email := range emails {
+		if key := strings.ToLower(strings.TrimSpace(email)); key != "" {
+			wanted[key] = struct{}{}
+		}
+	}
+	out := make([]map[string]interface{}, 0, len(wanted))
+	for _, account := range accounts {
+		email, _ := account["email"].(string)
+		if _, ok := wanted[strings.ToLower(strings.TrimSpace(email))]; ok {
+			out = append(out, account)
+		}
+	}
+	return out
+}
+
+func successfulSyncEmails(result kirorsync.SyncResult) []string {
+	emails := make([]string, 0, result.Success)
+	for _, detail := range result.Details {
+		if detail.Success && strings.TrimSpace(detail.Email) != "" {
+			emails = append(emails, detail.Email)
+		}
+	}
+	return emails
 }
 
 // classifyError 根据错误信息粗分类，用于统计展示。

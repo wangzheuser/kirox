@@ -14,6 +14,7 @@ import (
 	"reg_go/internal/storage"
 	"reg_go/internal/task"
 	"reg_go/internal/updater"
+	"strings"
 	"time"
 )
 
@@ -603,8 +604,9 @@ func (a *App) TestKiroRSConnection(url, key string) map[string]interface{} {
 	return map[string]interface{}{"success": true, "message": "连接成功"}
 }
 
-// SyncAccountPoolToKiroRS 手动触发全量同步到 kiro.rs
-func (a *App) SyncAccountPoolToKiroRS() map[string]interface{} {
+// SyncAccountPoolToKiroRS 手动同步账号池到 kiro.rs。
+// mode=all 同步全部账号；mode=unsynced 仅同步未同步账号。
+func (a *App) SyncAccountPoolToKiroRS(mode string) map[string]interface{} {
 	apiURL := storage.GetKiroRSAPIURL()
 	apiKey := storage.GetKiroRSAPIKey()
 	if apiURL == "" {
@@ -622,19 +624,78 @@ func (a *App) SyncAccountPoolToKiroRS() map[string]interface{} {
 		return map[string]interface{}{"error": "账号池为空，无可同步账号"}
 	}
 
-	log.Printf("[Kiro] 手动同步账号池到 kiro.rs：共加载 %d 个账号", len(accounts))
-	result := kirorsync.SyncAccounts(apiURL, apiKey, accounts)
+	selected, modeErr := selectKiroRSAccountsForMode(accounts, mode)
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "unsynced"
+	}
+	if modeErr != "" {
+		return map[string]interface{}{"error": modeErr}
+	}
+	if mode == "unsynced" {
+		if len(selected) == 0 {
+			log.Printf("[Kiro] 手动同步账号池到 kiro.rs：无未同步账号，已跳过")
+			return map[string]interface{}{
+				"success":     true,
+				"mode":        mode,
+				"total":       0,
+				"syncSuccess": 0,
+				"syncFailed":  0,
+				"message":     "没有未同步账号",
+			}
+		}
+	}
+
+	log.Printf("[Kiro] 手动同步账号池到 kiro.rs：模式 %s，共 %d 个账号", mode, len(selected))
+	result := kirorsync.SyncAccounts(apiURL, apiKey, selected)
 	if result.Error != "" {
 		log.Printf("[Kiro] 手动同步未执行: %s", result.Error)
 		return map[string]interface{}{"error": result.Error}
 	}
+	if updated, err := data.MarkKiroRSSynced(storage.GetResultOutputDir(), successfulSyncEmails(result)); err != nil {
+		log.Printf("[Kiro] 手动同步状态更新失败: %v", err)
+	} else if updated > 0 {
+		log.Printf("[Kiro] 手动同步状态已更新: %d 个账号标记为已同步", updated)
+	}
 	log.Printf("[Kiro] 手动同步完成: 成功 %d / 失败 %d", result.Success, result.Failed)
 	return map[string]interface{}{
 		"success":     true,
+		"mode":        mode,
 		"total":       result.Total,
 		"syncSuccess": result.Success,
 		"syncFailed":  result.Failed,
 	}
+}
+
+func selectKiroRSAccountsForMode(accounts []map[string]interface{}, mode string) ([]map[string]interface{}, string) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "unsynced"
+	}
+	switch mode {
+	case "all":
+		return accounts, ""
+	case "unsynced":
+		selected := make([]map[string]interface{}, 0, len(accounts))
+		for _, account := range accounts {
+			if synced, _ := account["kiroRsSynced"].(bool); !synced {
+				selected = append(selected, account)
+			}
+		}
+		return selected, ""
+	default:
+		return nil, "同步模式无效"
+	}
+}
+
+func successfulSyncEmails(result kirorsync.SyncResult) []string {
+	emails := make([]string, 0, result.Success)
+	for _, detail := range result.Details {
+		if detail.Success && strings.TrimSpace(detail.Email) != "" {
+			emails = append(emails, detail.Email)
+		}
+	}
+	return emails
 }
 
 // GetSubscriptionPlans 用第一个有效账号拉取可用订阅计划（可指定邮箱）

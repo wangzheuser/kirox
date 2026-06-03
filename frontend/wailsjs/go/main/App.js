@@ -258,8 +258,8 @@ export function StopTask() {
   return window['go']['main']['App']['StopTask']();
 }
 
-export function SyncAccountPoolToKiroRS() {
-  return window['go']['main']['App']['SyncAccountPoolToKiroRS']();
+export function SyncAccountPoolToKiroRS(arg1) {
+  return window['go']['main']['App']['SyncAccountPoolToKiroRS'](arg1);
 }
 
 export function TestKiroRSConnection(arg1, arg2) {

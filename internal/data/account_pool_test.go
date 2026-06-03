@@ -177,3 +177,76 @@ func TestExportAccountPoolJSONUsesReferenceShapeAndPriority(t *testing.T) {
 		last = idx
 	}
 }
+
+func TestListAccountPoolDefaultsMissingKiroRSSyncedToFalse(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAccounts(t, dir, []map[string]interface{}{
+		{"email": "legacy@example.com", "refreshToken": "refresh"},
+	})
+
+	accounts, err := ListAccountPool(dir)
+	if err != nil {
+		t.Fatalf("ListAccountPool: %v", err)
+	}
+	got := accountByEmail(t, accounts, "legacy@example.com")
+	if synced, ok := got["kiroRsSynced"].(bool); !ok || synced {
+		t.Fatalf("legacy account should display as kiroRsSynced=false: %#v", got)
+	}
+}
+
+func TestImportAccountPoolJSONResetsKiroRSSyncedWhenCredentialChanges(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAccounts(t, dir, []map[string]interface{}{
+		{
+			"email":        "existing@example.com",
+			"refreshToken": "old-refresh",
+			"kiroRsSynced": true,
+		},
+	})
+
+	_, err := ImportAccountPoolJSON(dir, `[{"email":"existing@example.com","refreshToken":"new-refresh"}]`)
+	if err != nil {
+		t.Fatalf("ImportAccountPoolJSON: %v", err)
+	}
+
+	accounts, err := LoadAccounts(dir)
+	if err != nil {
+		t.Fatalf("LoadAccounts: %v", err)
+	}
+	got := accountByEmail(t, accounts, "existing@example.com")
+	if got["refreshToken"] != "new-refresh" {
+		t.Fatalf("refreshToken was not updated: %#v", got)
+	}
+	if synced, ok := got["kiroRsSynced"].(bool); !ok || synced {
+		t.Fatalf("changed credential should reset kiroRsSynced=false: %#v", got)
+	}
+}
+
+func TestMarkKiroRSSyncedMarksOnlySuccessfulEmails(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAccounts(t, dir, []map[string]interface{}{
+		{"email": "first@example.com", "kiroRsSynced": false},
+		{"email": "second@example.com", "kiroRsSynced": false},
+	})
+
+	updated, err := MarkKiroRSSynced(dir, []string{"second@example.com", "missing@example.com"})
+	if err != nil {
+		t.Fatalf("MarkKiroRSSynced: %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("updated=%d, want 1", updated)
+	}
+
+	accounts, err := LoadAccounts(dir)
+	if err != nil {
+		t.Fatalf("LoadAccounts: %v", err)
+	}
+	first := accountByEmail(t, accounts, "first@example.com")
+	second := accountByEmail(t, accounts, "second@example.com")
+	if synced, _ := first["kiroRsSynced"].(bool); synced {
+		t.Fatalf("unsuccessful account should remain unsynced: %#v", first)
+	}
+	if synced, ok := second["kiroRsSynced"].(bool); !ok || !synced {
+		t.Fatalf("successful account should be marked synced: %#v", second)
+	}
+}

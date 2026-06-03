@@ -74,9 +74,13 @@ func ImportAccountPoolJSON(outDir, raw string) (AccountPoolImportSummary, error)
 
 		key := strings.ToLower(email)
 		if pos, exists := index[key]; exists {
+			oldRefresh := stringField(existing[pos], "refreshToken")
 			mergeAccountPoolFields(existing[pos], src)
 			existing[pos]["email"] = email
 			ensureAccountPoolDefaults(existing[pos], false)
+			if newRefresh := stringField(existing[pos], "refreshToken"); newRefresh != oldRefresh {
+				existing[pos]["kiroRsSynced"] = false
+			}
 			summary.Updated++
 			continue
 		}
@@ -101,6 +105,7 @@ func ImportAccountPoolJSON(outDir, raw string) (AccountPoolImportSummary, error)
 			item["subscription"] = sub
 		}
 		ensureAccountPoolDefaults(item, true)
+		item["kiroRsSynced"] = false
 		existing = append(existing, item)
 		index[key] = len(existing) - 1
 		summary.Imported++
@@ -165,6 +170,9 @@ func ensureAccountPoolDefaults(item map[string]interface{}, forcePriority bool) 
 	}
 	if forcePriority || !hasNonEmptyField(item, "priority") {
 		item["priority"] = calculateAccountPriority(stringField(item, "time"))
+	}
+	if _, ok := item["kiroRsSynced"].(bool); !ok {
+		item["kiroRsSynced"] = false
 	}
 }
 
