@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -72,5 +73,17 @@ func TestSelectKiroRSAccountsForModeAllIncludesEveryAccount(t *testing.T) {
 func TestSelectKiroRSAccountsForModeRejectsInvalidMode(t *testing.T) {
 	if _, errMsg := selectKiroRSAccountsForMode(nil, "bad"); errMsg == "" {
 		t.Fatal("invalid mode should return an error message")
+	}
+}
+
+func TestRegistrationConcurrencyInputAllowsMaximum100(t *testing.T) {
+	for _, path := range []string{"frontend/index.html", "frontend/dist/index.html"} {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if !strings.Contains(string(content), `id="cfg-concurrency" value="1" min="1" max="100"`) {
+			t.Fatalf("%s should set cfg-concurrency max to 100", path)
+		}
 	}
 }
