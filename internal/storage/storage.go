@@ -46,6 +46,7 @@ const (
 	keyOutlookScope               = "outlook_scope"
 	keyProxyMode                  = "proxy_mode"
 	keyProxy                      = "proxy"
+	keyLanguage                   = "language"
 	keyClashProxy                 = "clash_proxy"
 	keyEmailProxy                 = "email_proxy"
 	keyKillSwitchEnabled          = "kill_switch_enabled"
@@ -66,9 +67,9 @@ const (
 	keyRegistrationEmailProvider  = "registration_email_provider"
 	keyRegistrationMoeMailMode    = "registration_moemail_domain_mode"
 	keyRegistrationMoeMailDomains = "registration_moemail_domains"
-	keyKiroRSAPIURL              = "kiro_rs_api_url"
-	keyKiroRSAPIKey              = "kiro_rs_api_key"
-	keyKiroRSAutoSync            = "kiro_rs_auto_sync"
+	keyKiroRSAPIURL               = "kiro_rs_api_url"
+	keyKiroRSAPIKey               = "kiro_rs_api_key"
+	keyKiroRSAutoSync             = "kiro_rs_auto_sync"
 )
 
 // PageStayConfig 保存发送验证码前模拟页面停留的随机区间。
@@ -103,6 +104,8 @@ var (
 	_killSwitchOnce    sync.Once
 	_soundEnabled      bool
 	_soundOnce         sync.Once
+	_language          string
+	_languageOnce      sync.Once
 )
 
 var configKeyOrder = []string{
@@ -113,6 +116,7 @@ var configKeyOrder = []string{
 	keyOutlookScope,
 	keyProxyMode,
 	keyProxy,
+	keyLanguage,
 	keyClashProxy,
 	keyEmailProxy,
 	keyKillSwitchEnabled,
@@ -1040,6 +1044,32 @@ func SetKillSwitchEnabled(enabled bool) error {
 	_killSwitchEnabled = enabled
 	_killSwitchOnce = sync.Once{}
 	_killSwitchOnce.Do(func() {})
+	return nil
+}
+
+// GetLanguage 返回当前界面语言代码（"zh"/"en"/"ja"），未设置时返回空字符串。
+func GetLanguage() string {
+	_languageOnce.Do(func() {
+		m := loadConfigMap()
+		_language = strings.TrimSpace(m[keyLanguage])
+	})
+	return _language
+}
+
+// SetLanguage 持久化界面语言；仅接受 "zh"/"en"/"ja"，其他值返回错误。
+func SetLanguage(lang string) error {
+	lang = strings.TrimSpace(lang)
+	if lang != "zh" && lang != "en" && lang != "ja" {
+		return fmt.Errorf("不支持的语言: %s", lang)
+	}
+	m := loadConfigMap()
+	m[keyLanguage] = lang
+	if err := saveConfigMap(m); err != nil {
+		return err
+	}
+	_language = lang
+	_languageOnce = sync.Once{}
+	_languageOnce.Do(func() {})
 	return nil
 }
 

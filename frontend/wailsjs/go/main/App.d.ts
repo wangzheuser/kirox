@@ -7,6 +7,8 @@ import {task} from '../models';
 
 export function AddOutlookAccounts(arg1:string):Promise<Record<string, any>>;
 
+export function AddProxyEntry(arg1:string,arg2:string,arg3:number):Promise<Record<string, any>>;
+
 export function CancelUpdate():Promise<Record<string, any>>;
 
 export function CheckLicense():Promise<Record<string, any>>;
@@ -20,6 +22,8 @@ export function ClearRegisteredOutlookAccounts():Promise<Record<string, any>>;
 export function DeleteOutlookAccount(arg1:string):Promise<Record<string, any>>;
 
 export function DeleteOutlookAccounts(arg1:Array<string>):Promise<Record<string, any>>;
+
+export function DeleteProxyEntry(arg1:string):Promise<Record<string, any>>;
 
 export function DetectClashProxy(arg1:string,arg2:proxy.ClashConfig):Promise<proxy.Info>;
 
@@ -35,6 +39,8 @@ export function GetClashConfig():Promise<proxy.ClashConfig>;
 
 export function GetClashProxy():Promise<string>;
 
+export function GetCloudMailConfigs():Promise<Array<email.CloudMailConfig>>;
+
 export function GetDataDir():Promise<string>;
 
 export function GetEmailProxy():Promise<string>;
@@ -43,11 +49,15 @@ export function GetKillSwitchEnabled():Promise<boolean>;
 
 export function GetKiroRSConfig():Promise<Record<string, any>>;
 
+export function GetLanguage():Promise<string>;
+
 export function GetLicenseInfo():Promise<Record<string, any>>;
 
 export function GetLogs():Promise<Array<string>>;
 
 export function GetMoeMailConfigs():Promise<Array<email.MoeMailConfig>>;
+
+export function GetOSLanguage():Promise<string>;
 
 export function GetOutlookAccounts():Promise<Array<Record<string, any>>>;
 
@@ -81,6 +91,8 @@ export function ImportOutlookFile(arg1:string):Promise<Record<string, any>>;
 
 export function ListAccountPool():Promise<Record<string, any>>;
 
+export function ListProxyPool():Promise<Array<proxy.PoolEntry>>;
+
 export function LoadOutputAccounts():Promise<Record<string, any>>;
 
 export function LogoutLicense():Promise<Record<string, any>>;
@@ -91,11 +103,15 @@ export function ResetDataDir():Promise<Record<string, any>>;
 
 export function ResetEmailProxy():Promise<Record<string, any>>;
 
+export function ResetFingerprintCache():Promise<Record<string, any>>;
+
 export function ResetOutlookAccountStatuses():Promise<Record<string, any>>;
 
 export function ResetProxy():Promise<Record<string, any>>;
 
 export function ResetResultOutputDir():Promise<Record<string, any>>;
+
+export function SaveCloudMailConfigs(arg1:string):Promise<Record<string, any>>;
 
 export function SaveMoeMailConfigs(arg1:string):Promise<Record<string, any>>;
 
@@ -114,6 +130,8 @@ export function SetEmailProxy(arg1:string):Promise<Record<string, any>>;
 export function SetKillSwitchEnabled(arg1:boolean):Promise<Record<string, any>>;
 
 export function SetKiroRSConfig(arg1:string,arg2:string,arg3:boolean):Promise<Record<string, any>>;
+
+export function SetLanguage(arg1:string):Promise<Record<string, any>>;
 
 export function SetOutlookScope(arg1:string):Promise<Record<string, any>>;
 
@@ -135,8 +153,14 @@ export function StopTask():Promise<Record<string, any>>;
 
 export function SyncAccountPoolToKiroRS(arg1:string):Promise<Record<string, any>>;
 
+export function TestCloudMailConnection(arg1:string):Promise<Record<string, any>>;
+
 export function TestKiroRSConnection(arg1:string,arg2:string):Promise<Record<string, any>>;
 
 export function TestMoeMailConnection(arg1:string):Promise<Record<string, any>>;
+
+export function TestProxyEntry(arg1:string):Promise<proxy.Info>;
+
+export function UpdateProxyEntry(arg1:string,arg2:string,arg3:string,arg4:number,arg5:boolean):Promise<Record<string, any>>;
 
 export function VerifyLicense(arg1:string):Promise<Record<string, any>>;

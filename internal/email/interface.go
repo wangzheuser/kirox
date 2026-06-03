@@ -37,6 +37,11 @@ func NewMoEmailService(baseURL, apiKey string, proxyURL ...string) TempEmailServ
 	}
 }
 
+// NewMoEmailServiceFromProvider 用已创建的 MoeMailProvider 构造 TempEmailService
+func NewMoEmailServiceFromProvider(provider *MoeMailProvider) TempEmailService {
+	return &moEmailAdapter{provider: provider}
+}
+
 // Create 创建临时邮箱
 func (a *moEmailAdapter) Create() string {
 	config := MoeMailConfig{
@@ -80,6 +85,40 @@ func (a *moEmailAdapter) WaitForCode(timeout, interval int) (string, error) {
 
 // GetAddress 获取邮箱地址
 func (a *moEmailAdapter) GetAddress() string {
+	if a.provider == nil {
+		return ""
+	}
+	return a.provider.GetAddress()
+}
+
+// cloudMailAdapter 适配器，将 CloudMailProvider 包装为 TempEmailService
+type cloudMailAdapter struct {
+	provider *CloudMailProvider
+}
+
+// NewCloudMailService 用已创建的 CloudMailProvider 构造 TempEmailService
+func NewCloudMailService(provider *CloudMailProvider) TempEmailService {
+	return &cloudMailAdapter{provider: provider}
+}
+
+// Create 已在 NewCloudMailProvider 时创建好，直接返回地址
+func (a *cloudMailAdapter) Create() string {
+	if a.provider == nil {
+		return ""
+	}
+	return a.provider.GetAddress()
+}
+
+// WaitForCode 等待验证码
+func (a *cloudMailAdapter) WaitForCode(timeout, interval int) (string, error) {
+	if a.provider == nil {
+		return "", nil
+	}
+	return a.provider.WaitForCode(timeout, interval)
+}
+
+// GetAddress 获取邮箱地址
+func (a *cloudMailAdapter) GetAddress() string {
 	if a.provider == nil {
 		return ""
 	}

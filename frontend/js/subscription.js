@@ -1,5 +1,28 @@
 // ===== 订阅页：一键获取支付链接 =====
 
+function _subT(key, varsOrFallback, fallbackMaybe) {
+  var vars = null, fallback = null;
+  if (typeof varsOrFallback === 'string') {
+    fallback = varsOrFallback;
+  } else if (varsOrFallback && typeof varsOrFallback === 'object') {
+    vars = varsOrFallback;
+    if (typeof fallbackMaybe === 'string') fallback = fallbackMaybe;
+  }
+  if (window.I18N && typeof window.I18N.t === 'function') {
+    var v = window.I18N.t(key, vars);
+    if (v && v !== key) return v;
+  }
+  if (fallback != null) {
+    if (vars) {
+      return fallback.replace(/\{(\w+)\}/g, function(_, k) {
+        return vars[k] != null ? vars[k] : '{' + k + '}';
+      });
+    }
+    return fallback;
+  }
+  return key;
+}
+
 var subState = {
   accounts: [],     // [{ email, status, url, error, subscription, time, selected }]
   plans: [],
@@ -20,14 +43,14 @@ async function reloadSubscriptionAccounts() {
   try {
     res = await window.go.main.App.LoadOutputAccounts();
   } catch (e) {
-    showToast('加载账号失败: ' + e, 'error');
+    showToast(_subT('subscription.loadFailed', '加载账号失败') + ': ' + e, 'error');
     return;
   }
   var hint = document.getElementById('sub-output-dir');
   if (hint) {
     hint.textContent = res && res.outputDir
-      ? '已自动加载：' + res.outputDir
-      : '已自动加载输出文件夹中的账号';
+      ? _subT('subscription.autoLoadedFrom', { dir: res.outputDir }, '已自动加载：{dir}')
+      : _subT('subscription.autoLoaded', '已自动加载输出文件夹中的账号');
   }
   if (!res || !res.success) {
     subState.accounts = [];
@@ -63,28 +86,28 @@ function updateSubProgress() {
   var suspended = subState.accounts.filter(function(a) { return a.status === 'suspended'; }).length;
   var failed = subState.accounts.filter(function(a) { return a.status === 'error'; }).length;
   var loading = subState.accounts.filter(function(a) { return a.status === 'loading'; }).length;
-  var parts = ['共 ' + total + ' 个 / 已选 ' + sel];
-  if (subState.running) parts.push('进行中 ' + loading);
-  if (success) parts.push('成功 ' + success);
-  if (suspended) parts.push('封禁 ' + suspended);
-  if (failed) parts.push('失败 ' + failed);
+  var parts = [_subT('subscription.totalSelected', { total: total, sel: sel }, '共 {total} 个 / 已选 {sel}')];
+  if (subState.running) parts.push(_subT('subscription.statRunning', { n: loading }, '进行中 {n}'));
+  if (success) parts.push(_subT('subscription.statSuccess', { n: success }, '成功 {n}'));
+  if (suspended) parts.push(_subT('subscription.statSuspended', { n: suspended }, '封禁 {n}'));
+  if (failed) parts.push(_subT('subscription.statFailed', { n: failed }, '失败 {n}'));
   progress.textContent = parts.join(' · ');
 }
 
 function renderSubTable() {
   var body = document.getElementById('sub-table-body');
   if (!subState.accounts.length) {
-    body.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">输出目录下尚无账号，请先注册或调整输出目录。</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">' + _subT('subscription.emptyOutput', '输出目录下尚无账号，请先注册或调整输出目录。') + '</td></tr>';
     refreshSelectAllChk();
     return;
   }
   var rows = subState.accounts.map(function(a, idx) {
     var statusHtml = '';
-    if (a.status === 'idle') statusHtml = '<span style="color:var(--muted);">待获取</span>';
-    else if (a.status === 'loading') statusHtml = '<span style="color:#3b82f6;">获取中…</span>';
-    else if (a.status === 'success') statusHtml = '<span style="color:#10b981;">已就绪</span>';
-    else if (a.status === 'suspended') statusHtml = '<span style="color:#f59e0b;cursor:pointer;text-decoration:underline;" onclick="showSubErrorDetail(' + idx + ')" title="点击查看详情">已封禁</span>';
-    else if (a.status === 'error') statusHtml = '<span style="color:#ef4444;cursor:pointer;text-decoration:underline;" onclick="showSubErrorDetail(' + idx + ')" title="点击查看详细响应">失败</span>';
+    if (a.status === 'idle') statusHtml = '<span style="color:var(--muted);">' + _subT('status.pending', '待获取') + '</span>';
+    else if (a.status === 'loading') statusHtml = '<span style="color:#3b82f6;">' + _subT('status.fetching', '获取中…') + '</span>';
+    else if (a.status === 'success') statusHtml = '<span style="color:#10b981;">' + _subT('status.ready', '已就绪') + '</span>';
+    else if (a.status === 'suspended') statusHtml = '<span style="color:#f59e0b;cursor:pointer;text-decoration:underline;" onclick="showSubErrorDetail(' + idx + ')" title="' + _subT('subscription.clickForDetail', '点击查看详情') + '">' + _subT('status.suspended', '已封禁') + '</span>';
+    else if (a.status === 'error') statusHtml = '<span style="color:#ef4444;cursor:pointer;text-decoration:underline;" onclick="showSubErrorDetail(' + idx + ')" title="' + _subT('subscription.clickForResponse', '点击查看详细响应') + '">' + _subT('status.failed', '失败') + '</span>';
 
     var btnStyle = 'background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 6px;cursor:pointer;color:var(--text);display:inline-flex;align-items:center;justify-content:center;';
     var iconOpen = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
@@ -95,12 +118,12 @@ function renderSubTable() {
     var actions = '';
     if (a.status === 'success' && a.url) {
       actions =
-        '<button style="' + btnStyle + '" title="打开链接" onclick="openSubLink(' + idx + ')">' + iconOpen + '</button>' +
-        '<button style="' + btnStyle + '" title="复制链接" onclick="copySubLink(' + idx + ')">' + iconCopy + '</button>';
+        '<button style="' + btnStyle + '" title="' + _subT('subscription.openLink', '打开链接') + '" onclick="openSubLink(' + idx + ')">' + iconOpen + '</button>' +
+        '<button style="' + btnStyle + '" title="' + _subT('subscription.copyLink', '复制链接') + '" onclick="copySubLink(' + idx + ')">' + iconCopy + '</button>';
     }
     var isRefetch = a.status === 'success' || a.status === 'error' || a.status === 'suspended';
     actions +=
-      '<button class="btn btn-dark btn-sm" onclick="fetchOneSubLink(' + idx + ')"' + (a.status === 'loading' ? ' disabled' : '') + '>' + (isRefetch ? '重新获取' : '获取') + '</button>';
+      '<button class="btn btn-dark btn-sm" onclick="fetchOneSubLink(' + idx + ')"' + (a.status === 'loading' ? ' disabled' : '') + '>' + (isRefetch ? _subT('subscription.refetch', '重新获取') : _subT('subscription.fetch', '获取')) + '</button>';
 
     return (
       '<tr style="border-top:1px solid var(--border);">' +
@@ -149,7 +172,7 @@ async function openSubscriptionPlanModal(singleIdx) {
   if (!isSingle) {
     var sel = getSelectedSubAccounts();
     if (!sel.length) {
-      showToast('请先勾选要获取的账号', 'error');
+      showToast(_subT('subscription.pickFirst', '请先勾选要获取的账号'), 'error');
       return;
     }
   }
@@ -160,28 +183,27 @@ async function openSubscriptionPlanModal(singleIdx) {
 
   document.getElementById('sub-plan-modal').classList.add('show');
   document.getElementById('sub-plan-modal-hint').textContent = isSingle
-    ? '将使用账号 ' + refAccount.email + ' 加载可用计划，并仅为该账号获取链接。'
-    : '将使用账号 ' + refAccount.email + ' 加载可用计划，并对已勾选的 ' + getSelectedSubAccounts().length + ' 个账号批量获取链接。';
+    ? _subT('subscription.planHintSingle', { email: refAccount.email }, '将使用账号 {email} 加载可用计划，并仅为该账号获取链接。')
+    : _subT('subscription.planHintBatch', { email: refAccount.email, n: getSelectedSubAccounts().length }, '将使用账号 {email} 加载可用计划，并对已勾选的 {n} 个账号批量获取链接。');
   document.getElementById('sub-plan-modal-confirm').disabled = true;
   var listBox = document.getElementById('sub-plan-modal-list');
 
-  // 始终重新加载：不同账号（FREE / PRO / PRO_PLUS）可订阅的计划不同
   subState.plans = [];
   subState.planType = '';
 
   listBox.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:30px 0;color:var(--text-muted);font-size:12px;">' +
     '<div style="width:28px;height:28px;border:3px solid var(--border);border-top-color:#3b82f6;border-radius:50%;animation:spin 0.8s linear infinite;"></div>' +
-    '<span>加载中…</span>' +
+    '<span>' + _subT('common.loading', '加载中…') + '</span>' +
   '</div>';
   try {
     var res = await window.go.main.App.GetSubscriptionPlans(refAccount.email);
     if (!res || !res.success) {
-      listBox.innerHTML = '<div style="color:#ef4444;font-size:13px;padding:20px 0;text-align:center;">' + escapeHtml((res && res.error) || '加载失败') + '</div>';
+      listBox.innerHTML = '<div style="color:#ef4444;font-size:13px;padding:20px 0;text-align:center;">' + escapeHtml((res && res.error) || _subT('common.loadFailed', '加载失败')) + '</div>';
       return;
     }
     subState.plans = res.plans || [];
     if (!subState.plans.length) {
-      listBox.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px 0;text-align:center;">未返回任何可用计划</div>';
+      listBox.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:20px 0;text-align:center;">' + _subT('subscription.noPlans', '未返回任何可用计划') + '</div>';
       return;
     }
     var def = subState.plans.find(function(p) {
@@ -230,7 +252,7 @@ function closeSubscriptionPlanModal() {
 
 function confirmStartBatchFetch() {
   if (!subState.planType) {
-    showToast('请先选择一个计划', 'error');
+    showToast(_subT('subscription.pickPlan', '请先选择一个计划'), 'error');
     return;
   }
   closeSubscriptionPlanModal();
@@ -260,7 +282,7 @@ async function doFetchSubLink(idx) {
       a.status = 'success'; a.url = res.url;
     } else if (res && res.suspended) {
       var bannedEmail = a.email;
-      showToast('账号 ' + bannedEmail + ' 已被封禁，已从输出文件移除', 'error');
+      showToast(_subT('subscription.bannedRemoved', { email: bannedEmail }, '账号 {email} 已被封禁，已从输出文件移除'), 'error');
       if (res.removed) {
         var rmIdx = subState.accounts.findIndex(function(x) { return x.email === bannedEmail; });
         if (rmIdx >= 0) subState.accounts.splice(rmIdx, 1);
@@ -268,9 +290,9 @@ async function doFetchSubLink(idx) {
         return;
       }
       a.status = 'suspended';
-      a.error = (res && res.error) || '账号已被封禁';
+      a.error = (res && res.error) || _subT('subscription.bannedShort', '账号已被封禁');
     } else {
-      a.status = 'error'; a.error = (res && res.error) || '未知错误';
+      a.status = 'error'; a.error = (res && res.error) || _subT('subscription.unknownError', '未知错误');
     }
   } catch (e) {
     a.status = 'error'; a.error = String(e);
@@ -280,8 +302,8 @@ async function doFetchSubLink(idx) {
 
 async function batchFetchSubscriptionLinks() {
   var sel = getSelectedSubAccounts();
-  if (!sel.length) { showToast('请先勾选要获取的账号', 'error'); return; }
-  if (!subState.planType) { showToast('请先加载并选择计划', 'error'); return; }
+  if (!sel.length) { showToast(_subT('subscription.pickFirst', '请先勾选要获取的账号'), 'error'); return; }
+  if (!subState.planType) { showToast(_subT('subscription.loadPickPlan', '请先加载并选择计划'), 'error'); return; }
   if (subState.running) return;
   subState.running = true;
   document.getElementById('sub-batch-btn').disabled = true;
@@ -326,16 +348,16 @@ function openSubLink(idx) {
 function copySubLink(idx) {
   var a = subState.accounts[idx];
   if (!a || !a.url) return;
-  navigator.clipboard.writeText(a.url).then(function() { showToast('已复制链接'); });
+  navigator.clipboard.writeText(a.url).then(function() { showToast(_subT('subscription.linkCopied', '已复制链接')); });
 }
 
 function copyAllSubscriptionLinks() {
   var lines = subState.accounts
     .filter(function(a) { return a.selected && a.status === 'success' && a.url; })
     .map(function(a) { return a.email + '\t' + a.url; });
-  if (!lines.length) { showToast('暂无可复制的链接（需勾选且已获取成功）', 'error'); return; }
+  if (!lines.length) { showToast(_subT('subscription.noLinksToCopy', '暂无可复制的链接（需勾选且已获取成功）'), 'error'); return; }
   navigator.clipboard.writeText(lines.join('\n')).then(function() {
-    showToast('已复制 ' + lines.length + ' 条链接');
+    showToast(_subT('subscription.linksCopied', { n: lines.length }, '已复制 {n} 条链接'));
   });
 }
 
@@ -344,7 +366,7 @@ function showSubErrorDetail(idx) {
   if (!a) return;
   var modal = document.getElementById('sub-error-modal');
   document.getElementById('sub-error-modal-email').textContent = a.email;
-  document.getElementById('sub-error-modal-body').textContent = a.error || '(无错误信息)';
+  document.getElementById('sub-error-modal-body').textContent = a.error || _subT('subscription.noErrorInfo', '(无错误信息)');
   modal.classList.add('show');
 }
 
@@ -354,5 +376,13 @@ function closeSubErrorModal() {
 
 function copySubErrorDetail() {
   var text = document.getElementById('sub-error-modal-body').textContent;
-  navigator.clipboard.writeText(text).then(function() { showToast('已复制错误详情'); });
+  navigator.clipboard.writeText(text).then(function() { showToast(_subT('subscription.errCopied', '已复制错误详情')); });
 }
+
+// 语言切换后重新渲染动态内容（表格行、进度条文本）
+window.addEventListener('i18n:changed', function() {
+  try {
+    if (typeof renderSubTable === 'function') renderSubTable();
+    if (typeof updateSubProgress === 'function') updateSubProgress();
+  } catch (e) {}
+});

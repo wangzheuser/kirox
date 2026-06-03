@@ -5,6 +5,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"log"
 	"os"
+	"reg_go/internal/browser"
 	"reg_go/internal/data"
 	"reg_go/internal/email"
 	"reg_go/internal/kirorsync"
@@ -35,6 +36,9 @@ func (a *App) startup(ctx context.Context) {
 	// 重定向日志到内存
 	log.SetOutput(&logWriter{app: a})
 	log.SetFlags(log.Ltime)
+
+	// 初始化代理池（按数据目录持久化）
+	proxy.InitPool(storage.GetDataDir())
 
 	// 居中显示窗口
 	go func() {
@@ -229,6 +233,20 @@ func (a *App) SaveMoeMailConfigs(configsJSON string) map[string]interface{} {
 
 func (a *App) TestMoeMailConnection(configJSON string) map[string]interface{} {
 	return email.TestMoeMailConnection(configJSON)
+}
+
+// ---- CloudMail ----
+
+func (a *App) GetCloudMailConfigs() []email.CloudMailConfig {
+	return email.GetCloudMailConfigs()
+}
+
+func (a *App) SaveCloudMailConfigs(configsJSON string) map[string]interface{} {
+	return email.SaveCloudMailConfigs(configsJSON)
+}
+
+func (a *App) TestCloudMailConnection(configJSON string) map[string]interface{} {
+	return email.TestCloudMailConnection(configJSON)
 }
 
 // ---- Outlook ----
@@ -518,6 +536,24 @@ func (a *App) SetRegistrationConfig(config storage.RegistrationConfig) map[strin
 	return map[string]interface{}{"success": true, "config": storage.GetRegistrationConfig()}
 }
 
+// GetLanguage 获取当前界面语言代码，空字符串表示未设置（前端应回落到 OS 语言）
+func (a *App) GetLanguage() string {
+	return storage.GetLanguage()
+}
+
+// SetLanguage 保存界面语言；仅接受 "zh"/"en"/"ja"
+func (a *App) SetLanguage(lang string) map[string]interface{} {
+	if err := storage.SetLanguage(lang); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "language": lang}
+}
+
+// GetOSLanguage 返回操作系统语言代码 "zh"/"en"/"ja"，用于首次启动自动选语言
+func (a *App) GetOSLanguage() string {
+	return detectOSLanguage()
+}
+
 // StartTask 启动注册任务
 func (a *App) StartTask(req task.StartTaskRequest) map[string]interface{} {
 	return task.StartTask(req)
@@ -536,6 +572,12 @@ func (a *App) CheckUpdate() map[string]interface{} {
 // DownloadUpdate 下载更新（使用服务端缓存的下载地址，不接受前端参数）
 func (a *App) DownloadUpdate() map[string]interface{} {
 	return updater.DownloadUpdate(a.ctx)
+}
+
+// ResetFingerprintCache 清空所有按代理缓存的浏览器指纹，下一次注册重新生成
+func (a *App) ResetFingerprintCache() map[string]interface{} {
+	browser.ResetIdentityCache()
+	return map[string]interface{}{"success": true}
 }
 
 // CancelUpdate 取消正在进行的更新下载
@@ -840,4 +882,48 @@ func (a *App) GetSubscriptionLink(email, planType string) map[string]interface{}
 	}
 	_ = subscription.PutCache(storage.GetDataDir(), email, url, planType)
 	return map[string]interface{}{"success": true, "url": url}
+}
+
+// ---- 多代理池 ----
+
+// ListProxyPool 返回当前代理池
+func (a *App) ListProxyPool() []proxy.PoolEntry {
+	return proxy.List()
+}
+
+// AddProxyEntry 新增一条代理（url 会被归一化），weight 1-100
+func (a *App) AddProxyEntry(name, rawURL string, weight int) map[string]interface{} {
+	normalized := storage.NormalizeProxyAddress(rawURL)
+	entry, err := proxy.Add(proxy.PoolEntry{Name: name, URL: normalized, Weight: weight})
+	if err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "entry": entry}
+}
+
+// UpdateProxyEntry 更新代理（按 id）
+func (a *App) UpdateProxyEntry(id, name, rawURL string, weight int, enabled bool) map[string]interface{} {
+	var u string
+	if rawURL != "" {
+		u = storage.NormalizeProxyAddress(rawURL)
+	}
+	entry, err := proxy.Update(id, proxy.PoolEntry{Name: name, URL: u, Weight: weight, Enabled: enabled})
+	if err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "entry": entry}
+}
+
+// DeleteProxyEntry 删除（按 id）
+func (a *App) DeleteProxyEntry(id string) map[string]interface{} {
+	if err := proxy.Delete(id); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true}
+}
+
+// TestProxyEntry 测试某条代理是否可用
+func (a *App) TestProxyEntry(rawURL string) proxy.Info {
+	normalized := storage.NormalizeProxyAddress(rawURL)
+	return proxy.Detect(normalized)
 }

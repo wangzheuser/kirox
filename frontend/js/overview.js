@@ -3,6 +3,14 @@
 var overviewTimer = null;
 var taskStatusTimer = null;
 
+function _ovT(key, fallback) {
+  if (window.I18N && typeof window.I18N.t === 'function') {
+    var v = window.I18N.t(key);
+    if (v && v !== key) return v;
+  }
+  return fallback;
+}
+
 // loadOverview 加载概览数据（含账号池统计，3秒刷新）
 async function loadOverview() {
   if (!window.go || !window.go.main || !window.go.main.App) return;
@@ -35,10 +43,10 @@ function updateOverviewUI(data) {
   var kiroStatusEl = document.getElementById('ov-kiro-status');
   if (kiroStatusEl) {
     if (kiro.taskRunning) {
-      kiroStatusEl.textContent = '运行中';
+      kiroStatusEl.textContent = _ovT('status.running', '运行中');
       kiroStatusEl.className = 'db-badge db-badge-running';
     } else {
-      kiroStatusEl.textContent = '空闲';
+      kiroStatusEl.textContent = _ovT('status.idle', '空闲');
       kiroStatusEl.className = 'db-badge db-badge-idle';
     }
   }
@@ -69,10 +77,10 @@ function updateTaskStatusUI(data) {
   var kiroStatusEl = document.getElementById('ov-kiro-status');
   if (!kiroStatusEl) return;
   if (kiro.taskRunning) {
-    kiroStatusEl.textContent = '运行中';
+    kiroStatusEl.textContent = _ovT('status.running', '运行中');
     kiroStatusEl.className = 'db-badge db-badge-running';
   } else {
-    kiroStatusEl.textContent = '空闲';
+    kiroStatusEl.textContent = _ovT('status.idle', '空闲');
     kiroStatusEl.className = 'db-badge db-badge-idle';
   }
 }

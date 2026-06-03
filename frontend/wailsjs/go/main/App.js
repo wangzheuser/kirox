@@ -6,6 +6,10 @@ export function AddOutlookAccounts(arg1) {
   return window['go']['main']['App']['AddOutlookAccounts'](arg1);
 }
 
+export function AddProxyEntry(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AddProxyEntry'](arg1, arg2, arg3);
+}
+
 export function CancelUpdate() {
   return window['go']['main']['App']['CancelUpdate']();
 }
@@ -32,6 +36,10 @@ export function DeleteOutlookAccount(arg1) {
 
 export function DeleteOutlookAccounts(arg1) {
   return window['go']['main']['App']['DeleteOutlookAccounts'](arg1);
+}
+
+export function DeleteProxyEntry(arg1) {
+  return window['go']['main']['App']['DeleteProxyEntry'](arg1);
 }
 
 export function DetectClashProxy(arg1, arg2) {
@@ -62,6 +70,10 @@ export function GetClashProxy() {
   return window['go']['main']['App']['GetClashProxy']();
 }
 
+export function GetCloudMailConfigs() {
+  return window['go']['main']['App']['GetCloudMailConfigs']();
+}
+
 export function GetDataDir() {
   return window['go']['main']['App']['GetDataDir']();
 }
@@ -78,6 +90,10 @@ export function GetKiroRSConfig() {
   return window['go']['main']['App']['GetKiroRSConfig']();
 }
 
+export function GetLanguage() {
+  return window['go']['main']['App']['GetLanguage']();
+}
+
 export function GetLicenseInfo() {
   return window['go']['main']['App']['GetLicenseInfo']();
 }
@@ -88,6 +104,10 @@ export function GetLogs() {
 
 export function GetMoeMailConfigs() {
   return window['go']['main']['App']['GetMoeMailConfigs']();
+}
+
+export function GetOSLanguage() {
+  return window['go']['main']['App']['GetOSLanguage']();
 }
 
 export function GetOutlookAccounts() {
@@ -154,6 +174,10 @@ export function ListAccountPool() {
   return window['go']['main']['App']['ListAccountPool']();
 }
 
+export function ListProxyPool() {
+  return window['go']['main']['App']['ListProxyPool']();
+}
+
 export function LoadOutputAccounts() {
   return window['go']['main']['App']['LoadOutputAccounts']();
 }
@@ -174,6 +198,10 @@ export function ResetEmailProxy() {
   return window['go']['main']['App']['ResetEmailProxy']();
 }
 
+export function ResetFingerprintCache() {
+  return window['go']['main']['App']['ResetFingerprintCache']();
+}
+
 export function ResetOutlookAccountStatuses() {
   return window['go']['main']['App']['ResetOutlookAccountStatuses']();
 }
@@ -184,6 +212,10 @@ export function ResetProxy() {
 
 export function ResetResultOutputDir() {
   return window['go']['main']['App']['ResetResultOutputDir']();
+}
+
+export function SaveCloudMailConfigs(arg1) {
+  return window['go']['main']['App']['SaveCloudMailConfigs'](arg1);
 }
 
 export function SaveMoeMailConfigs(arg1) {
@@ -220,6 +252,10 @@ export function SetKillSwitchEnabled(arg1) {
 
 export function SetKiroRSConfig(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetKiroRSConfig'](arg1, arg2, arg3);
+}
+
+export function SetLanguage(arg1) {
+  return window['go']['main']['App']['SetLanguage'](arg1);
 }
 
 export function SetOutlookScope(arg1) {
@@ -262,12 +298,24 @@ export function SyncAccountPoolToKiroRS(arg1) {
   return window['go']['main']['App']['SyncAccountPoolToKiroRS'](arg1);
 }
 
+export function TestCloudMailConnection(arg1) {
+  return window['go']['main']['App']['TestCloudMailConnection'](arg1);
+}
+
 export function TestKiroRSConnection(arg1, arg2) {
   return window['go']['main']['App']['TestKiroRSConnection'](arg1, arg2);
 }
 
 export function TestMoeMailConnection(arg1) {
   return window['go']['main']['App']['TestMoeMailConnection'](arg1);
+}
+
+export function TestProxyEntry(arg1) {
+  return window['go']['main']['App']['TestProxyEntry'](arg1);
+}
+
+export function UpdateProxyEntry(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['UpdateProxyEntry'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function VerifyLicense(arg1) {

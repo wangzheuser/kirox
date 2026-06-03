@@ -1,5 +1,28 @@
 // ===== 任务控制 + 更新系统 + 状态轮询 =====
 
+function _tkT(key, varsOrFallback, fallbackMaybe) {
+  var vars = null, fallback = null;
+  if (typeof varsOrFallback === 'string') {
+    fallback = varsOrFallback;
+  } else if (varsOrFallback && typeof varsOrFallback === 'object') {
+    vars = varsOrFallback;
+    if (typeof fallbackMaybe === 'string') fallback = fallbackMaybe;
+  }
+  if (window.I18N && typeof window.I18N.t === 'function') {
+    var v = window.I18N.t(key, vars);
+    if (v && v !== key) return v;
+  }
+  if (fallback != null) {
+    if (vars) {
+      return fallback.replace(/\{(\w+)\}/g, function(_, k) {
+        return vars[k] != null ? vars[k] : '{' + k + '}';
+      });
+    }
+    return fallback;
+  }
+  return key;
+}
+
 function formatTime(seconds) {
   seconds = Math.round(seconds);
   if (seconds < 60) return seconds + 's';
@@ -29,7 +52,7 @@ function _formatLogLine(line) {
   var raw = line.replace(/\r?\n$/, '');
   if (!raw) return '';
 
-  // 整行级别判定
+  // 整行级别判定 —— 用原始中文判定，避免翻译后关键字缺失
   var low = raw.toLowerCase();
   var cls = 'log-line';
   if (raw.indexOf('注册成功') >= 0 || raw.indexOf('已验活') >= 0 || raw.indexOf('[OK]') >= 0) {
@@ -44,9 +67,15 @@ function _formatLogLine(line) {
     cls += ' log-line-debug';
   }
 
+  // 翻译为当前语言（zh 直接返回原文）
+  var display = raw;
+  if (window.I18N && typeof window.I18N.translateLog === 'function') {
+    display = window.I18N.translateLog(raw);
+  }
+
   // 分段高亮: 时间戳 + [标签] + [step] + 其余
   var html = '';
-  var rest = raw;
+  var rest = display;
 
   var m = rest.match(/^(\d{2}:\d{2}:\d{2})\s*/);
   if (m) {
@@ -88,9 +117,9 @@ function renderUnifiedLogs() {
       navigator.clipboard.writeText(text).then(function() {
         line.classList.add('log-copied');
         setTimeout(function() { line.classList.remove('log-copied'); }, 600);
-        if (typeof showToast === 'function') showToast('复制成功', 'success');
+        if (typeof showToast === 'function') showToast(_tkT('toast.copied', '复制成功'), 'success');
       }).catch(function(err) {
-        if (typeof showToast === 'function') showToast('复制失败: ' + err.message, 'error');
+        if (typeof showToast === 'function') showToast(_tkT('toast.copyFailed', '复制失败') + ': ' + err.message, 'error');
       });
     });
     box.dataset.copyBound = '1';
@@ -101,7 +130,7 @@ function renderUnifiedLogs() {
   var logs = window._kiroLogs || [];
   var html;
   if (!logs.length) {
-    html = '<span style="color:var(--text-muted);">暂无日志</span>';
+    html = '<span style="color:var(--text-muted);">' + _tkT('logs.empty', '暂无日志') + '</span>';
   } else {
     html = logs.map(function(l) {
       return _formatLogLine(l.replace(/^\s+/, ''));
@@ -117,22 +146,23 @@ function renderUnifiedLogs() {
 function copyLogs() {
   var box = document.getElementById('unified-log-box');
   if (!box) return;
-  
-  var text = box.textContent;
-  if (!text || text === '暂无日志') {
-    showToast('暂无日志可复制', 'error');
+
+  var logs = window._kiroLogs || [];
+  if (!logs.length) {
+    showToast(_tkT('toast.logEmpty', '暂无日志可复制'), 'error');
     return;
   }
-  
+  var text = box.textContent;
+
   navigator.clipboard.writeText(text).then(function() {
-    showToast('日志已复制到剪贴板', 'success');
+    showToast(_tkT('toast.logCopied', '日志已复制到剪贴板'), 'success');
   }).catch(function(e) {
-    showToast('复制失败: ' + e.message, 'error');
+    showToast(_tkT('toast.copyFailed', '复制失败') + ': ' + e.message, 'error');
   });
 }
 
 function notifyTaskComplete(taskName, success, failed, total) {
-  var msg = taskName + ' 任务完成！成功 ' + success + ' / 失败 ' + failed + ' / 共 ' + total;
+  var msg = _tkT('toast.taskCompleteMsg', { name: taskName, s: success, f: failed, t: total }, '{name} 任务完成！成功 {s} / 失败 {f} / 共 {t}');
   showToast(msg, success > 0 ? 'success' : 'error');
   // 提示音（3声短促蜂鸣），受设置开关控制
   var soundEnabled = document.getElementById('cfg-sound');
@@ -190,9 +220,9 @@ async function startTaskWithConfig(cfg) {
       return;
     }
     updateUIStatus(true);
-    showToast('任务已启动');
+    showToast(_tkT('toast.taskStarted', '任务已启动'));
   } catch(e) {
-    showToast('启动失败: ' + e.message, 'error');
+    showToast(_tkT('toast.taskStartFailed', '启动失败') + ': ' + e.message, 'error');
   }
 }
 
@@ -225,9 +255,9 @@ async function stopTask() {
       return; 
     }
     document.getElementById('btn-stop').disabled = true;
-    showToast('正在停止任务...');
+    showToast(_tkT('toast.taskStopping', '正在停止任务...'));
   } catch(e) {
-    showToast('停止失败: ' + (e.message || e), 'error');
+    showToast(_tkT('toast.taskStopFailed', '停止失败') + ': ' + (e.message || e), 'error');
   }
 }
 
@@ -291,10 +321,10 @@ async function checkUpdateManually() {
       updateInfo = result;
       showUpdateModal(result);
     } else {
-      showToast('当前已是最新版本');
+      showToast(_tkT('toast.upToDate', '当前已是最新版本'));
     }
   } catch(e) {
-    showToast('检查更新失败: ' + e.message, 'error');
+    showToast(_tkT('toast.checkUpdateFailed', '检查更新失败') + ': ' + e.message, 'error');
   }
 }
 
@@ -308,7 +338,10 @@ setInterval(async function() {
     // 注册页状态徽章
     var regBadge = document.getElementById('reg-status-badge');
     if (regBadge) {
-      regBadge.textContent = s.running ? '运行中' : '空闲';
+      var _tt = (window.I18N && window.I18N.t) ? window.I18N.t : function(k){return k;};
+      var rTxt = s.running ? _tt('status.running') : _tt('status.idle');
+      if (!rTxt || rTxt === 'status.running' || rTxt === 'status.idle') rTxt = s.running ? '运行中' : '空闲';
+      regBadge.textContent = rTxt;
       regBadge.className = 'db-badge ' + (s.running ? 'db-badge-running' : 'db-badge-idle');
     }
     document.getElementById('st-progress').textContent = s.completed + '/' + s.total;
@@ -366,3 +399,8 @@ setInterval(async function() {
     }
   }
 }, 2000);
+
+// 切换语言时立刻按新语言重渲染日志（renderUnifiedLogs 自带 innerHTML 短路，无副作用）
+window.addEventListener('i18n:changed', function() {
+  if (typeof renderUnifiedLogs === 'function') renderUnifiedLogs();
+});

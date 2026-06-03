@@ -41,10 +41,14 @@ type StartTaskRequest struct {
 	RetryCount        int                              `json:"retryCount"`
 	OTPTimeout        int                              `json:"otpTimeout"`
 	OutputPath        string                           `json:"outputPath"`
-	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail" 或 "mailporary"
+	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary" 或 "cloudmail"
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
 	MoeMailConfigs    map[string][]email.MoeMailConfig `json:"moemailConfigs"`    // 域名 -> 配置列表映射
 	MoeMailRandomMode bool                             `json:"moemailRandomMode"` // 是否为随机模式
+
+	CloudMailDomains    []string                           `json:"cloudmailDomains"`
+	CloudMailConfigs    map[string][]email.CloudMailConfig `json:"cloudmailConfigs"`
+	CloudMailRandomMode bool                               `json:"cloudmailRandomMode"`
 }
 
 // StartTask 公开方法（包装器）
@@ -81,6 +85,15 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 		// MoeMail 不需要预先加载账号，每次任务动态生成
 	} else if emailProvider == "mailporary" {
 		// Mailporary 为零配置临时邮箱，不需要预加载账号或域名配置。
+	} else if emailProvider == "cloudmail" {
+		if len(req.CloudMailDomains) == 0 {
+			Manager.mu.Unlock()
+			return map[string]interface{}{"error": "请选择至少一个 cloud-mail 域名"}
+		}
+		if len(req.CloudMailConfigs) == 0 {
+			Manager.mu.Unlock()
+			return map[string]interface{}{"error": "cloud-mail 配置缺失"}
+		}
 	} else {
 		// Outlook 模式：加载账号列表
 		storedAccounts := storage.GetAccountsCached()
@@ -241,14 +254,18 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Printf("[Kiro] 代理模式: 直连")
 	case storage.ProxyModeNormal:
 		taskConfig.Proxy = storage.GetProxy()
-		if taskConfig.Proxy == "" {
-			failConfig("普通代理模式已启用但代理为空")
+		poolEnabled := proxy.HasEnabled()
+		if taskConfig.Proxy == "" && !poolEnabled {
+			failConfig("普通代理模式已启用但代理为空，且代理池无启用项")
 			return
 		}
-		if proxy.HasURLTemplate(taskConfig.Proxy) {
+		if taskConfig.Proxy != "" && proxy.HasURLTemplate(taskConfig.Proxy) {
 			log.Printf("[Kiro] 代理模式: 普通代理模板，注册时将动态生成会话代理")
-		} else {
+		} else if taskConfig.Proxy != "" {
 			log.Printf("[Kiro] 代理模式: 普通代理")
+		}
+		if poolEnabled {
+			log.Printf("[Kiro] 普通代理模式: 已启用多代理池，将按权重为每个注册任务选择代理")
 		}
 	case storage.ProxyModeClash:
 		taskConfig.Proxy = storage.GetClashProxy()
@@ -302,6 +319,25 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Println("[Kiro] Mailporary 零配置邮箱模式")
 	}
 
+	// 预先准备 CloudMail 域名池
+	var cloudmailDomainPool []string
+	var cloudmailDomainConfigs map[string][]email.CloudMailConfig
+	if emailProvider == "cloudmail" {
+		taskConfig.UseCloudMail = true
+		cloudmailDomainPool = req.CloudMailDomains
+		cloudmailDomainConfigs = req.CloudMailConfigs
+
+		if len(cloudmailDomainPool) == 0 || len(cloudmailDomainConfigs) == 0 {
+			log.Println("[Kiro] cloud-mail 域名或配置为空，任务终止")
+			Manager.mu.Lock()
+			Manager.running = false
+			Manager.mu.Unlock()
+			return
+		}
+
+		log.Printf("[Kiro] cloud-mail 域名池: %v (共 %d 个域名)", cloudmailDomainPool, len(cloudmailDomainPool))
+	}
+
 	// 统计计数器
 	var statsMu sync.Mutex
 	var taskDurations []float64
@@ -344,6 +380,25 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		return domain, configs[rand.Intn(len(configs))]
 	}
 
+	// CloudMail 域名池索引（并发安全）
+	var cloudmailDomainIdx int
+	var cloudmailDomainMu sync.Mutex
+	nextCloudMailDomain := func() (string, email.CloudMailConfig) {
+		cloudmailDomainMu.Lock()
+		defer cloudmailDomainMu.Unlock()
+
+		var domain string
+		if req.CloudMailRandomMode {
+			domain = cloudmailDomainPool[rand.Intn(len(cloudmailDomainPool))]
+		} else {
+			domain = cloudmailDomainPool[cloudmailDomainIdx%len(cloudmailDomainPool)]
+			cloudmailDomainIdx++
+		}
+
+		configs := cloudmailDomainConfigs[domain]
+		return domain, configs[rand.Intn(len(configs))]
+	}
+
 	// send-otp 400 熔断：任一任务遇到该错误即终止全部并发任务（只触发一次）
 	var otpKillOnce sync.Once
 	doTask := func(i int) {
@@ -356,6 +411,13 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		taskCfg := *taskConfig
 		taskCfg.Password = core.GenPassword()
 		var accountEmail string
+		if proxyMode == storage.ProxyModeNormal {
+			// 多代理池只作为普通代理模式增强：不覆盖直连或 Clash 模式。
+			if picked := proxy.PickRandom(); picked != "" {
+				taskCfg.Proxy = picked
+				log.Printf("[Kiro][%d/%d] 选中代理池代理 %s", i+1, req.Count, proxy.MaskURL(picked))
+			}
+		}
 		var currentEmail string
 		setOutlookAccount := func(acc email.OutlookAccount) {
 			taskCfg.OutlookAccount = &acc
@@ -401,6 +463,26 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			taskCfg.MoeMailProvider = provider
+			currentEmail = provider.GetAddress()
+		} else if emailProvider == "cloudmail" {
+			domain, config := nextCloudMailDomain()
+			emailName := email.GenerateEmailName(i)
+
+			log.Printf("[Kiro][%d/%d] 创建 cloud-mail 邮箱: %s@%s (配置: %s)", i+1, req.Count, emailName, domain, config.Name)
+
+			provider, err := email.NewCloudMailProvider(config, emailName, domain)
+			if err != nil {
+				log.Printf("[Kiro][%d/%d] 生成 cloud-mail 邮箱失败: %v", i+1, req.Count, err)
+				Manager.mu.Lock()
+				Manager.completed++
+				Manager.failed++
+				Manager.mu.Unlock()
+				return
+			}
+
+			taskCfg.CloudMailProvider = provider
+			cfgCopy := config
+			taskCfg.CloudMailConfig = &cfgCopy
 			currentEmail = provider.GetAddress()
 		}
 
@@ -469,12 +551,12 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 					return true
 				}
 
-				if taskConfig.Proxy == "" {
+				if attemptCfg.Proxy == "" {
 					result = runRegistrar(&attemptCfg)
 					return true
 				}
 
-				selection, err := proxy.SelectRuntimeProxy(taskCtx, taskConfig.Proxy, proxy.DefaultRegisterSelectOptions())
+				selection, err := proxy.SelectRuntimeProxy(taskCtx, attemptCfg.Proxy, proxy.DefaultRegisterSelectOptions())
 				if err != nil {
 					log.Printf("[Kiro][%d/%d] 代理候选选择失败: %v", i+1, req.Count, err)
 					result = map[string]interface{}{
@@ -542,7 +624,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			// 动态代理池中部分 UUID 节点可能不可用；代理类网络错误优先切换新 UUID，不消耗业务重试次数。
-			if (proxy.HasURLTemplate(taskConfig.Proxy) || clashEnabled) && isProxyNetworkError(errorMsg) && proxySwitches < maxProxySwitches {
+			if (proxy.HasURLTemplate(taskCfg.Proxy) || clashEnabled) && isProxyNetworkError(errorMsg) && proxySwitches < maxProxySwitches {
 				proxySwitches++
 				if clashEnabled {
 					log.Printf("[Kiro][%d/%d] 检测到 Clash 节点网络错误，切换下一个节点重试 (%d/%d): %s",
