@@ -7,17 +7,17 @@ import (
 	"testing"
 )
 
-func TestNormalizeProxyAddressKeepsFullTemplateURL(t *testing.T) {
-	input := "https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"
+func TestNormalizeProxyAddressKeepsFullLocalURL(t *testing.T) {
+	input := "http://127.0.0.1:7890"
 
 	if got := NormalizeProxyAddress(input); got != input {
-		t.Fatalf("完整 URL 模板不应被改写: got %q, want %q", got, input)
+		t.Fatalf("完整本地代理 URL 不应被改写: got %q, want %q", got, input)
 	}
 }
 
 func TestNormalizeProxyAddressSupportsHostPortUserPassTemplate(t *testing.T) {
-	got := NormalizeProxyAddress("resin-proxy.codeai.de5.net:443:node.{uuid}:admin2012")
-	want := "http://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"
+	got := NormalizeProxyAddress("proxy.example.test:443:template-user:template-pass")
+	want := "http://template-user:template-pass@proxy.example.test:443"
 
 	if got != want {
 		t.Fatalf("host:port:user:pass 模板归一化失败: got %q, want %q", got, want)
@@ -55,13 +55,13 @@ func TestProxyModeLegacyClashLocalProxyDefaultsToClash(t *testing.T) {
 func TestSetClashProxyDoesNotOverwriteNormalProxy(t *testing.T) {
 	withTempStorageConfig(t, "")
 
-	if _, err := SetProxy("https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"); err != nil {
+	if _, err := SetProxy("http://127.0.0.1:7890"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := SetClashProxy("http://127.0.0.1:7890"); err != nil {
 		t.Fatal(err)
 	}
-	if got := GetProxy(); got != "https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443" {
+	if got := GetProxy(); got != "http://127.0.0.1:7890" {
 		t.Fatalf("普通代理不应被 Clash 代理覆盖: got %q", got)
 	}
 	if got := GetClashProxy(); got != "http://127.0.0.1:7890" {
@@ -99,16 +99,16 @@ func TestSetEmailProxyNormalizesHostPort(t *testing.T) {
 	}
 }
 
-func TestSetEmailProxyKeepsTemplateURL(t *testing.T) {
+func TestSetEmailProxyKeepsFullLocalURL(t *testing.T) {
 	withTempStorageConfig(t, "")
-	input := "https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"
+	input := "http://127.0.0.1:7890"
 
 	got, err := SetEmailProxy(input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != input {
-		t.Fatalf("邮箱代理模板不应被改写: got %q, want %q", got, input)
+		t.Fatalf("邮箱本地代理 URL 不应被改写: got %q, want %q", got, input)
 	}
 }
 

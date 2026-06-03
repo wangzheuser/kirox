@@ -13,7 +13,7 @@ func TestSelectRuntimeProxyTemplateSucceedsOnThirdCandidate(t *testing.T) {
 	calls := 0
 
 	selection, err := SelectRuntimeProxy(context.Background(),
-		"https://node.{uuid}:admin2012@proxy.example.com:443",
+		"http://node.{uuid}:template-pass@proxy.example.test:443",
 		SelectOptions{
 			MaxAttempts: 3,
 			Timeout:     time.Second,
@@ -34,7 +34,7 @@ func TestSelectRuntimeProxyTemplateSucceedsOnThirdCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("期望第三个候选成功，实际失败: %v", err)
 	}
-	if selection.ProxyURL != "https://node.uuid-3:admin2012@proxy.example.com:443" {
+	if selection.ProxyURL != "http://node.uuid-3:template-pass@proxy.example.test:443" {
 		t.Fatalf("运行时代理不符合预期: %q", selection.ProxyURL)
 	}
 	if selection.SuccessAttempt != 3 || selection.Attempts != 3 {
@@ -47,7 +47,7 @@ func TestSelectRuntimeProxyTemplateSucceedsOnThirdCandidate(t *testing.T) {
 
 func TestSelectRuntimeProxyFailureDoesNotLeakPassword(t *testing.T) {
 	selection, err := SelectRuntimeProxy(context.Background(),
-		"https://node.{uuid}:admin2012@proxy.example.com:443",
+		"http://node.{uuid}:template-pass@proxy.example.test:443",
 		SelectOptions{
 			MaxAttempts: 2,
 			Timeout:     time.Second,
@@ -61,7 +61,7 @@ func TestSelectRuntimeProxyFailureDoesNotLeakPassword(t *testing.T) {
 		t.Fatal("期望所有候选失败")
 	}
 	combined := err.Error() + strings.Join(selection.Errors, " ")
-	if strings.Contains(combined, "admin2012") || strings.Contains(combined, "11111111-2222-4333-8444-555555555555") {
+	if strings.Contains(combined, "template-pass") || strings.Contains(combined, "11111111-2222-4333-8444-555555555555") {
 		t.Fatalf("错误信息泄漏了代理凭据或 UUID: %s", combined)
 	}
 	if !strings.Contains(combined, "node.%3Cuuid%3E") && !strings.Contains(combined, "node.<uuid>") {
@@ -73,7 +73,7 @@ func TestSelectRuntimeProxyPlainProxyDoesNotGenerateUUID(t *testing.T) {
 	calls := 0
 
 	selection, err := SelectRuntimeProxy(context.Background(),
-		"https://user:pass@proxy.example.com:443",
+		"http://127.0.0.1:7890",
 		SelectOptions{
 			MaxAttempts: 5,
 			UUIDFactory: func() string {
@@ -97,12 +97,12 @@ func TestSelectRuntimeProxyPlainProxyDoesNotGenerateUUID(t *testing.T) {
 }
 
 func TestMaskURLDoesNotLeakCredentials(t *testing.T) {
-	got := MaskURL("https://node.11111111-2222-4333-8444-555555555555:admin2012@proxy.example.com:443")
+	got := MaskURL("http://proxy-user:template-pass@proxy.example.test:443")
 
-	if strings.Contains(got, "admin2012") || strings.Contains(got, "11111111-2222-4333-8444-555555555555") {
+	if strings.Contains(got, "template-pass") || strings.Contains(got, "11111111-2222-4333-8444-555555555555") {
 		t.Fatalf("脱敏代理泄漏敏感信息: %s", got)
 	}
-	if !strings.Contains(got, "proxy.example.com:443") {
+	if !strings.Contains(got, "proxy.example.test:443") {
 		t.Fatalf("脱敏代理应保留主机端口: %s", got)
 	}
 }

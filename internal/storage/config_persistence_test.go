@@ -29,7 +29,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if err := SetProxyMode(ProxyModeClash); err != nil {
 		t.Fatalf("SetProxyMode returned error: %v", err)
 	}
-	if _, err := SetProxy("https://node.{uuid}:pass@example.com:443"); err != nil {
+	if _, err := SetProxy("http://127.0.0.1:7890"); err != nil {
 		t.Fatalf("SetProxy returned error: %v", err)
 	}
 	if _, err := SetClashProxy("127.0.0.1:7890"); err != nil {
@@ -81,7 +81,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if got := GetProxyMode(); got != ProxyModeClash {
 		t.Fatalf("proxy_mode round-trip failed: got %q", got)
 	}
-	if got := GetProxy(); got != "https://node.{uuid}:pass@example.com:443" {
+	if got := GetProxy(); got != "http://127.0.0.1:7890" {
 		t.Fatalf("proxy round-trip failed: got %q", got)
 	}
 	if got := GetClashProxy(); got != "socks5://127.0.0.1:7890" {

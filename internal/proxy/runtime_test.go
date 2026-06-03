@@ -7,14 +7,14 @@ func TestRenderURLTemplateReplacesEveryUUIDWithOneGeneratedValue(t *testing.T) {
 	calls := 0
 
 	got := renderURLTemplate(
-		" https://node.{uuid}:admin2012@resin-proxy.codeai.de5.net:443?session={uuid} ",
+		" http://127.0.0.1:7890/{uuid}?session={uuid} ",
 		func() string {
 			calls++
 			return fixedUUID
 		},
 	)
 
-	want := "https://node." + fixedUUID + ":admin2012@resin-proxy.codeai.de5.net:443?session=" + fixedUUID
+	want := "http://127.0.0.1:7890/" + fixedUUID + "?session=" + fixedUUID
 	if got != want {
 		t.Fatalf("渲染结果不符合预期: got %q, want %q", got, want)
 	}
