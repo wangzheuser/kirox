@@ -19,6 +19,20 @@ import (
 	"reg_go/internal/storage"
 )
 
+const (
+	concurrentStartStaggerStep      = 100 * time.Millisecond
+	concurrentStartStaggerJitterMax = 80 * time.Millisecond
+)
+
+func concurrentStartStagger(idx int, concurrency int) time.Duration {
+	if concurrency <= 1 {
+		return 0
+	}
+	base := time.Duration(idx%concurrency) * concurrentStartStaggerStep
+	jitterMs := rand.Intn(int(concurrentStartStaggerJitterMax/time.Millisecond) + 1)
+	return base + time.Duration(jitterMs)*time.Millisecond
+}
+
 // StartTaskRequest 启动任务请求
 type StartTaskRequest struct {
 	Count             int                              `json:"count"`
@@ -610,6 +624,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	if req.Concurrency > 1 {
 		log.Printf("[Kiro] 启动并发任务: %d 个任务，并发数 %d", req.Count, req.Concurrency)
+		log.Printf("[Kiro] 并发任务启动错峰: 步进 100ms, 抖动 0-80ms")
 		sem := make(chan struct{}, req.Concurrency)
 		var wg sync.WaitGroup
 	loop:
@@ -624,6 +639,20 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			go func(idx int) {
 				defer wg.Done()
 				defer func() { <-sem }()
+
+				stagger := concurrentStartStagger(idx, req.Concurrency)
+				if stagger > 0 {
+					timer := time.NewTimer(stagger)
+					select {
+					case <-Manager.stopCh:
+						if !timer.Stop() {
+							<-timer.C
+						}
+						return
+					case <-timer.C:
+					}
+				}
+
 				doTask(idx)
 			}(i)
 		}
