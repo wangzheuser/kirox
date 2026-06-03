@@ -57,3 +57,18 @@ func TestSuccessfulSyncEmailsReturnsOnlySuccessfulDetails(t *testing.T) {
 		t.Fatalf("expected only successful email, got %#v", got)
 	}
 }
+
+func TestSelectAccountsByEmailReportsMissingBatchEmails(t *testing.T) {
+	accounts := []map[string]interface{}{
+		{"email": "saved@example.com"},
+	}
+
+	selected, missing := selectAccountsByEmail(accounts, []string{"saved@example.com", "missing@example.com"})
+
+	if len(selected) != 1 || selected[0]["email"] != "saved@example.com" {
+		t.Fatalf("expected saved account selected, got %#v", selected)
+	}
+	if len(missing) != 1 || missing[0] != "missing@example.com" {
+		t.Fatalf("expected missing email reported, got %#v", missing)
+	}
+}

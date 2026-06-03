@@ -7,8 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+var accountsJSONMu sync.RWMutex
 
 // SaveKiroSuccess 以明文 JSON 数组形式把成功注册的账号写入 outDir/accounts.json。
 // 同邮箱以最新一条覆盖；仅处理成功记录（失败/封号不落盘，只留在运行日志）。
@@ -51,6 +54,9 @@ func SaveKiroSuccess(result map[string]interface{}, outDir string) error {
 	}
 	path := filepath.Join(outDir, "accounts.json")
 
+	accountsJSONMu.Lock()
+	defer accountsJSONMu.Unlock()
+
 	existing, err := loadJSONArray(path)
 	if err != nil {
 		return fmt.Errorf("读取 accounts.json 失败: %w", err)
@@ -81,6 +87,9 @@ func SaveKiroSuccess(result map[string]interface{}, outDir string) error {
 
 // LoadAccounts 读取 outDir/accounts.json 中保存的账号列表（按写入顺序返回）。
 func LoadAccounts(outDir string) ([]map[string]interface{}, error) {
+	accountsJSONMu.RLock()
+	defer accountsJSONMu.RUnlock()
+
 	return loadJSONArray(filepath.Join(outDir, "accounts.json"))
 }
 
@@ -100,6 +109,9 @@ func MarkKiroRSSynced(outDir string, emails []string) (int, error) {
 	}
 
 	path := filepath.Join(outDir, "accounts.json")
+	accountsJSONMu.Lock()
+	defer accountsJSONMu.Unlock()
+
 	existing, err := loadJSONArray(path)
 	if err != nil || len(existing) == 0 {
 		return 0, err
@@ -128,6 +140,9 @@ func MarkKiroRSSynced(outDir string, emails []string) (int, error) {
 // DeleteAccount 从 outDir/accounts.json 中移除指定邮箱的账号；返回是否实际删除。
 func DeleteAccount(outDir, email string) (bool, error) {
 	path := filepath.Join(outDir, "accounts.json")
+	accountsJSONMu.Lock()
+	defer accountsJSONMu.Unlock()
+
 	existing, err := loadJSONArray(path)
 	if err != nil || len(existing) == 0 {
 		return false, err
@@ -173,9 +188,33 @@ func writeJSONArrayAtomic(path string, arr []map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmp := tmpFile.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmp)
+		}
+	}()
+
+	if _, err := tmpFile.Write(b); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Chmod(0o644); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }

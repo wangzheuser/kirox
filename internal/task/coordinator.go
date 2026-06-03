@@ -345,6 +345,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	taskStartTime := time.Now()
 	var batchSuccessMu sync.Mutex
 	batchSuccessEmails := make([]string, 0, req.Count)
+	batchSuccessResults := make(map[string]map[string]interface{})
 	batchSuccessSet := make(map[string]struct{})
 
 	// 共享账号池（并发安全），goroutine 动态领取账号（仅 Outlook 模式使用）
@@ -701,16 +702,19 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 		}
 		if success {
-			if err := data.SaveKiroSuccess(result, outDir); err != nil {
-				log.Printf("[Kiro] 保存结果失败: %v", err)
-			} else if emailAddr, _ := result["email"].(string); strings.TrimSpace(emailAddr) != "" {
+			emailAddr, _ := result["email"].(string)
+			if strings.TrimSpace(emailAddr) != "" {
 				batchSuccessMu.Lock()
 				emailKey := strings.ToLower(strings.TrimSpace(emailAddr))
+				batchSuccessResults[emailKey] = result
 				if _, exists := batchSuccessSet[emailKey]; !exists {
 					batchSuccessSet[emailKey] = struct{}{}
 					batchSuccessEmails = append(batchSuccessEmails, emailAddr)
 				}
 				batchSuccessMu.Unlock()
+			}
+			if err := data.SaveKiroSuccess(result, outDir); err != nil {
+				log.Printf("[Kiro] 保存结果失败: %v", err)
 			}
 		}
 	}
@@ -820,10 +824,42 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	if sucCount > 0 && storage.GetKiroRSAutoSync() && storage.GetKiroRSAPIURL() != "" {
 		batchSuccessMu.Lock()
 		currentBatchSuccessEmails := append([]string(nil), batchSuccessEmails...)
+		currentBatchSuccessResults := make(map[string]map[string]interface{}, len(batchSuccessResults))
+		for emailKey, result := range batchSuccessResults {
+			currentBatchSuccessResults[emailKey] = result
+		}
 		batchSuccessMu.Unlock()
 
-		accounts, _ := data.LoadAccounts(outDir)
-		selectedAccounts := filterAccountsByEmail(accounts, currentBatchSuccessEmails)
+		accounts, loadErr := data.LoadAccounts(outDir)
+		if loadErr != nil {
+			log.Printf("[Kiro] 自动同步前读取账号文件失败: %v", loadErr)
+		}
+		selectedAccounts, missingEmails := selectAccountsByEmail(accounts, currentBatchSuccessEmails)
+		if len(missingEmails) > 0 {
+			log.Printf("[Kiro] 自动同步前检测到 %d 个成功账号尚未落盘，尝试补写: %s", len(missingEmails), strings.Join(missingEmails, ", "))
+			for _, missingEmail := range missingEmails {
+				emailKey := strings.ToLower(strings.TrimSpace(missingEmail))
+				result := currentBatchSuccessResults[emailKey]
+				if result == nil {
+					log.Printf("[Kiro] 自动同步补写失败，内存中缺少成功结果: %s", missingEmail)
+					continue
+				}
+				if err := data.SaveKiroSuccess(result, outDir); err != nil {
+					log.Printf("[Kiro] 自动同步补写账号失败 %s: %v", missingEmail, err)
+				}
+			}
+
+			accounts, loadErr = data.LoadAccounts(outDir)
+			if loadErr != nil {
+				log.Printf("[Kiro] 自动同步补写后读取账号文件失败: %v", loadErr)
+			}
+			selectedAccounts, missingEmails = selectAccountsByEmail(accounts, currentBatchSuccessEmails)
+			if len(missingEmails) > 0 {
+				log.Printf("[Kiro] 自动同步前仍缺失 %d 个成功账号: %s", len(missingEmails), strings.Join(missingEmails, ", "))
+			}
+		}
+		log.Printf("[Kiro] 自动同步账号校验: 注册成功 %d 个 / 本批唯一邮箱 %d 个 / 已落盘 %d 个 / 待同步 %d 个",
+			sucCount, len(currentBatchSuccessEmails), len(selectedAccounts), len(selectedAccounts))
 		if len(selectedAccounts) > 0 {
 			log.Printf("[Kiro] 开始自动同步 %d 个账号到 kiro.rs", len(selectedAccounts))
 			syncResult := kirorsync.SyncAccounts(
@@ -845,23 +881,51 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 }
 
 func filterAccountsByEmail(accounts []map[string]interface{}, emails []string) []map[string]interface{} {
+	selected, _ := selectAccountsByEmail(accounts, emails)
+	return selected
+}
+
+func selectAccountsByEmail(accounts []map[string]interface{}, emails []string) ([]map[string]interface{}, []string) {
 	if len(accounts) == 0 || len(emails) == 0 {
-		return nil
+		missing := make([]string, 0, len(emails))
+		for _, email := range emails {
+			if strings.TrimSpace(email) != "" {
+				missing = append(missing, email)
+			}
+		}
+		return nil, missing
 	}
 	wanted := make(map[string]struct{}, len(emails))
+	original := make(map[string]string, len(emails))
 	for _, email := range emails {
 		if key := strings.ToLower(strings.TrimSpace(email)); key != "" {
 			wanted[key] = struct{}{}
+			if _, exists := original[key]; !exists {
+				original[key] = email
+			}
 		}
 	}
 	out := make([]map[string]interface{}, 0, len(wanted))
+	found := make(map[string]struct{}, len(wanted))
 	for _, account := range accounts {
 		email, _ := account["email"].(string)
-		if _, ok := wanted[strings.ToLower(strings.TrimSpace(email))]; ok {
+		key := strings.ToLower(strings.TrimSpace(email))
+		if _, ok := wanted[key]; ok {
 			out = append(out, account)
+			found[key] = struct{}{}
 		}
 	}
-	return out
+	missing := make([]string, 0)
+	for _, email := range emails {
+		key := strings.ToLower(strings.TrimSpace(email))
+		if key == "" {
+			continue
+		}
+		if _, ok := found[key]; !ok {
+			missing = append(missing, original[key])
+		}
+	}
+	return out, missing
 }
 
 func successfulSyncEmails(result kirorsync.SyncResult) []string {

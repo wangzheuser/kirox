@@ -1,6 +1,10 @@
 package data
 
-import "testing"
+import (
+	"fmt"
+	"sync"
+	"testing"
+)
 
 func TestSaveKiroSuccessPersistsPasswordAccessTokenAndPriority(t *testing.T) {
 	dir := t.TempDir()
@@ -122,5 +126,59 @@ func TestSaveKiroSuccessPreservesKiroRSSyncedWhenRefreshTokenUnchanged(t *testin
 	got := accountByEmail(t, accounts, "saved@example.com")
 	if synced, ok := got["kiroRsSynced"].(bool); !ok || !synced {
 		t.Fatalf("unchanged refresh token should preserve kiroRsSynced=true: %#v", got)
+	}
+}
+
+func TestSaveKiroSuccessConcurrentUniqueEmails(t *testing.T) {
+	dir := t.TempDir()
+	const total = 100
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, total)
+	for i := 0; i < total; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- SaveKiroSuccess(map[string]interface{}{
+				"status":        "success",
+				"email":         fmt.Sprintf("saved-%03d@example.com", i),
+				"password":      "Password123!",
+				"client_id":     fmt.Sprintf("client-%03d", i),
+				"client_secret": fmt.Sprintf("secret-%03d", i),
+				"aws_token": map[string]interface{}{
+					"accessToken":  fmt.Sprintf("access-%03d", i),
+					"refreshToken": fmt.Sprintf("refresh-%03d", i),
+				},
+			}, dir)
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("SaveKiroSuccess returned error: %v", err)
+		}
+	}
+
+	accounts, err := LoadAccounts(dir)
+	if err != nil {
+		t.Fatalf("LoadAccounts: %v", err)
+	}
+	if len(accounts) != total {
+		t.Fatalf("expected %d saved accounts, got %d", total, len(accounts))
+	}
+
+	seen := make(map[string]struct{}, total)
+	for _, account := range accounts {
+		email, _ := account["email"].(string)
+		seen[email] = struct{}{}
+	}
+	for i := 0; i < total; i++ {
+		email := fmt.Sprintf("saved-%03d@example.com", i)
+		if _, ok := seen[email]; !ok {
+			t.Fatalf("missing saved account %s", email)
+		}
 	}
 }

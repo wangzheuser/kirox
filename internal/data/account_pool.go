@@ -52,7 +52,10 @@ func ImportAccountPoolJSON(outDir, raw string) (AccountPoolImportSummary, error)
 		return summary, fmt.Errorf("账号 JSON 格式无效: %w", err)
 	}
 
-	existing, err := LoadAccounts(outDir)
+	accountsJSONMu.Lock()
+	defer accountsJSONMu.Unlock()
+
+	existing, err := loadJSONArray(accountsPath(outDir))
 	if err != nil {
 		return summary, err
 	}
