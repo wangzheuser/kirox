@@ -248,6 +248,10 @@ if (window.runtime) {
     }
     var msg = 'kiro.rs 同步完成：成功 ' + result.success + ' / 失败 ' + result.failed;
     showToast(msg, result.failed > 0 ? 'error' : 'success');
+    var accountPoolPage = document.getElementById('page-account-pool');
+    if (accountPoolPage && accountPoolPage.classList.contains('active') && typeof loadAccountPool === 'function') {
+      loadAccountPool();
+    }
   });
 }
 

@@ -25,7 +25,7 @@ test('registration form is persisted through backend APIs instead of long-term l
 });
 
 test('wails wrappers expose persistent config APIs', () => {
-  for (const name of ['GetSoundEnabled', 'SetSoundEnabled', 'GetRegistrationConfig', 'SetRegistrationConfig']) {
+  for (const name of ['GetSoundEnabled', 'SetSoundEnabled', 'GetRegistrationConfig', 'SetRegistrationConfig', 'GetKiroRSConfig', 'SetKiroRSConfig', 'TestKiroRSConnection']) {
     assert.match(wailsAppJs, new RegExp(`export function ${name}\\(`));
     assert.match(wailsAppDts, new RegExp(`export function ${name}\\(`));
   }
@@ -47,6 +47,9 @@ test('settings cfg controls have backend persistence coverage or explicit non-se
     'cfg-data-dir',
     'cfg-email-proxy',
     'cfg-kill-switch',
+    'cfg-kiro-rs-auto-sync',
+    'cfg-kiro-rs-key',
+    'cfg-kiro-rs-url',
     'cfg-outlook-scope',
     'cfg-page-stay-max-seconds',
     'cfg-page-stay-min-seconds',

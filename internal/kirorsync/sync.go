@@ -94,7 +94,11 @@ func SyncAccounts(apiURL, apiKey string, accounts []map[string]interface{}) Sync
 		detail := pushOne(apiURL, apiKey, acc)
 		if detail.Success {
 			result.Success++
-			log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 成功", i+1, total, detail.Email)
+			if detail.Error != "" {
+				log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 已存在，视为成功", i+1, total, detail.Email)
+			} else {
+				log.Printf("[Kiro] kiro.rs 同步 [%d/%d] %s -> 成功", i+1, total, detail.Email)
+			}
 		} else {
 			// 仅网络错误和 5xx 可重试
 			if isRetryableError(detail.Error) {
@@ -125,7 +129,11 @@ func SyncAccounts(apiURL, apiKey string, accounts []map[string]interface{}) Sync
 			}
 			if detail.Success {
 				result.Success++
-				log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 成功", i+1, retryTotal, detail.Email)
+				if detail.Error != "" {
+					log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 已存在，视为成功", i+1, retryTotal, detail.Email)
+				} else {
+					log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 成功", i+1, retryTotal, detail.Email)
+				}
 			} else {
 				result.Failed++
 				log.Printf("[Kiro] kiro.rs 重试 [%d/%d] %s -> 失败: %s", i+1, retryTotal, detail.Email, detail.Error)
@@ -208,6 +216,9 @@ func pushOne(apiURL, apiKey string, acc map[string]interface{}) SyncDetail {
 
 	if resp.StatusCode >= 400 {
 		errMsg := fmt.Sprintf("HTTP %d: %s", resp.StatusCode, truncate(string(respBody), 200))
+		if resp.StatusCode == http.StatusBadRequest && isExistingCredentialError(string(respBody)) {
+			return SyncDetail{Email: email, Success: true, Error: "凭据已存在，视为成功: " + errMsg}
+		}
 		return SyncDetail{Email: email, Success: false, Error: errMsg}
 	}
 
@@ -233,6 +244,16 @@ func isRetryableError(errMsg string) bool {
 		return true
 	}
 	return false
+}
+
+// isExistingCredentialError 判断 kiro.rs 返回是否表示凭据已经存在。
+func isExistingCredentialError(body string) bool {
+	normalized := strings.ToLower(body)
+	return strings.Contains(body, "凭据已存在") ||
+		strings.Contains(body, "已存在") ||
+		strings.Contains(body, "refreshToken 重复") ||
+		strings.Contains(normalized, "refreshtoken") && (strings.Contains(body, "重复") || strings.Contains(normalized, "duplicate") || strings.Contains(normalized, "already exists")) ||
+		strings.Contains(normalized, "credential") && (strings.Contains(body, "已存在") || strings.Contains(normalized, "duplicate") || strings.Contains(normalized, "already exists"))
 }
 
 // truncate 截断字符串

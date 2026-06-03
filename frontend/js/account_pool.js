@@ -23,6 +23,13 @@ function accountPoolTokenStatus(account) {
   return '<span style="color:#f59e0b;" title="缺少 ' + accountPoolEscapeHtml(missing.join(', ')) + '">缺少字段</span>';
 }
 
+function accountPoolKiroRSSyncStatus(account) {
+  if (account && account.kiroRsSynced === true) {
+    return '<span style="color:#10b981;">已同步</span>';
+  }
+  return '<span style="color:#f59e0b;">未同步</span>';
+}
+
 async function loadAccountPool() {
   var res;
   try {
@@ -65,7 +72,7 @@ function renderAccountPoolTable() {
   var body = document.getElementById('account-pool-table-body');
   if (!body) return;
   if (!accountPoolState.accounts.length) {
-    body.innerHTML = '<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">账号池为空，请导入账号 JSON 或先完成注册。</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">账号池为空，请导入账号 JSON 或先完成注册。</td></tr>';
     return;
   }
 
@@ -78,9 +85,20 @@ function renderAccountPoolTable() {
         '<td style="padding:8px;font-size:12px;color:var(--muted);">' + accountPoolEscapeHtml(account.priority == null ? '' : account.priority) + '</td>' +
         '<td style="padding:8px;font-size:12px;color:var(--muted);">' + accountPoolEscapeHtml(account.time || '') + '</td>' +
         '<td style="padding:8px 12px;font-size:12px;">' + accountPoolTokenStatus(account) + '</td>' +
+        '<td style="padding:8px 12px;font-size:12px;">' + accountPoolKiroRSSyncStatus(account) + '</td>' +
       '</tr>'
     );
   }).join('');
+}
+
+function openAccountPoolSyncModal() {
+  var modal = document.getElementById('account-pool-sync-modal');
+  if (modal) modal.classList.add('show');
+}
+
+function closeAccountPoolSyncModal() {
+  var modal = document.getElementById('account-pool-sync-modal');
+  if (modal) modal.classList.remove('show');
 }
 
 function openAccountPoolImportModal() {
@@ -142,19 +160,30 @@ async function exportAccountPoolToClipboard() {
   }
 }
 
-async function syncAccountPoolToKiroRS() {
+async function startAccountPoolKiroRSSync(mode) {
+  closeAccountPoolSyncModal();
+  await syncAccountPoolToKiroRS(mode);
+}
+
+async function syncAccountPoolToKiroRS(mode) {
   var btn = document.getElementById('btn-sync-kiro-rs');
   var originalText = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '同步中...'; }
   showToast('已开始同步到 kiro.rs，进度见运行日志', 'success');
   try {
-    var result = await window.go.main.App.SyncAccountPoolToKiroRS();
+    if (mode === 'all') {
+      var result = await window.go.main.App.SyncAccountPoolToKiroRS('all');
+    } else {
+      var result = await window.go.main.App.SyncAccountPoolToKiroRS('unsynced');
+    }
     if (result.error) {
       showToast(result.error, 'error');
       return;
     }
     var msg = 'kiro.rs 同步完成：成功 ' + result.syncSuccess + ' / 失败 ' + result.syncFailed;
+    if (result.message) msg += '（' + result.message + '）';
     showToast(msg, result.syncFailed > 0 ? 'error' : 'success');
+    await loadAccountPool();
   } catch (e) {
     showToast('同步失败: ' + e.message, 'error');
   } finally {

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const appJs = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+const accountPoolJs = fs.readFileSync(new URL('../js/account_pool.js', import.meta.url), 'utf8');
 const buildJs = fs.readFileSync(new URL('../build.js', import.meta.url), 'utf8');
 const wailsAppJs = fs.readFileSync(new URL('../wailsjs/go/main/App.js', import.meta.url), 'utf8');
 const wailsAppDts = fs.readFileSync(new URL('../wailsjs/go/main/App.d.ts', import.meta.url), 'utf8');
@@ -29,6 +30,17 @@ test('account pool page exposes list, import, export and clipboard controls', ()
   assert.match(html, /id="account-pool-import-data"/);
   assert.match(html, /onclick="readAccountPoolClipboard\(\)"/);
   assert.match(html, /onclick="importAccountPoolJSON\(\)"/);
+});
+
+test('account pool exposes kiro.rs sync status and mode selection', () => {
+  assert.match(html, /同步状态/);
+  assert.match(html, /id="account-pool-sync-modal"/);
+  assert.match(html, /只同步未同步/);
+  assert.match(html, /全量同步/);
+  assert.match(accountPoolJs, /SyncAccountPoolToKiroRS\(['"]unsynced['"]\)/);
+  assert.match(accountPoolJs, /SyncAccountPoolToKiroRS\(['"]all['"]\)/);
+  assert.match(wailsAppJs, /export function SyncAccountPoolToKiroRS\(arg1\)/);
+  assert.match(wailsAppDts, /export function SyncAccountPoolToKiroRS\(arg1:string\)/);
 });
 
 test('account pool script is loaded and copied by frontend build', () => {
