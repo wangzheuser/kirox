@@ -107,10 +107,18 @@ func MarkAccountFailReason(email string, failReason string) map[string]interface
 		return map[string]interface{}{"status": "skipped"}
 	}
 	found := false
+	now := time.Now().Format("2006-01-02 15:04:05")
 	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
 		for i, acc := range accounts {
 			if acc["email"] == email {
-				accounts[i]["failReason"] = failReason
+				if failReason == "验证码超时" && acc["failReason"] == "验证码超时" {
+					accounts[i]["registered"] = true
+					accounts[i]["success"] = false
+					accounts[i]["registeredAt"] = now
+					accounts[i]["failReason"] = "异常邮箱"
+				} else {
+					accounts[i]["failReason"] = failReason
+				}
 				found = true
 				break
 			}

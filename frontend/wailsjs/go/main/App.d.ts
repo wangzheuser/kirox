@@ -49,8 +49,6 @@ export function GetKillSwitchEnabled():Promise<boolean>;
 
 export function GetKiroRSConfig():Promise<Record<string, any>>;
 
-export function GetVerifyModelsEnabled():Promise<boolean>;
-
 export function GetLanguage():Promise<string>;
 
 export function GetLicenseInfo():Promise<Record<string, any>>;
@@ -86,6 +84,8 @@ export function GetSubscriptionLink(arg1:string,arg2:string):Promise<Record<stri
 export function GetSubscriptionPlans(arg1:string):Promise<Record<string, any>>;
 
 export function GetTaskStatus():Promise<Record<string, any>>;
+
+export function GetVerifyModelsEnabled():Promise<boolean>;
 
 export function ImportAccountPoolJSON(arg1:string):Promise<Record<string, any>>;
 

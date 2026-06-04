@@ -90,10 +90,6 @@ export function GetKiroRSConfig() {
   return window['go']['main']['App']['GetKiroRSConfig']();
 }
 
-export function GetVerifyModelsEnabled() {
-  return window['go']['main']['App']['GetVerifyModelsEnabled']();
-}
-
 export function GetLanguage() {
   return window['go']['main']['App']['GetLanguage']();
 }
@@ -164,6 +160,10 @@ export function GetSubscriptionPlans(arg1) {
 
 export function GetTaskStatus() {
   return window['go']['main']['App']['GetTaskStatus']();
+}
+
+export function GetVerifyModelsEnabled() {
+  return window['go']['main']['App']['GetVerifyModelsEnabled']();
 }
 
 export function ImportAccountPoolJSON(arg1) {
