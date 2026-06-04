@@ -109,7 +109,7 @@ func TestConnection(apiURL, apiKey string) error
 | region | authRegion | 默认 "us-east-1" |
 | provider ("BuilderId") | authMethod = "idc" | 固定映射 |
 | priority | priority | 数字越小优先级越高 |
-| email | — | 不传递（kiro.rs 自动获取） |
+| email | email | 随凭据同步传递 |
 | password | — | 不传递（kiro.rs 不需要） |
 | accessToken | — | 不传递（kiro.rs 自行刷新） |
 

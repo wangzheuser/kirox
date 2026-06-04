@@ -31,6 +31,7 @@ type SyncDetail struct {
 
 // addCredentialRequest kiro.rs 添加凭据请求体
 type addCredentialRequest struct {
+	Email        string `json:"email"`
 	RefreshToken string `json:"refreshToken"`
 	AuthMethod   string `json:"authMethod,omitempty"`
 	ClientID     string `json:"clientId,omitempty"`
@@ -151,6 +152,7 @@ func TestConnection(apiURL, apiKey string) error {
 // pushOne 推送单个账号到 kiro.rs
 func pushOne(apiURL, apiKey string, acc map[string]interface{}) SyncDetail {
 	email, _ := acc["email"].(string)
+	email = strings.TrimSpace(email)
 	refreshToken, _ := acc["refreshToken"].(string)
 	clientID, _ := acc["clientId"].(string)
 	clientSecret, _ := acc["clientSecret"].(string)
@@ -169,6 +171,7 @@ func pushOne(apiURL, apiKey string, acc map[string]interface{}) SyncDetail {
 	}
 
 	reqBody := addCredentialRequest{
+		Email:        email,
 		RefreshToken: refreshToken,
 		AuthMethod:   "idc",
 		ClientID:     clientID,

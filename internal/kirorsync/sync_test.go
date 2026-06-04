@@ -56,6 +56,13 @@ func TestSyncAccountsKeepsOtherBadRequestAsFailure(t *testing.T) {
 
 func TestSyncAccountsCountsOrdinarySuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body addCredentialRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if body.Email != "ok@example.com" {
+			t.Fatalf("expected request email ok@example.com, got %q", body.Email)
+		}
 		fmt.Fprint(w, `{"success":true,"credentialId":123,"email":"ok@example.com"}`)
 	}))
 	defer server.Close()
@@ -105,12 +112,14 @@ func TestSyncAccountsRetriesNetworkErrorOnceAndCountsSuccess(t *testing.T) {
 
 func TestSyncAccountsRetriesRetryableErrorImmediatelyBeforeNextAccount(t *testing.T) {
 	var seen []string
+	var seenEmails []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body addCredentialRequest
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
 		seen = append(seen, body.RefreshToken)
+		seenEmails = append(seenEmails, body.Email)
 		if body.RefreshToken == "first" && len(seen) == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
 			fmt.Fprint(w, `temporary server error`)
@@ -129,8 +138,34 @@ func TestSyncAccountsRetriesRetryableErrorImmediatelyBeforeNextAccount(t *testin
 	if strings.Join(seen, ",") != strings.Join(wantOrder, ",") {
 		t.Fatalf("retry should happen immediately before next account, got order %#v", seen)
 	}
+	wantEmails := []string{"first@example.com", "first@example.com", "second@example.com"}
+	if strings.Join(seenEmails, ",") != strings.Join(wantEmails, ",") {
+		t.Fatalf("each request should include its account email, got emails %#v", seenEmails)
+	}
 	if result.Total != 2 || result.Success != 2 || result.Failed != 0 {
 		t.Fatalf("retryable server error should recover immediately, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+}
+
+func TestSyncAccountsTrimsEmailInCredentialRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body addCredentialRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if body.Email != "trim@example.com" {
+			t.Fatalf("expected trimmed request email trim@example.com, got %q", body.Email)
+		}
+		fmt.Fprint(w, `{"success":true,"credentialId":789,"email":"trim@example.com"}`)
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+		{"email": " trim@example.com ", "refreshToken": "refresh", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if result.Total != 1 || result.Success != 1 || result.Failed != 0 {
+		t.Fatalf("trimmed email success should count as success, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
 	}
 }
 
