@@ -12,9 +12,13 @@ import (
 	httputil "reg_go/internal/http"
 )
 
-// VerifyAlive 验活: 刷新 Token + 查用量 + 查模型
+// VerifyAlive 验活: 刷新 Token + 查用量；可选查模型
 func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]interface{} {
-	log.Println("[验活] 刷新 Token + 查用量 + 查模型")
+	if shouldVerifyModels(r.Cfg) {
+		log.Println("[验活] 刷新 Token + 查用量 + 查模型")
+	} else {
+		log.Println("[验活] 刷新 Token + 查用量")
+	}
 	client := httputil.NewTLSClient(r.Cfg.Proxy, true, r.Identity.ChromeVer)
 
 	refreshToken, _ := awsToken["refreshToken"].(string)
@@ -56,12 +60,18 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 		return map[string]interface{}{"alive": false, "error": "usage query failed"}
 	}
 
-	modelRes := queryGetEndpoint(client, access, "https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR")
-	if modelRes.suspended {
-		return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
+	if shouldVerifyModels(r.Cfg) {
+		modelRes := queryGetEndpoint(client, access, "https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR")
+		if modelRes.suspended {
+			return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
+		}
 	}
 
 	return r.parseUsage(usageRes.body)
+}
+
+func shouldVerifyModels(cfg *Config) bool {
+	return cfg != nil && cfg.VerifyModelsEnabled
 }
 
 type endpointResult struct {
@@ -77,10 +87,25 @@ func checkEndpointResponse(url string, statusCode int, body []byte) endpointResu
 		return endpointResult{suspended: true}
 	}
 	if statusCode != 200 {
+		if label == "usage" {
+			if reason := responseReason(body); reason != "" {
+				log.Printf("账号已被封禁 (reason) [%s]: status=%d reason=%s body=%s", label, statusCode, reason, string(body))
+				return endpointResult{suspended: true}
+			}
+		}
 		log.Printf("端点查询失败 [%s]: %d", label, statusCode)
 		return endpointResult{}
 	}
 	return endpointResult{body: body, ok: true}
+}
+
+func responseReason(body []byte) string {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	reason, _ := payload["reason"].(string)
+	return strings.TrimSpace(reason)
 }
 
 // endpointLabel 把完整 URL 归一到简短标签，避免日志泄露后端。
@@ -99,7 +124,9 @@ func endpointLabel(url string) string {
 	}
 }
 
-func queryGetEndpoint(client interface{ Do(req *fhttp.Request) (*fhttp.Response, error) }, access, url string) endpointResult {
+func queryGetEndpoint(client interface {
+	Do(req *fhttp.Request) (*fhttp.Response, error)
+}, access, url string) endpointResult {
 	req, _ := fhttp.NewRequest("GET", url, nil)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+access)
@@ -115,7 +142,9 @@ func queryGetEndpoint(client interface{ Do(req *fhttp.Request) (*fhttp.Response,
 	return checkEndpointResponse(url, resp.StatusCode, body)
 }
 
-func queryPostEndpoint(client interface{ Do(req *fhttp.Request) (*fhttp.Response, error) }, url string, payload []byte) endpointResult {
+func queryPostEndpoint(client interface {
+	Do(req *fhttp.Request) (*fhttp.Response, error)
+}, url string, payload []byte) endpointResult {
 	req, _ := fhttp.NewRequest("POST", url, bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 
@@ -178,5 +207,3 @@ func (r *Registrar) parseUsage(body []byte) map[string]interface{} {
 		"credit_used": totalUsed, "credit_limit": totalLimit,
 	}
 }
-
-

@@ -49,6 +49,8 @@ export function GetKillSwitchEnabled():Promise<boolean>;
 
 export function GetKiroRSConfig():Promise<Record<string, any>>;
 
+export function GetVerifyModelsEnabled():Promise<boolean>;
+
 export function GetLanguage():Promise<string>;
 
 export function GetLicenseInfo():Promise<Record<string, any>>;
@@ -146,6 +148,8 @@ export function SetRegistrationConfig(arg1:storage.RegistrationConfig):Promise<R
 export function SetResultOutputDir(arg1:string):Promise<Record<string, any>>;
 
 export function SetSoundEnabled(arg1:boolean):Promise<Record<string, any>>;
+
+export function SetVerifyModelsEnabled(arg1:boolean):Promise<Record<string, any>>;
 
 export function StartTask(arg1:task.StartTaskRequest):Promise<Record<string, any>>;
 

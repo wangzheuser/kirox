@@ -40,6 +40,8 @@ type Config struct {
 	ProxyFromPool bool
 	// ProxySwitchable 表示当前代理背后可换节点，HTTP 传输错误应交给任务层切换节点。
 	ProxySwitchable bool
+	// VerifyModelsEnabled 表示注册验活时是否额外请求 ListAvailableModels；默认关闭。
+	VerifyModelsEnabled bool
 
 	EmailProvider   string
 	UseOutlook      bool

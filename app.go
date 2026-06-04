@@ -523,6 +523,19 @@ func (a *App) SetSoundEnabled(enabled bool) map[string]interface{} {
 	return map[string]interface{}{"success": true, "enabled": storage.GetSoundEnabled()}
 }
 
+// GetVerifyModelsEnabled 返回注册验活二次模型检测开关状态
+func (a *App) GetVerifyModelsEnabled() bool {
+	return storage.GetVerifyModelsEnabled()
+}
+
+// SetVerifyModelsEnabled 保存注册验活二次模型检测开关状态
+func (a *App) SetVerifyModelsEnabled(enabled bool) map[string]interface{} {
+	if err := storage.SetVerifyModelsEnabled(enabled); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "enabled": storage.GetVerifyModelsEnabled()}
+}
+
 // GetRegistrationConfig 返回注册页业务配置
 func (a *App) GetRegistrationConfig() storage.RegistrationConfig {
 	return storage.GetRegistrationConfig()

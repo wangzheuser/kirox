@@ -708,6 +708,35 @@ async function saveKillSwitchEnabled() {
   }
 }
 
+// 二次模型验活开关
+async function loadVerifyModelsEnabled() {
+  var el = document.getElementById('cfg-verify-models');
+  if (!el) return;
+  try {
+    var enabled = await window.go.main.App.GetVerifyModelsEnabled();
+    el.checked = enabled === true;
+  } catch(e) {
+    el.checked = false;
+  }
+}
+
+async function saveVerifyModelsEnabled() {
+  var el = document.getElementById('cfg-verify-models');
+  if (!el) return;
+  try {
+    var result = await window.go.main.App.SetVerifyModelsEnabled(!!el.checked);
+    if (result.error) {
+      showToast(result.error, 'error');
+      await loadVerifyModelsEnabled();
+      return;
+    }
+    showToast(el.checked ? '已开启二次模型验活' : '已关闭二次模型验活');
+  } catch(e) {
+    showToast('保存失败: ' + e.message, 'error');
+    await loadVerifyModelsEnabled();
+  }
+}
+
 // ===== kiro.rs 同步配置 =====
 
 var kiroRSSaveTimer = null;
@@ -1138,6 +1167,7 @@ async function loadConfig() {
   loadClashProxy();
   loadClashConfig();
   loadKillSwitchEnabled();
+  loadVerifyModelsEnabled();
   loadSoundEnabled();
   loadKiroRSConfig();
   if (typeof loadProxyPool === 'function') loadProxyPool();

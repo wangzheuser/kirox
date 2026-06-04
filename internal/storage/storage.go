@@ -51,6 +51,7 @@ const (
 	keyEmailProxy                 = "email_proxy"
 	keyKillSwitchEnabled          = "kill_switch_enabled"
 	keySoundEnabled               = "sound_enabled"
+	keyVerifyModelsEnabled        = "verify_models_enabled"
 	keyClashEnabled               = "clash_enabled"
 	keyClashAPIURL                = "clash_api_url"
 	keyClashAPISecret             = "clash_api_secret"
@@ -94,18 +95,20 @@ type RegistrationConfig struct {
 var (
 	configMu sync.Mutex
 
-	_dataDir           string
-	_dataDirOnce       sync.Once
-	_resultOutputDir   string
-	_resultOutputOnce  sync.Once
-	_proxy             string
-	_proxyOnce         sync.Once
-	_killSwitchEnabled bool
-	_killSwitchOnce    sync.Once
-	_soundEnabled      bool
-	_soundOnce         sync.Once
-	_language          string
-	_languageOnce      sync.Once
+	_dataDir             string
+	_dataDirOnce         sync.Once
+	_resultOutputDir     string
+	_resultOutputOnce    sync.Once
+	_proxy               string
+	_proxyOnce           sync.Once
+	_killSwitchEnabled   bool
+	_killSwitchOnce      sync.Once
+	_soundEnabled        bool
+	_soundOnce           sync.Once
+	_verifyModelsEnabled bool
+	_verifyModelsOnce    sync.Once
+	_language            string
+	_languageOnce        sync.Once
 )
 
 var configKeyOrder = []string{
@@ -121,6 +124,7 @@ var configKeyOrder = []string{
 	keyEmailProxy,
 	keyKillSwitchEnabled,
 	keySoundEnabled,
+	keyVerifyModelsEnabled,
 	keyClashEnabled,
 	keyClashAPIURL,
 	keyClashAPISecret,
@@ -702,6 +706,30 @@ func SetSoundEnabled(enabled bool) error {
 	_soundEnabled = enabled
 	_soundOnce = sync.Once{}
 	_soundOnce.Do(func() {})
+	return nil
+}
+
+// GetVerifyModelsEnabled 返回注册验活时是否额外查询 ListAvailableModels，默认关闭。
+func GetVerifyModelsEnabled() bool {
+	_verifyModelsOnce.Do(func() {
+		m := loadConfigMap()
+		raw := strings.ToLower(strings.TrimSpace(m[keyVerifyModelsEnabled]))
+		_verifyModelsEnabled = raw == "true" || raw == "1" || raw == "yes" || raw == "on"
+	})
+	return _verifyModelsEnabled
+}
+
+// SetVerifyModelsEnabled 保存注册验活二次模型检测开关状态。
+func SetVerifyModelsEnabled(enabled bool) error {
+	if err := modifyConfigMap(func(m map[string]string) error {
+		m[keyVerifyModelsEnabled] = strconv.FormatBool(enabled)
+		return nil
+	}); err != nil {
+		return err
+	}
+	_verifyModelsEnabled = enabled
+	_verifyModelsOnce = sync.Once{}
+	_verifyModelsOnce.Do(func() {})
 	return nil
 }
 

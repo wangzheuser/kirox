@@ -90,6 +90,10 @@ export function GetKiroRSConfig() {
   return window['go']['main']['App']['GetKiroRSConfig']();
 }
 
+export function GetVerifyModelsEnabled() {
+  return window['go']['main']['App']['GetVerifyModelsEnabled']();
+}
+
 export function GetLanguage() {
   return window['go']['main']['App']['GetLanguage']();
 }
@@ -284,6 +288,10 @@ export function SetResultOutputDir(arg1) {
 
 export function SetSoundEnabled(arg1) {
   return window['go']['main']['App']['SetSoundEnabled'](arg1);
+}
+
+export function SetVerifyModelsEnabled(arg1) {
+  return window['go']['main']['App']['SetVerifyModelsEnabled'](arg1);
 }
 
 export function StartTask(arg1) {

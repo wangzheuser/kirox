@@ -232,6 +232,7 @@ func IsSuspended(err error) bool {
 	}
 	s := strings.ToLower(err.Error())
 	return strings.Contains(s, "http 403") ||
+		hasJSONReason(err.Error()) ||
 		strings.Contains(s, "accountsuspendedexception") ||
 		strings.Contains(s, "account suspended") ||
 		strings.Contains(s, "temporarily is suspended") ||
@@ -239,5 +240,19 @@ func IsSuspended(err error) bool {
 		strings.Contains(s, "locked your account") ||
 		strings.Contains(s, "not authorized to access this feature") ||
 		strings.Contains(s, "已封禁") ||
+		strings.Contains(s, "被封禁") ||
 		strings.Contains(s, "http 423")
+}
+
+func hasJSONReason(s string) bool {
+	start := strings.IndexByte(s, '{')
+	if start < 0 {
+		return false
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(s[start:]), &payload); err != nil {
+		return false
+	}
+	reason, _ := payload["reason"].(string)
+	return strings.TrimSpace(reason) != ""
 }

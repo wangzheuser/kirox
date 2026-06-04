@@ -128,6 +128,8 @@ func withTempStorageConfig(t *testing.T, content string) {
 	_killSwitchOnce = sync.Once{}
 	_soundEnabled = false
 	_soundOnce = sync.Once{}
+	_verifyModelsEnabled = false
+	_verifyModelsOnce = sync.Once{}
 
 	path := getConfigFilePath()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

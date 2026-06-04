@@ -10,6 +10,7 @@ const wailsAppDts = fs.readFileSync(new URL('../wailsjs/go/main/App.d.ts', impor
 
 test('settings page sound switch is persisted through backend APIs', () => {
   assert.match(html, /id="cfg-sound"/);
+  assert.match(html, /id="cfg-verify-models"/);
   assert.match(appJs, /GetSoundEnabled\(\)/);
   assert.match(appJs, /SetSoundEnabled\(/);
   assert.doesNotMatch(appJs, /localStorage\.setItem\(['"]kiro-sound['"]/);
@@ -25,7 +26,7 @@ test('registration form is persisted through backend APIs instead of long-term l
 });
 
 test('wails wrappers expose persistent config APIs', () => {
-  for (const name of ['GetSoundEnabled', 'SetSoundEnabled', 'GetRegistrationConfig', 'SetRegistrationConfig', 'GetKiroRSConfig', 'SetKiroRSConfig', 'TestKiroRSConnection']) {
+  for (const name of ['GetSoundEnabled', 'SetSoundEnabled', 'GetVerifyModelsEnabled', 'SetVerifyModelsEnabled', 'GetRegistrationConfig', 'SetRegistrationConfig', 'GetKiroRSConfig', 'SetKiroRSConfig', 'TestKiroRSConnection']) {
     assert.match(wailsAppJs, new RegExp(`export function ${name}\\(`));
     assert.match(wailsAppDts, new RegExp(`export function ${name}\\(`));
   }
@@ -59,6 +60,7 @@ test('settings cfg controls have backend persistence coverage or explicit non-se
     'cfg-proxy-mode-normal',
     'cfg-result-output-dir',
     'cfg-sound',
+    'cfg-verify-models',
   ];
   assert.deepEqual(cfgIds, expected);
 });

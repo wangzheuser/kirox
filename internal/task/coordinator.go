@@ -220,6 +220,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	taskConfig.EmailProvider = emailProvider
 	taskConfig.EmailProxy = storage.GetEmailProxy()
 	taskConfig.OutlookScope = storage.GetOutlookScope()
+	taskConfig.VerifyModelsEnabled = storage.GetVerifyModelsEnabled()
 	taskConfig.OTPTimeout = req.OTPTimeout
 	if taskConfig.OTPTimeout < 30 {
 		taskConfig.OTPTimeout = 120
