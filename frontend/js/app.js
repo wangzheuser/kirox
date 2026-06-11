@@ -815,11 +815,32 @@ async function testKiroRSConnection() {
 }
 
 // UI 状态
+var taskActionState = 'idle';
+
+function setButtonDisabled(id, disabled) {
+  var el = document.getElementById(id);
+  if (el) el.disabled = !!disabled;
+}
+
+function setTaskActionState(state) {
+  taskActionState = state || 'idle';
+  var starting = taskActionState === 'starting';
+  var running = taskActionState === 'running';
+  var stopping = taskActionState === 'stopping';
+  var busy = starting || running || stopping;
+
+  setButtonDisabled('ov-btn-start', busy);
+  setButtonDisabled('reg-btn-start', busy);
+  setButtonDisabled('ov-btn-stop', !running);
+  setButtonDisabled('reg-btn-stop', !running);
+}
+
 function updateUIStatus(running) {
-  var btnStart = document.getElementById('btn-start');
-  var btnStop = document.getElementById('btn-stop');
-  if (btnStart) btnStart.disabled = running;
-  if (btnStop) btnStop.disabled = !running;
+  if (running) {
+    if (taskActionState !== 'stopping') setTaskActionState('running');
+    return;
+  }
+  if (taskActionState !== 'starting') setTaskActionState('idle');
 }
 
 // 配置读写

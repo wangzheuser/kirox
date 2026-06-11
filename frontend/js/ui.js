@@ -128,11 +128,15 @@ document.addEventListener('keydown', function(e) {
   // Ctrl+Enter 开始任务
   if (e.ctrlKey && e.key === 'Enter') {
     e.preventDefault();
-    if (!document.getElementById('btn-start').disabled) startTask();
+    var startBtn = document.getElementById('reg-btn-start');
+    if (startBtn && !startBtn.disabled) startTask();
   }
   // Esc 停止任务
   if (e.key === 'Escape') {
-    if (!document.getElementById('btn-stop').disabled) stopTask();
+    var stopButtons = ['ov-btn-stop', 'reg-btn-stop'].map(function(id) {
+      return document.getElementById(id);
+    });
+    if (stopButtons.some(function(btn) { return btn && !btn.disabled; })) stopTask();
   }
 });
 

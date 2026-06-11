@@ -184,6 +184,7 @@ function notifyTaskComplete(taskName, success, failed, total) {
 }
 
 async function startTask() {
+  if (typeof setTaskActionState === 'function') setTaskActionState('starting');
   try {
     var cfg = getFormConfig();
 
@@ -194,6 +195,7 @@ async function startTask() {
     var result = await window.go.main.App.StartTask(cfg);
     // 账号不足时弹窗确认，用户选择继续则以可用数量启动
     if (result.confirm === 'outlook_insufficient') {
+      if (typeof setTaskActionState === 'function') setTaskActionState('idle');
       showConfirmModal('账号不足', result.message, '继续注册', function() {
         if (cfg.successTarget > 0) {
           cfg.successTarget = result.available;
@@ -205,27 +207,34 @@ async function startTask() {
       return;
     }
     if (result.error) {
+      if (typeof setTaskActionState === 'function') setTaskActionState('idle');
       showToast(result.error, 'error');
       return;
     }
-    updateUIStatus(true);
+    if (typeof setTaskActionState === 'function') setTaskActionState('running');
+    else updateUIStatus(true);
     showToast('任务已启动');
   } catch(e) {
+    if (typeof setTaskActionState === 'function') setTaskActionState('idle');
     showToast('启动失败: ' + e.message, 'error');
   }
 }
 
 // 以指定配置启动任务（确认弹窗回调用）
 async function startTaskWithConfig(cfg) {
+  if (typeof setTaskActionState === 'function') setTaskActionState('starting');
   try {
     var result = await window.go.main.App.StartTask(cfg);
     if (result.error) {
+      if (typeof setTaskActionState === 'function') setTaskActionState('idle');
       showToast(result.error, 'error');
       return;
     }
-    updateUIStatus(true);
+    if (typeof setTaskActionState === 'function') setTaskActionState('running');
+    else updateUIStatus(true);
     showToast(_tkT('toast.taskStarted', '任务已启动'));
   } catch(e) {
+    if (typeof setTaskActionState === 'function') setTaskActionState('idle');
     showToast(_tkT('toast.taskStartFailed', '启动失败') + ': ' + e.message, 'error');
   }
 }
@@ -252,15 +261,22 @@ function confirmAction() {
 }
 
 async function stopTask() {
+  if (typeof setTaskActionState === 'function') setTaskActionState('stopping');
   try {
     var result = await window.go.main.App.StopTask();
-    if (result.error) { 
-      showToast(result.error, 'error'); 
-      return; 
+    if (result.error) {
+      if (String(result.error).indexOf('没有正在运行的任务') >= 0) {
+        if (typeof setTaskActionState === 'function') setTaskActionState('idle');
+        showToast(_tkT('toast.taskStopped', '任务已停止'));
+        return;
+      }
+      if (typeof setTaskActionState === 'function') setTaskActionState('running');
+      showToast(result.error, 'error');
+      return;
     }
-    document.getElementById('btn-stop').disabled = true;
     showToast(_tkT('toast.taskStopping', '正在停止任务...'));
   } catch(e) {
+    if (typeof setTaskActionState === 'function') setTaskActionState('running');
     showToast(_tkT('toast.taskStopFailed', '停止失败') + ': ' + (e.message || e), 'error');
   }
 }
