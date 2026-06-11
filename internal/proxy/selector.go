@@ -17,8 +17,8 @@ const (
 	DefaultProbeTarget       = "https://oidc.us-east-1.amazonaws.com/ping"
 	defaultSelectAttempts    = 5
 	defaultCandidateTimeout  = 15 * time.Second
-	defaultDetectAttempts    = 3
-	defaultDetectTimeout     = 15 * time.Second
+	defaultDetectAttempts    = 1
+	defaultDetectTimeout     = 8 * time.Second
 	maxSelectorErrorMessages = 5
 )
 
@@ -126,6 +126,12 @@ func CheckCandidate(ctx context.Context, proxyURL, targetURL string, timeout tim
 	if targetURL == "" {
 		targetURL = DefaultProbeTarget
 	}
+	if timeout <= 0 {
+		timeout = defaultCandidateTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	client, err := httputil.NewTLSClientWithTimeout(proxyURL, true, timeoutSeconds(timeout))
 	if err != nil {
 		return err
@@ -157,7 +163,7 @@ func MaskURL(raw string) string {
 	if raw == "" {
 		return ""
 	}
-	u, err := url.Parse(raw)
+	u, err := url.Parse(maskParseableProxyURL(raw))
 	if err != nil || u.Host == "" {
 		return "<proxy>"
 	}
@@ -173,6 +179,16 @@ func MaskURL(raw string) string {
 		return fmt.Sprintf("%s://%s:***@%s%s", u.Scheme, username, u.Host, path)
 	}
 	return fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, path)
+}
+
+// maskParseableProxyURL 将模板占位符替换为合法虚构值，仅用于脱敏前解析。
+func maskParseableProxyURL(raw string) string {
+	if !strings.Contains(raw, uuidPlaceholder) {
+		return raw
+	}
+
+	// 原始 {uuid} 放在 userinfo 中不是合法 URL 字符，解析前用固定假值占位。
+	return strings.ReplaceAll(raw, uuidPlaceholder, "00000000000000000000000000000000")
 }
 
 func normalizeSelectOptions(opts SelectOptions) SelectOptions {

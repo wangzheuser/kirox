@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/url"
 	"strings"
+	"time"
 
 	fhttp "github.com/bogdanfinn/fhttp"
 	tls_client "github.com/bogdanfinn/tls-client"
@@ -87,6 +88,14 @@ func NewTLSClientWithTimeout(proxy string, followRedirect bool, timeoutSeconds i
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 60
 	}
+	effectiveProxy := proxy
+	if isHTTPSProxyURL(proxy) {
+		bridgeURL, err := bridgeHTTPSProxyURL(proxy, time.Duration(timeoutSeconds)*time.Second)
+		if err != nil {
+			return nil, fmt.Errorf("启动 HTTPS 代理桥失败: %w", err)
+		}
+		effectiveProxy = bridgeURL
+	}
 	opts := []tls_client.HttpClientOption{
 		tls_client.WithTimeoutSeconds(timeoutSeconds),
 		tls_client.WithClientProfile(profiles.Chrome_144),
@@ -99,8 +108,8 @@ func NewTLSClientWithTimeout(proxy string, followRedirect bool, timeoutSeconds i
 	if err != nil {
 		return nil, fmt.Errorf("创建 TLS 客户端失败: %w", err)
 	}
-	if proxy != "" {
-		if err := client.SetProxy(proxy); err != nil {
+	if effectiveProxy != "" {
+		if err := client.SetProxy(effectiveProxy); err != nil {
 			return nil, fmt.Errorf("设置代理失败: %w", err)
 		}
 	}

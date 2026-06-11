@@ -490,8 +490,9 @@ function renderProxyDetectCard(state, payload) {
   if (state === 'loading') {
     box.style.cssText = base + 'background:var(--card-bg, transparent);color:var(--muted);';
     box.innerHTML = '正在检测代理出口…' +
+      '<div style="margin-top:4px;font-size:11px;">最多等待约 8 秒，失败后会显示具体原因。</div>' +
       (payload && payload.clash ? '<div style="margin-top:4px;font-size:11px;">正在通过 Clash API 切换并验证节点。</div>' : '') +
-      (payload && payload.templated ? '<div style="margin-top:4px;font-size:11px;">检测时会临时生成 {uuid}。</div>' : '');
+      (payload && payload.templated ? '<div style="margin-top:4px;font-size:11px;">检测时会将 {uuid} 替换为 32 位无短横线会话 ID。</div>' : '');
     return;
   }
   if (state === 'ok') {
@@ -500,7 +501,7 @@ function renderProxyDetectCard(state, payload) {
     var poolNote = payload.pool
       ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">第 ' + (payload.successAttempt || payload.attempts || 1) + ' 个 UUID 节点可用；注册前会重新抽样并绑定可用节点。' + (payload.durationMs ? '耗时 ' + payload.durationMs + 'ms。' : '') + '</div>'
       : '';
-    var templateNote = payload.templated && !payload.pool ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">模板代理已使用临时 UUID 完成检测；注册时每次尝试会重新生成会话代理。</div>' : '';
+    var templateNote = payload.templated && !payload.pool ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">模板代理已使用 32 位无短横线会话 ID 完成检测；注册时每次尝试会重新生成会话代理。</div>' : '';
     var clashNote = payload.clash
       ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">Clash ' + proxyEscapeHtml(payload.clashVersion || '未知版本') +
         ' · 代理组 ' + proxyEscapeHtml(payload.clashGroup || '未识别') +
@@ -552,7 +553,7 @@ function renderEmailProxyDetectCard(state, payload) {
   if (state === 'loading') {
     box.style.cssText = base + 'background:var(--card-bg, transparent);color:var(--muted);';
     box.innerHTML = '正在检测邮箱代理出口…' +
-      (payload && payload.templated ? '<div style="margin-top:4px;font-size:11px;">检测时会临时生成 {uuid}。</div>' : '');
+      (payload && payload.templated ? '<div style="margin-top:4px;font-size:11px;">检测时会将 {uuid} 替换为 32 位无短横线会话 ID。</div>' : '');
     return;
   }
   if (state === 'ok') {

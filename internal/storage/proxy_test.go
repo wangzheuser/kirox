@@ -15,6 +15,14 @@ func TestNormalizeProxyAddressKeepsFullLocalURL(t *testing.T) {
 	}
 }
 
+func TestNormalizeProxyAddressKeepsFullHTTPSTemplateURL(t *testing.T) {
+	input := "https://user.{uuid}:pass@proxy.example.test:443"
+
+	if got := NormalizeProxyAddress(input); got != input {
+		t.Fatalf("完整 HTTPS 模板代理 URL 不应被改写: got %q, want %q", got, input)
+	}
+}
+
 func TestNormalizeProxyAddressSupportsHostPortUserPassTemplate(t *testing.T) {
 	got := NormalizeProxyAddress("proxy.example.test:443:template-user:template-pass")
 	want := "http://template-user:template-pass@proxy.example.test:443"

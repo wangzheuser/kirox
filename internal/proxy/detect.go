@@ -45,23 +45,7 @@ func Detect(proxyURL string) Info {
 	}
 	templated := HasURLTemplate(proxyURL)
 	if templated {
-		selection, err := SelectRuntimeProxy(context.Background(), proxyURL, DefaultDetectSelectOptions())
-		info := Info{
-			Scheme:         schemeOf(selection.ProxyURL, proxyURL),
-			Templated:      true,
-			Pool:           true,
-			Attempts:       selection.Attempts,
-			SuccessAttempt: selection.SuccessAttempt,
-			Target:         selection.TargetURL,
-			DurationMs:     selection.Duration.Milliseconds(),
-			Errors:         selection.Errors,
-		}
-		if err != nil {
-			info.Error = simplifyProxyErr(err.Error())
-			return info
-		}
-		info.OK = true
-		return info
+		return detectTemplatedProxy(proxyURL)
 	}
 
 	runtimeProxyURL := RenderURLTemplate(proxyURL)
@@ -126,6 +110,59 @@ func Detect(proxyURL string) Info {
 	}
 }
 
+// detectTemplatedProxy 检测模板代理，并确保设置页调用在固定时间内返回。
+func detectTemplatedProxy(proxyURL string) Info {
+	return detectTemplatedProxyWithOptions(proxyURL, DefaultDetectSelectOptions())
+}
+
+// detectTemplatedProxyWithOptions 使用指定选项检测模板代理，便于单元测试注入阻塞场景。
+func detectTemplatedProxyWithOptions(proxyURL string, opts SelectOptions) Info {
+	totalTimeout := opts.Timeout * time.Duration(opts.MaxAttempts)
+	if totalTimeout <= 0 {
+		totalTimeout = 8 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), totalTimeout)
+	defer cancel()
+
+	start := time.Now()
+	result := make(chan Info, 1)
+	go func() {
+		selection, err := SelectRuntimeProxy(ctx, proxyURL, opts)
+		info := Info{
+			Scheme:         schemeOf(selection.ProxyURL, proxyURL),
+			Templated:      true,
+			Pool:           true,
+			Attempts:       selection.Attempts,
+			SuccessAttempt: selection.SuccessAttempt,
+			Target:         selection.TargetURL,
+			DurationMs:     selection.Duration.Milliseconds(),
+			Errors:         selection.Errors,
+		}
+		if err != nil {
+			info.Error = simplifyProxyErr(err.Error())
+			result <- info
+			return
+		}
+		info.OK = true
+		result <- info
+	}()
+
+	select {
+	case info := <-result:
+		return info
+	case <-ctx.Done():
+		return Info{
+			Scheme:     schemeOf("", proxyURL),
+			Error:      "检测超时",
+			Templated:  true,
+			Pool:       true,
+			Attempts:   opts.MaxAttempts,
+			Target:     opts.TargetURL,
+			DurationMs: time.Since(start).Milliseconds(),
+		}
+	}
+}
+
 // DetectClash 切换 Clash 节点后，通过本地 Clash 代理检测出口。
 func DetectClash(proxyURL string, config ClashConfig) Info {
 	proxyURL = strings.TrimSpace(proxyURL)
@@ -183,16 +220,26 @@ func schemeOf(proxyURL string, fallback string) string {
 }
 
 func simplifyProxyErr(s string) string {
+	lower := strings.ToLower(s)
 	switch {
-	case strings.Contains(s, "connection refused"):
+	case strings.Contains(lower, "context deadline exceeded"),
+		strings.Contains(lower, "client.timeout exceeded"),
+		strings.Contains(lower, "operation timed out"),
+		strings.Contains(lower, "i/o timeout"),
+		strings.Contains(lower, "timeout"),
+		strings.Contains(lower, "deadline"):
+		return "检测超时"
+	case strings.Contains(s, "HTTPS 代理握手失败"):
+		return "HTTPS 代理握手失败，请确认代理服务是否支持 HTTPS 代理协议"
+	case strings.Contains(s, "代理 CONNECT 失败"):
+		return s
+	case strings.Contains(lower, "connection refused"):
 		return "连接被拒绝"
-	case strings.Contains(s, "timeout"), strings.Contains(s, "deadline"):
-		return "连接超时"
-	case strings.Contains(s, "no such host"):
+	case strings.Contains(lower, "no such host"):
 		return "域名解析失败"
-	case strings.Contains(s, "socks"):
+	case strings.Contains(lower, "socks"):
 		return "SOCKS 协商失败"
-	case strings.Contains(s, "proxy"):
+	case strings.Contains(lower, "proxy"):
 		return "代理握手失败"
 	}
 	if len(s) > 80 {
