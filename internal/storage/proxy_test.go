@@ -16,7 +16,7 @@ func TestNormalizeProxyAddressKeepsFullLocalURL(t *testing.T) {
 }
 
 func TestNormalizeProxyAddressKeepsFullHTTPSTemplateURL(t *testing.T) {
-	input := "https://user.{uuid}:pass@proxy.example.test:443"
+	input := "https://Default.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"
 
 	if got := NormalizeProxyAddress(input); got != input {
 		t.Fatalf("完整 HTTPS 模板代理 URL 不应被改写: got %q, want %q", got, input)
@@ -57,6 +57,25 @@ func TestProxyModeLegacyClashLocalProxyDefaultsToClash(t *testing.T) {
 	}
 	if got := GetClashProxy(); got != "http://127.0.0.1:7890" {
 		t.Fatalf("旧 Clash 本地代理应作为 clash_proxy 读取: got %q", got)
+	}
+}
+
+func TestSetProxyModeSupportsPool(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	if err := SetProxyMode(ProxyModePool); err != nil {
+		t.Fatalf("SetProxyMode(pool) returned error: %v", err)
+	}
+	if got := GetProxyMode(); got != ProxyModePool {
+		t.Fatalf("proxy_mode pool round-trip failed: got %q", got)
+	}
+}
+
+func TestSetProxyModeRejectsUnknownMode(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	if err := SetProxyMode("unknown"); err == nil {
+		t.Fatalf("未知代理模式应被拒绝")
 	}
 }
 

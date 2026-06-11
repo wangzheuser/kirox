@@ -19,6 +19,7 @@ import (
 const (
 	ProxyModeNone   = "none"
 	ProxyModeNormal = "normal"
+	ProxyModePool   = "pool"
 	ProxyModeClash  = "clash"
 
 	OutlookScopeIMAP  = "imap"
@@ -892,6 +893,8 @@ func normalizeProxyMode(mode string) string {
 		return ProxyModeNone
 	case ProxyModeNormal:
 		return ProxyModeNormal
+	case ProxyModePool:
+		return ProxyModePool
 	case ProxyModeClash:
 		return ProxyModeClash
 	default:

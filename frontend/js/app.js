@@ -365,8 +365,10 @@ function applyProxyMode(mode) {
   var radio = document.getElementById('cfg-proxy-mode-' + mode);
   if (radio) radio.checked = true;
   var normalPanel = document.getElementById('proxy-normal-panel');
+  var poolPanel = document.getElementById('proxy-pool-panel');
   var clashPanel = document.getElementById('proxy-clash-panel');
   if (normalPanel) normalPanel.style.display = mode === 'normal' ? 'flex' : 'none';
+  if (poolPanel) poolPanel.style.display = mode === 'pool' ? 'flex' : 'none';
   if (clashPanel) clashPanel.style.display = mode === 'clash' ? 'flex' : 'none';
 }
 
@@ -388,7 +390,7 @@ async function saveProxyMode(mode) {
     }
     applyProxyMode(result.mode || mode);
     renderProxyDetectCard('hidden');
-    showToast('代理模式已切换为' + ({ none: '直连', normal: '普通代理', clash: 'Clash 代理' }[result.mode || mode] || mode));
+    showToast('代理模式已切换为' + ({ none: '直连', normal: '普通代理', pool: '多代理池', clash: 'Clash 代理' }[result.mode || mode] || mode));
     return result.mode || mode;
   } catch(e) {
     showToast('代理模式保存失败: ' + e.message, 'error');

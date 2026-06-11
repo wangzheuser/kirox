@@ -204,7 +204,7 @@ func PickRandom() string {
 	candidates := make([]cand, 0, len(poolEntries))
 	var total float64
 	for _, e := range poolEntries {
-		if e.URL == "" {
+		if !e.Enabled || e.URL == "" {
 			continue
 		}
 		w := e.Weight

@@ -374,9 +374,8 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Printf("[Kiro] 代理模式: 直连")
 	case storage.ProxyModeNormal:
 		taskConfig.Proxy = storage.GetProxy()
-		poolEnabled := proxy.HasEnabled()
-		if taskConfig.Proxy == "" && !poolEnabled {
-			failConfig("普通代理模式已启用但代理为空，且代理池无启用项")
+		if taskConfig.Proxy == "" {
+			failConfig("普通代理模式已启用但代理为空")
 			return
 		}
 		if taskConfig.Proxy != "" && proxy.HasURLTemplate(taskConfig.Proxy) {
@@ -384,9 +383,12 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		} else if taskConfig.Proxy != "" {
 			log.Printf("[Kiro] 代理模式: 普通代理")
 		}
-		if poolEnabled {
-			log.Printf("[Kiro] 普通代理模式: 已启用多代理池，将按权重为每个注册任务选择代理")
+	case storage.ProxyModePool:
+		if !proxy.HasEnabled() {
+			failConfig("多代理池模式已启用但代理池无启用项")
+			return
 		}
+		log.Printf("[Kiro] 代理模式: 多代理池，将按权重为每个注册任务选择代理")
 	case storage.ProxyModeClash:
 		taskConfig.Proxy = storage.GetClashProxy()
 		if taskConfig.Proxy == "" {
@@ -583,8 +585,8 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		taskCfg := *taskConfig
 		taskCfg.Password = core.GenPassword()
 		var accountEmail string
-		if proxyMode == storage.ProxyModeNormal {
-			// 多代理池只作为普通代理模式增强：不覆盖直连或 Clash 模式。
+		if proxyMode == storage.ProxyModePool {
+			// 多代理池作为独立模式：仅在 pool 模式下按权重为本次注册选择代理。
 			if picked := proxy.PickRandom(); picked != "" {
 				taskCfg.Proxy = picked
 				log.Printf("[Kiro][%d/%d] 选中代理池代理 %s", i+1, displayTotal, proxy.MaskURL(picked))
@@ -771,19 +773,28 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				selection, err := proxy.SelectRuntimeProxy(taskCtx, attemptCfg.Proxy, proxy.DefaultRegisterSelectOptions())
 				if err != nil {
 					log.Printf("[Kiro][%d/%d] 代理候选选择失败: %v", i+1, displayTotal, err)
+					errorPrefix := "代理无可用节点"
+					if proxyMode == storage.ProxyModePool {
+						errorPrefix = "代理池无可用节点"
+					}
 					result = map[string]interface{}{
 						"status": "failed",
-						"error":  "代理池无可用节点: " + err.Error(),
+						"error":  errorPrefix + ": " + err.Error(),
 						"email":  currentEmail,
 					}
 					return false
 				}
 				attemptCfg.Proxy = selection.ProxyURL
-				attemptCfg.ProxyFromPool = selection.Templated
+				attemptCfg.ProxyFromPool = proxyMode == storage.ProxyModePool
 				attemptCfg.ProxySwitchable = selection.Templated
 				if selection.Templated {
-					log.Printf("[Kiro][%d/%d] 代理池候选可用: 第 %d/%d 个, 耗时 %dms, %s",
-						i+1, displayTotal, selection.SuccessAttempt, selection.Attempts, selection.Duration.Milliseconds(), selection.MaskedProxyURL)
+					if proxyMode == storage.ProxyModePool {
+						log.Printf("[Kiro][%d/%d] 代理池候选可用: 第 %d/%d 个, 耗时 %dms, %s",
+							i+1, displayTotal, selection.SuccessAttempt, selection.Attempts, selection.Duration.Milliseconds(), selection.MaskedProxyURL)
+					} else {
+						log.Printf("[Kiro][%d/%d] 代理模板候选可用: 第 %d/%d 个, 耗时 %dms, %s",
+							i+1, displayTotal, selection.SuccessAttempt, selection.Attempts, selection.Duration.Milliseconds(), selection.MaskedProxyURL)
+					}
 				} else {
 					log.Printf("[Kiro][%d/%d] 代理验证可用: %s", i+1, displayTotal, selection.MaskedProxyURL)
 				}

@@ -470,28 +470,30 @@
             <div class="settings-item">
               <div class="settings-item-main">
                 <div class="settings-item-title" data-i18n="settings.proxy">代理</div>
-                <div class="settings-item-desc">代理模式互斥：直连、普通代理、Clash 代理三选一。普通代理支持 http/https/socks5/socks5h、用户名密码与 {uuid} 会话模板（运行时替换为 32 位无短横线 ID）。</div>
+                <div class="settings-item-desc">代理模式互斥：直连、普通代理、多代理池、Clash 代理四选一。普通代理与代理池均支持 http/https/socks5/socks5h、用户名密码与 {uuid} 会话模板（运行时替换为 32 位无短横线 ID）。</div>
               </div>
               <div class="settings-item-action">
                 <div style="display:flex;flex-direction:column;gap:10px;width:100%;">
                   <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px;">
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="proxy-mode" id="cfg-proxy-mode-none" value="none" onchange="saveProxyMode('none')">直连</label>
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="proxy-mode" id="cfg-proxy-mode-normal" value="normal" onchange="saveProxyMode('normal')">普通代理</label>
+                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="proxy-mode" id="cfg-proxy-mode-pool" value="pool" onchange="saveProxyMode('pool')">多代理池</label>
                     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="proxy-mode" id="cfg-proxy-mode-clash" value="clash" onchange="saveProxyMode('clash')">Clash 代理</label>
                   </div>
 
                   <div id="proxy-normal-panel" style="display:none;flex-direction:column;gap:8px;">
                     <div style="display:flex;gap:8px;">
-                      <input type="text" id="cfg-proxy" placeholder="例如 https://user.{uuid}:pass@proxy.example.test:443" class="form-input" style="flex:1;">
+                      <input type="text" id="cfg-proxy" placeholder="例如 https://Default.{uuid}:admin2012@resin-proxy.codeai.de5.net:443" class="form-input" style="flex:1;">
                       <button onclick="saveProxy()" class="btn btn-secondary btn-sm">保存普通代理</button>
                       <button onclick="resetProxy()" class="btn btn-secondary btn-sm">清除</button>
                     </div>
-                    <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
-                      <div style="font-size:12px;font-weight:700;color:var(--text);">多代理池</div>
-                      <div style="font-size:11px;color:var(--muted);">启用后普通代理模式会按权重为每个注册任务选择代理；直连与 Clash 模式不使用代理池。</div>
-                      <div id="proxy-pool-list"></div>
-                      <button type="button" onclick="addEmptyProxyRow()" class="btn btn-secondary btn-sm" style="align-self:flex-start;">+ 添加代理</button>
-                    </div>
+                  </div>
+
+                  <div id="proxy-pool-panel" style="display:none;border:1px solid var(--border);border-radius:8px;padding:10px 12px;flex-direction:column;gap:8px;">
+                    <div style="font-size:12px;font-weight:700;color:var(--text);">多代理池</div>
+                    <div style="font-size:11px;color:var(--muted);">启用后将按权重为每个注册任务选择代理；直连、普通代理与 Clash 模式不使用代理池。</div>
+                    <div id="proxy-pool-list"></div>
+                    <button type="button" onclick="addEmptyProxyRow()" class="btn btn-secondary btn-sm" style="align-self:flex-start;">+ 添加代理</button>
                   </div>
 
                   <div id="proxy-clash-panel" style="display:none;border:1px solid var(--border);border-radius:8px;padding:10px 12px;flex-direction:column;gap:8px;">

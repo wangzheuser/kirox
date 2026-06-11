@@ -32,7 +32,7 @@ function renderProxyPool() {
   var multi = (proxyPool.length + pendingEmptyRows) > 1;
   var totalSoft = 0;
   var soft = proxyPool.map(function(p) {
-    if (!p.url) return 0;
+    if (!p.enabled || !p.url) return 0;
     var w = p.weight > 0 ? p.weight : 1;
     return Math.pow(w, 0.6);
   });
@@ -60,7 +60,7 @@ function renderProxyPool() {
     var rowIdx = j;
     html += (
       '<div data-pending-idx="' + rowIdx + '" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">' +
-        '<input type="text" placeholder="例如 https://user.{uuid}:pass@proxy.example.test:443" onblur="savePendingProxyRow(' + rowIdx + ', this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" class="form-input" style="flex:1;font-family:var(--font-mono);font-size:12px;">' +
+        '<input type="text" placeholder="例如 https://Default.{uuid}:admin2012@resin-proxy.codeai.de5.net:443" onblur="savePendingProxyRow(' + rowIdx + ', this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" class="form-input" style="flex:1;font-family:var(--font-mono);font-size:12px;">' +
         '<input type="number" min="1" max="100" value="1" data-pending-weight="' + rowIdx + '" title="权重 1-100" style="width:54px;text-align:center;padding:4px;border:1px solid var(--border);border-radius:4px;background:var(--bg-subtle);font-size:12px;">' +
         (proxyPool.length + pendingEmptyRows > 1
           ? '<button type="button" onclick="removePendingProxyRow(' + rowIdx + ')" class="btn btn-secondary btn-sm">移除</button>'

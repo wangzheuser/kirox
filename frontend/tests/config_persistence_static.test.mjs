@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const appJs = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
+const proxyPoolJs = fs.readFileSync(new URL('../js/proxy_pool.js', import.meta.url), 'utf8');
 const uiJs = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
 const wailsAppJs = fs.readFileSync(new URL('../wailsjs/go/main/App.js', import.meta.url), 'utf8');
 const wailsAppDts = fs.readFileSync(new URL('../wailsjs/go/main/App.d.ts', import.meta.url), 'utf8');
@@ -62,9 +63,28 @@ test('settings cfg controls have backend persistence coverage or explicit non-se
     'cfg-proxy-mode-clash',
     'cfg-proxy-mode-none',
     'cfg-proxy-mode-normal',
+    'cfg-proxy-mode-pool',
     'cfg-result-output-dir',
     'cfg-sound',
     'cfg-verify-models',
   ];
   assert.deepEqual(cfgIds, expected);
+});
+
+test('proxy pool is an independent proxy mode panel', () => {
+  assert.match(html, /id="cfg-proxy-mode-pool"[^>]*value="pool"/);
+  assert.match(html, /id="proxy-pool-panel"/);
+  assert.match(html, /https:\/\/Default\.\{uuid\}:admin2012@resin-proxy\.codeai\.de5\.net:443/);
+  assert.match(appJs, /pool:\s*'多代理池'/);
+  assert.match(proxyPoolJs, /https:\/\/Default\.\{uuid\}:admin2012@resin-proxy\.codeai\.de5\.net:443/);
+  assert.match(appJs, /mode === 'pool'/);
+
+  const normalPanelStart = html.indexOf('id="proxy-normal-panel"');
+  const poolPanelStart = html.indexOf('id="proxy-pool-panel"');
+  const clashPanelStart = html.indexOf('id="proxy-clash-panel"');
+  assert.ok(normalPanelStart >= 0, 'proxy-normal-panel should exist');
+  assert.ok(poolPanelStart >= 0, 'proxy-pool-panel should exist');
+  assert.ok(clashPanelStart >= 0, 'proxy-clash-panel should exist');
+  assert.ok(normalPanelStart < poolPanelStart, 'pool panel should follow normal panel');
+  assert.ok(poolPanelStart < clashPanelStart, 'pool panel should be independent before clash panel');
 });
