@@ -36,6 +36,7 @@ func concurrentStartStagger(idx int, concurrency int) time.Duration {
 // StartTaskRequest 启动任务请求
 type StartTaskRequest struct {
 	Count             int                              `json:"count"`
+	SuccessTarget     int                              `json:"successTarget"`
 	Concurrency       int                              `json:"concurrency"`
 	Delay             int                              `json:"delay"`
 	RetryCount        int                              `json:"retryCount"`
@@ -49,6 +50,113 @@ type StartTaskRequest struct {
 	CloudMailDomains    []string                           `json:"cloudmailDomains"`
 	CloudMailConfigs    map[string][]email.CloudMailConfig `json:"cloudmailConfigs"`
 	CloudMailRandomMode bool                               `json:"cloudmailRandomMode"`
+}
+
+type reusableEmailCandidate struct {
+	provider          string
+	address           string
+	moeMailProvider   *email.MoeMailProvider
+	cloudMailProvider *email.CloudMailProvider
+	tempEmailService  email.TempEmailService
+}
+
+type reusableEmailPool struct {
+	mu    sync.Mutex
+	items []reusableEmailCandidate
+}
+
+// put 回收一个仍可继续尝试注册的临时邮箱。
+func (p *reusableEmailPool) put(candidate reusableEmailCandidate) bool {
+	if strings.TrimSpace(candidate.provider) == "" || strings.TrimSpace(candidate.address) == "" {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.items = append(p.items, candidate)
+	return true
+}
+
+// take 按邮箱提供商领取一个可复用临时邮箱。
+func (p *reusableEmailPool) take(provider string) (reusableEmailCandidate, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for i, candidate := range p.items {
+		if candidate.provider != provider {
+			continue
+		}
+		p.items = append(p.items[:i], p.items[i+1:]...)
+		return candidate, true
+	}
+	return reusableEmailCandidate{}, false
+}
+
+// applyReusableEmailCandidate 将候选邮箱绑定到本次注册配置。
+func applyReusableEmailCandidate(provider string, cfg *core.Config, candidate reusableEmailCandidate) (string, bool) {
+	if cfg == nil || candidate.provider != provider {
+		return "", false
+	}
+	switch provider {
+	case "moemail":
+		if candidate.moeMailProvider == nil {
+			return "", false
+		}
+		cfg.MoeMailProvider = candidate.moeMailProvider
+		address := strings.TrimSpace(candidate.moeMailProvider.GetAddress())
+		return address, address != ""
+	case "cloudmail":
+		if candidate.cloudMailProvider == nil {
+			return "", false
+		}
+		cfg.CloudMailProvider = candidate.cloudMailProvider
+		address := strings.TrimSpace(candidate.cloudMailProvider.GetAddress())
+		return address, address != ""
+	case "mailporary":
+		if candidate.tempEmailService == nil {
+			return "", false
+		}
+		cfg.TempEmailService = candidate.tempEmailService
+		address := strings.TrimSpace(candidate.tempEmailService.GetAddress())
+		return address, address != ""
+	default:
+		return "", false
+	}
+}
+
+// reusableEmailCandidateFromConfig 从本次注册配置提取可回收的临时邮箱。
+func reusableEmailCandidateFromConfig(provider string, cfg *core.Config) (reusableEmailCandidate, bool) {
+	if cfg == nil {
+		return reusableEmailCandidate{}, false
+	}
+	switch provider {
+	case "moemail":
+		if cfg.MoeMailProvider == nil {
+			return reusableEmailCandidate{}, false
+		}
+		address := strings.TrimSpace(cfg.MoeMailProvider.GetAddress())
+		return reusableEmailCandidate{provider: provider, address: address, moeMailProvider: cfg.MoeMailProvider}, address != ""
+	case "cloudmail":
+		if cfg.CloudMailProvider == nil {
+			return reusableEmailCandidate{}, false
+		}
+		address := strings.TrimSpace(cfg.CloudMailProvider.GetAddress())
+		return reusableEmailCandidate{provider: provider, address: address, cloudMailProvider: cfg.CloudMailProvider}, address != ""
+	case "mailporary":
+		if cfg.TempEmailService == nil {
+			return reusableEmailCandidate{}, false
+		}
+		address := strings.TrimSpace(cfg.TempEmailService.GetAddress())
+		return reusableEmailCandidate{provider: provider, address: address, tempEmailService: cfg.TempEmailService}, address != ""
+	default:
+		return reusableEmailCandidate{}, false
+	}
+}
+
+// effectiveSuccessTarget 返回本次任务的成功目标，未配置时沿用注册数量。
+func effectiveSuccessTarget(req StartTaskRequest) int {
+	if req.SuccessTarget > 0 {
+		return req.SuccessTarget
+	}
+	return req.Count
 }
 
 // StartTask 公开方法（包装器）
@@ -69,6 +177,7 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 	if emailProvider == "" {
 		emailProvider = "outlook" // 默认使用 Outlook
 	}
+	effectiveTarget := effectiveSuccessTarget(req)
 
 	var outlookAccounts []email.OutlookAccount
 
@@ -125,12 +234,12 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 			return map[string]interface{}{"error": "没有可用的 Outlook 账号（所有账号已注册成功）"}
 		}
 
-		if len(outlookAccounts) < req.Count {
+		if len(outlookAccounts) < effectiveTarget {
 			Manager.mu.Unlock()
 			// 返回确认类型响应，由前端弹窗让用户选择是否继续
 			return map[string]interface{}{
 				"confirm":   "outlook_insufficient",
-				"message":   fmt.Sprintf("可用 Outlook 账号不足: 需要 %d, 仅有 %d。是否使用 %d 个可用账号继续？", req.Count, len(outlookAccounts), len(outlookAccounts)),
+				"message":   fmt.Sprintf("可用 Outlook 账号不足: 需要 %d, 仅有 %d。是否使用 %d 个可用账号继续？", effectiveTarget, len(outlookAccounts), len(outlookAccounts)),
 				"available": len(outlookAccounts),
 			}
 		}
@@ -139,10 +248,12 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 	// 初始化状态
 	Manager.running = true
 	Manager.stopCh = make(chan struct{})
-	Manager.total = req.Count
+	Manager.total = effectiveTarget
 	Manager.completed = 0
 	Manager.success = 0
 	Manager.failed = 0
+	Manager.successTarget = req.SuccessTarget
+	Manager.successTargetEnabled = req.SuccessTarget > 0
 	Manager.results = nil
 	Manager.startTime = time.Now()
 	Manager.mu.Unlock()
@@ -192,6 +303,14 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	Manager.mu.Lock()
 	Manager.cancelFunc = taskCancel
 	Manager.mu.Unlock()
+
+	successTarget := effectiveSuccessTarget(req)
+	successTargetMode := req.SuccessTarget > 0
+	displayTotal := req.Count
+	if successTargetMode {
+		displayTotal = successTarget
+		log.Printf("[Kiro] 成功目标模式: 目标成功 %d 个，忽略注册数量 %d", successTarget, req.Count)
+	}
 
 	defer func() {
 		Manager.mu.Lock()
@@ -243,8 +362,8 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	failConfig := func(message string) {
 		log.Printf("[Kiro] %s，任务终止", message)
 		Manager.mu.Lock()
-		Manager.completed = req.Count
-		Manager.failed = req.Count
+		Manager.completed = successTarget
+		Manager.failed = successTarget
 		Manager.mu.Unlock()
 	}
 
@@ -345,7 +464,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	failCategories := make(map[string]int)
 	taskStartTime := time.Now()
 	var batchSuccessMu sync.Mutex
-	batchSuccessEmails := make([]string, 0, req.Count)
+	batchSuccessEmails := make([]string, 0, successTarget)
 	batchSuccessResults := make(map[string]map[string]interface{})
 	batchSuccessSet := make(map[string]struct{})
 
@@ -401,6 +520,57 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		return domain, configs[rand.Intn(len(configs))]
 	}
 
+	var reusableEmails reusableEmailPool
+
+	// requestTaskStop 在内部达成停止条件时关闭任务信号，避免继续领取新尝试。
+	var stopOnce sync.Once
+	requestTaskStop := func(message string) {
+		stopOnce.Do(func() {
+			if strings.TrimSpace(message) != "" {
+				log.Println(message)
+			}
+			Manager.mu.Lock()
+			select {
+			case <-Manager.stopCh:
+			default:
+				close(Manager.stopCh)
+			}
+			Manager.mu.Unlock()
+			taskCancel()
+		})
+	}
+
+	// 成功目标模式下用 in-flight 计数控制新尝试，避免并发超过剩余成功名额。
+	var attemptMu sync.Mutex
+	nextAttemptIndex := 0
+	inFlightAttempts := 0
+	nextSuccessTargetAttempt := func() (int, bool) {
+		attemptMu.Lock()
+		defer attemptMu.Unlock()
+		select {
+		case <-Manager.stopCh:
+			return 0, false
+		default:
+		}
+		Manager.mu.Lock()
+		currentSuccess := Manager.success
+		Manager.mu.Unlock()
+		if currentSuccess >= successTarget || currentSuccess+inFlightAttempts >= successTarget {
+			return 0, false
+		}
+		idx := nextAttemptIndex
+		nextAttemptIndex++
+		inFlightAttempts++
+		return idx, true
+	}
+	finishSuccessTargetAttempt := func() {
+		attemptMu.Lock()
+		if inFlightAttempts > 0 {
+			inFlightAttempts--
+		}
+		attemptMu.Unlock()
+	}
+
 	// send-otp 400 熔断：任一任务遇到该错误即终止全部并发任务（只触发一次）
 	var otpKillOnce sync.Once
 	doTask := func(i int) {
@@ -417,7 +587,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			// 多代理池只作为普通代理模式增强：不覆盖直连或 Clash 模式。
 			if picked := proxy.PickRandom(); picked != "" {
 				taskCfg.Proxy = picked
-				log.Printf("[Kiro][%d/%d] 选中代理池代理 %s", i+1, req.Count, proxy.MaskURL(picked))
+				log.Printf("[Kiro][%d/%d] 选中代理池代理 %s", i+1, displayTotal, proxy.MaskURL(picked))
 			}
 		}
 		var currentEmail string
@@ -427,68 +597,108 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			currentEmail = acc.Email
 		}
 
+		reusedEmail := false
+		if emailProvider != "outlook" {
+			if candidate, ok := reusableEmails.take(emailProvider); ok {
+				if address, applied := applyReusableEmailCandidate(emailProvider, &taskCfg, candidate); applied {
+					currentEmail = address
+					reusedEmail = true
+					log.Printf("[Kiro][%d/%d] 复用临时邮箱: %s", i+1, displayTotal, currentEmail)
+				}
+			}
+		}
+
 		// 根据邮箱提供商类型获取邮箱
 		if emailProvider == "outlook" {
 			// Outlook 模式：从共享池领取账号
 			acc, ok := nextAccount()
 			if !ok {
-				log.Printf("[Kiro][%d/%d] 无可用账号，跳过", i+1, req.Count)
+				log.Printf("[Kiro][%d/%d] 无可用账号，跳过", i+1, displayTotal)
 				Manager.mu.Lock()
 				Manager.completed++
 				Manager.failed++
 				Manager.mu.Unlock()
+				if successTargetMode {
+					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止成功目标模式")
+				}
 				return
 			}
 			setOutlookAccount(acc)
 		} else if emailProvider == "moemail" {
-			// MoeMail 模式：动态生成临时邮箱
-			// 从域名池中获取域名和配置
-			domain, config := nextMoeMailDomain()
+			if reusedEmail {
+				currentEmail = taskCfg.MoeMailProvider.GetAddress()
+			} else {
+				// MoeMail 模式：动态生成临时邮箱
+				// 从域名池中获取域名和配置
+				domain, config := nextMoeMailDomain()
 
-			// 生成完全随机的邮箱名
-			emailName := email.GenerateEmailName(i)
+				// 生成完全随机的邮箱名
+				emailName := email.GenerateEmailName(i)
 
-			// 使用 1 小时有效期
-			expiryTime := int64(3600000) // 1 小时（毫秒）
+				// 使用 1 小时有效期
+				expiryTime := int64(3600000) // 1 小时（毫秒）
 
-			log.Printf("[Kiro][%d/%d] 创建 MoeMail 邮箱: %s@%s (配置: %s)", i+1, req.Count, emailName, domain, config.Name)
+				log.Printf("[Kiro][%d/%d] 创建 MoeMail 邮箱: %s@%s (配置: %s)", i+1, displayTotal, emailName, domain, config.Name)
 
-			// 创建 MoeMail 提供商
-			provider, err := email.NewMoeMailProviderWithProxy(config, emailName, expiryTime, domain, taskCfg.EmailProxy)
-			if err != nil {
-				log.Printf("[Kiro][%d/%d] 生成 MoeMail 邮箱失败: %v", i+1, req.Count, err)
-				Manager.mu.Lock()
-				Manager.completed++
-				Manager.failed++
-				Manager.mu.Unlock()
-				return
+				// 创建 MoeMail 提供商
+				provider, err := email.NewMoeMailProviderWithProxy(config, emailName, expiryTime, domain, taskCfg.EmailProxy)
+				if err != nil {
+					log.Printf("[Kiro][%d/%d] 生成 MoeMail 邮箱失败: %v", i+1, displayTotal, err)
+					Manager.mu.Lock()
+					Manager.completed++
+					Manager.failed++
+					Manager.mu.Unlock()
+					return
+				}
+
+				taskCfg.MoeMailProvider = provider
+				currentEmail = provider.GetAddress()
 			}
-
-			taskCfg.MoeMailProvider = provider
-			currentEmail = provider.GetAddress()
 		} else if emailProvider == "cloudmail" {
-			domain, config := nextCloudMailDomain()
-			emailName := email.GenerateEmailName(i)
+			if reusedEmail {
+				currentEmail = taskCfg.CloudMailProvider.GetAddress()
+			} else {
+				domain, config := nextCloudMailDomain()
+				emailName := email.GenerateEmailName(i)
 
-			log.Printf("[Kiro][%d/%d] 创建 cloud-mail 邮箱: %s@%s (配置: %s)", i+1, req.Count, emailName, domain, config.Name)
+				log.Printf("[Kiro][%d/%d] 创建 cloud-mail 邮箱: %s@%s (配置: %s)", i+1, displayTotal, emailName, domain, config.Name)
 
-			provider, err := email.NewCloudMailProvider(config, emailName, domain)
-			if err != nil {
-				log.Printf("[Kiro][%d/%d] 生成 cloud-mail 邮箱失败: %v", i+1, req.Count, err)
-				Manager.mu.Lock()
-				Manager.completed++
-				Manager.failed++
-				Manager.mu.Unlock()
-				return
+				provider, err := email.NewCloudMailProvider(config, emailName, domain)
+				if err != nil {
+					log.Printf("[Kiro][%d/%d] 生成 cloud-mail 邮箱失败: %v", i+1, displayTotal, err)
+					Manager.mu.Lock()
+					Manager.completed++
+					Manager.failed++
+					Manager.mu.Unlock()
+					return
+				}
+
+				taskCfg.CloudMailProvider = provider
+				cfgCopy := config
+				taskCfg.CloudMailConfig = &cfgCopy
+				currentEmail = provider.GetAddress()
 			}
-
-			taskCfg.CloudMailProvider = provider
-			cfgCopy := config
-			taskCfg.CloudMailConfig = &cfgCopy
-			currentEmail = provider.GetAddress()
+		} else if emailProvider == "mailporary" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 Mailporary 邮箱", i+1, displayTotal)
+				service := email.NewMailporaryService(taskCfg.EmailProxy)
+				address, err := service.CreateWithError()
+				if err != nil {
+					log.Printf("[Kiro][%d/%d] 生成 Mailporary 邮箱失败: %v", i+1, displayTotal, err)
+					Manager.mu.Lock()
+					Manager.completed++
+					Manager.failed++
+					Manager.mu.Unlock()
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
 		}
 
-		log.Printf("[Kiro][%d/%d] 开始注册", i+1, req.Count)
+		log.Printf("[Kiro][%d/%d] 开始注册", i+1, displayTotal)
 		itemStart := time.Now()
 
 		maxAttempts := req.RetryCount + 1
@@ -506,7 +716,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			if attempt > 0 {
-				log.Printf("[Kiro][%d/%d] 第 %d 次重试", i+1, req.Count, attempt)
+				log.Printf("[Kiro][%d/%d] 第 %d 次重试", i+1, displayTotal, attempt)
 				select {
 				case <-Manager.stopCh:
 					return
@@ -522,7 +732,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			runRegistrar := func(cfg *core.Config) map[string]interface{} {
 				reg := core.NewRegistrar(cfg)
 				reg.Ctx = taskCtx
-				reg.TaskLabel = fmt.Sprintf("%d/%d", i+1, req.Count)
+				reg.TaskLabel = fmt.Sprintf("%d/%d", i+1, displayTotal)
 				return reg.Run()
 			}
 			runAttempt := func() bool {
@@ -532,7 +742,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 					selection, err := clashClient.SwitchToNextAvailable(taskCtx)
 					if err != nil {
-						log.Printf("[Kiro][%d/%d] Clash 节点选择失败: %v", i+1, req.Count, err)
+						log.Printf("[Kiro][%d/%d] Clash 节点选择失败: %v", i+1, displayTotal, err)
 						result = map[string]interface{}{
 							"status": "failed",
 							"error":  "Clash 无可用节点: " + err.Error(),
@@ -547,7 +757,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 						delayText = fmt.Sprintf("延迟 %dms", selection.DelayMs)
 					}
 					log.Printf("[Kiro][%d/%d] Clash 节点已绑定本次注册: %s / %s (%s, 尝试 %d 个, 耗时 %dms)",
-						i+1, req.Count, selection.ProxyGroup, selection.Node, delayText, selection.Attempts, selection.DurationMs)
+						i+1, displayTotal, selection.ProxyGroup, selection.Node, delayText, selection.Attempts, selection.DurationMs)
 
 					result = runRegistrar(&attemptCfg)
 					return true
@@ -560,7 +770,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 				selection, err := proxy.SelectRuntimeProxy(taskCtx, attemptCfg.Proxy, proxy.DefaultRegisterSelectOptions())
 				if err != nil {
-					log.Printf("[Kiro][%d/%d] 代理候选选择失败: %v", i+1, req.Count, err)
+					log.Printf("[Kiro][%d/%d] 代理候选选择失败: %v", i+1, displayTotal, err)
 					result = map[string]interface{}{
 						"status": "failed",
 						"error":  "代理池无可用节点: " + err.Error(),
@@ -573,9 +783,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				attemptCfg.ProxySwitchable = selection.Templated
 				if selection.Templated {
 					log.Printf("[Kiro][%d/%d] 代理池候选可用: 第 %d/%d 个, 耗时 %dms, %s",
-						i+1, req.Count, selection.SuccessAttempt, selection.Attempts, selection.Duration.Milliseconds(), selection.MaskedProxyURL)
+						i+1, displayTotal, selection.SuccessAttempt, selection.Attempts, selection.Duration.Milliseconds(), selection.MaskedProxyURL)
 				} else {
-					log.Printf("[Kiro][%d/%d] 代理验证可用: %s", i+1, req.Count, selection.MaskedProxyURL)
+					log.Printf("[Kiro][%d/%d] 代理验证可用: %s", i+1, displayTotal, selection.MaskedProxyURL)
 				}
 				result = runRegistrar(&attemptCfg)
 				return true
@@ -605,7 +815,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 			// 邮箱已注册：标记当前账号，换号重来（重置 attempt）
 			if taskConfig.UseOutlook && strings.Contains(errorMsg, "邮箱已注册过") {
-				log.Printf("[Kiro][%d/%d] %s 已注册，标记并换号", i+1, req.Count, currentEmail)
+				log.Printf("[Kiro][%d/%d] %s 已注册，标记并换号", i+1, displayTotal, currentEmail)
 				email.UpdateAccountStatus(accountEmail, true, false, "邮箱已注册")
 				acc, ok := nextAccount()
 				if ok {
@@ -615,13 +825,16 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 					continue retryLoop
 				}
 				// 账号池耗尽
-				log.Printf("[Kiro][%d/%d] 账号池已耗尽", i+1, req.Count)
+				log.Printf("[Kiro][%d/%d] 账号池已耗尽", i+1, displayTotal)
+				if successTargetMode {
+					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止成功目标模式")
+				}
 				break
 			}
 
 			// Point of no return：Step12 已完成但整体失败 → 邮箱已消耗，不换代理重试
 			if pwSet, _ := result["passwordSet"].(bool); pwSet {
-				log.Printf("[Kiro][%d/%d] 密码已设置但验活失败，邮箱已消耗，不再重试", i+1, req.Count)
+				log.Printf("[Kiro][%d/%d] 密码已设置但验活失败，邮箱已消耗，不再重试", i+1, displayTotal)
 				break
 			}
 
@@ -630,10 +843,10 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				proxySwitches++
 				if clashEnabled {
 					log.Printf("[Kiro][%d/%d] 检测到 Clash 节点网络错误，切换下一个节点重试 (%d/%d): %s",
-						i+1, req.Count, proxySwitches, maxProxySwitches, errorMsg)
+						i+1, displayTotal, proxySwitches, maxProxySwitches, errorMsg)
 				} else {
 					log.Printf("[Kiro][%d/%d] 检测到代理节点网络错误，切换新 UUID 节点重试 (%d/%d): %s",
-						i+1, req.Count, proxySwitches, maxProxySwitches, errorMsg)
+						i+1, displayTotal, proxySwitches, maxProxySwitches, errorMsg)
 				}
 				attempt--
 				continue retryLoop
@@ -653,7 +866,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				break
 			}
 
-			log.Printf("[Kiro][%d/%d] 注册失败: %s，准备重试", i+1, req.Count, errorMsg)
+			log.Printf("[Kiro][%d/%d] 注册失败: %s，准备重试", i+1, displayTotal, errorMsg)
 		}
 
 		itemDuration := time.Since(itemStart).Seconds()
@@ -669,6 +882,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			Manager.failed++
 		}
 		completedCount := Manager.completed
+		successCount := Manager.success
 		Manager.mu.Unlock()
 
 		// 统计分类：失败时计算分类原因，供统计打印与邮箱状态标记复用
@@ -682,10 +896,19 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		}
 		statsMu.Unlock()
 
+		recycleErrorMsg, _ := result["error"].(string)
+		if !success && shouldRecycleReusableEmail(result) && !(killSwitchEnabled && isKillSwitchError(recycleErrorMsg, emailProvider)) {
+			if candidate, ok := reusableEmailCandidateFromConfig(emailProvider, &taskCfg); ok {
+				if reusableEmails.put(candidate) {
+					log.Printf("[Kiro][%d/%d] 回收可复用临时邮箱: %s", completedCount, displayTotal, candidate.address)
+				}
+			}
+		}
+
 		// log.Printf 必须在 state.mu 外调用，否则与 logWriter 死锁
 		if !success {
 			if errMsg, ok := result["error"].(string); ok {
-				log.Printf("[Kiro][%d/%d] 失败: %s (%s)", completedCount, req.Count, errMsg, currentEmail)
+				log.Printf("[Kiro][%d/%d] 失败: %s (%s)", completedCount, displayTotal, errMsg, currentEmail)
 			}
 		}
 
@@ -718,9 +941,67 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				log.Printf("[Kiro] 保存结果失败: %v", err)
 			}
 		}
+		if successTargetMode && successCount >= successTarget {
+			requestTaskStop(fmt.Sprintf("[Kiro] 注册成功数量已达到 %d，停止继续注册", successTarget))
+		}
 	}
 
-	if req.Concurrency > 1 {
+	if successTargetMode {
+		workerCount := req.Concurrency
+		if workerCount < 1 {
+			workerCount = 1
+		}
+		if workerCount > successTarget {
+			workerCount = successTarget
+		}
+		log.Printf("[Kiro] 启动成功目标任务: 目标成功 %d 个，并发数 %d", successTarget, workerCount)
+		log.Printf("[Kiro] 并发任务启动错峰: 步进 100ms, 抖动 0-80ms")
+		var wg sync.WaitGroup
+		for workerID := 0; workerID < workerCount; workerID++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					idx, ok := nextSuccessTargetAttempt()
+					if !ok {
+						return
+					}
+					if idx < workerCount {
+						stagger := concurrentStartStagger(idx, workerCount)
+						if stagger > 0 {
+							timer := time.NewTimer(stagger)
+							select {
+							case <-Manager.stopCh:
+								if !timer.Stop() {
+									<-timer.C
+								}
+								finishSuccessTargetAttempt()
+								return
+							case <-timer.C:
+							}
+						}
+					}
+
+					doTask(idx)
+					finishSuccessTargetAttempt()
+
+					// 串行成功目标模式保留任务间隔语义，并允许停止信号中断等待。
+					if workerCount == 1 && req.Delay > 0 {
+						timer := time.NewTimer(time.Duration(req.Delay) * time.Second)
+						select {
+						case <-Manager.stopCh:
+							if !timer.Stop() {
+								<-timer.C
+							}
+							return
+						case <-timer.C:
+						}
+					}
+				}
+			}()
+		}
+		wg.Wait()
+	} else if req.Concurrency > 1 {
 		log.Printf("[Kiro] 启动并发任务: %d 个任务，并发数 %d", req.Count, req.Concurrency)
 		log.Printf("[Kiro] 并发任务启动错峰: 步进 100ms, 抖动 0-80ms")
 		sem := make(chan struct{}, req.Concurrency)
@@ -1011,6 +1292,60 @@ func isProxyNetworkError(errorMsg string) bool {
 		}
 	}
 	return false
+}
+
+// shouldRecycleReusableEmail 判断失败结果中的临时邮箱是否还可进入候选池。
+func shouldRecycleReusableEmail(result map[string]interface{}) bool {
+	if result == nil || result["status"] == "success" {
+		return false
+	}
+	if passwordSet, _ := result["passwordSet"].(bool); passwordSet {
+		return false
+	}
+	errorMsg, _ := result["error"].(string)
+	return isReusableEmailError(errorMsg)
+}
+
+// isReusableEmailError 判断错误是否适合复用同一个临时邮箱换代理/指纹再试。
+func isReusableEmailError(errorMsg string) bool {
+	if strings.TrimSpace(errorMsg) == "" {
+		return false
+	}
+	excludes := []string{
+		"邮箱已注册",
+		"邮箱已被注册",
+		"临时邮箱不可能已存在",
+		"INVALID_OTP",
+		"验证码错误",
+		"验证码无效",
+		"验证码接收超时",
+		"等待验证码超时",
+		"邮箱创建失败",
+		"获取邮件失败",
+		"邮箱服务异常",
+		"Mailporary 邮箱未创建",
+		"suspended",
+		"任务已取消",
+		"context canceled",
+	}
+	lower := strings.ToLower(errorMsg)
+	for _, exclude := range excludes {
+		if strings.Contains(lower, strings.ToLower(exclude)) {
+			return false
+		}
+	}
+	triggers := []string{
+		"注册被拦截",
+		"IP或浏览器指纹",
+		"BLOCKED",
+		"注册请求被拦截",
+	}
+	for _, trigger := range triggers {
+		if strings.Contains(lower, strings.ToLower(trigger)) {
+			return true
+		}
+	}
+	return isProxyNetworkError(errorMsg)
 }
 
 // isKillSwitchError 判断该错误是否属于"AWS 已把我们拉黑，继续跑没意义"的熔断级错误。

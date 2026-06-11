@@ -327,6 +327,20 @@ func (r *Registrar) Step3Email() error {
 		return nil
 	}
 
+	if r.Cfg.TempEmailService != nil {
+		log.Println("[3] 使用已创建的临时邮箱")
+		r.EmailSvc = r.Cfg.TempEmailService
+		r.Email = strings.TrimSpace(r.EmailSvc.GetAddress())
+		if r.Email == "" {
+			r.Email = strings.TrimSpace(r.EmailSvc.Create())
+		}
+		if r.Email == "" {
+			return fmt.Errorf("复用临时邮箱地址为空")
+		}
+		log.Printf("email=%s", r.Email)
+		return nil
+	}
+
 	if r.Cfg.EmailProvider == "mailporary" {
 		log.Println("[3] 使用 Mailporary 临时邮箱")
 		svc := email.NewMailporaryService(r.Cfg.EmailProxy)

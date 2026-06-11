@@ -150,11 +150,13 @@ func (a *App) GetOverview() map[string]interface{} {
 	return map[string]interface{}{
 		"version": updater.GetCurrentVersion(),
 		"kiro": map[string]interface{}{
-			"taskRunning":   taskStatus["running"],
-			"taskSuccess":   taskStatus["success"],
-			"taskFailed":    taskStatus["failed"],
-			"taskCompleted": taskStatus["completed"],
-			"taskTotal":     taskStatus["total"],
+			"taskRunning":              taskStatus["running"],
+			"taskSuccess":              taskStatus["success"],
+			"taskFailed":               taskStatus["failed"],
+			"taskCompleted":            taskStatus["completed"],
+			"taskTotal":                taskStatus["total"],
+			"taskSuccessTarget":        taskStatus["successTarget"],
+			"taskSuccessTargetEnabled": taskStatus["successTargetEnabled"],
 		},
 		"outlook": map[string]interface{}{
 			"total":      outlookTotal,
@@ -170,11 +172,13 @@ func (a *App) GetTaskStatus() map[string]interface{} {
 	taskStatus := task.Manager.GetStatus()
 	return map[string]interface{}{
 		"kiro": map[string]interface{}{
-			"taskRunning":   taskStatus["running"],
-			"taskSuccess":   taskStatus["success"],
-			"taskFailed":    taskStatus["failed"],
-			"taskCompleted": taskStatus["completed"],
-			"taskTotal":     taskStatus["total"],
+			"taskRunning":              taskStatus["running"],
+			"taskSuccess":              taskStatus["success"],
+			"taskFailed":               taskStatus["failed"],
+			"taskCompleted":            taskStatus["completed"],
+			"taskTotal":                taskStatus["total"],
+			"taskSuccessTarget":        taskStatus["successTarget"],
+			"taskSuccessTargetEnabled": taskStatus["successTargetEnabled"],
 		},
 	}
 }

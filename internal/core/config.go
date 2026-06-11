@@ -58,6 +58,9 @@ type Config struct {
 	CloudMailConfig   *email.CloudMailConfig
 	CloudMailProvider *email.CloudMailProvider
 
+	// TempEmailService 表示任务层已创建或复用的通用临时邮箱服务。
+	TempEmailService email.TempEmailService
+
 	MoEmailBaseURL string
 	MoEmailAPIKey  string
 }

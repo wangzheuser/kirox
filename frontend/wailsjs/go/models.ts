@@ -158,6 +158,7 @@ export namespace storage {
 	}
 	export class RegistrationConfig {
 	    count: number;
+	    successTarget: number;
 	    concurrency: number;
 	    delay: number;
 	    retryCount: number;
@@ -174,6 +175,7 @@ export namespace storage {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.count = source["count"];
+	        this.successTarget = source["successTarget"];
 	        this.concurrency = source["concurrency"];
 	        this.delay = source["delay"];
 	        this.retryCount = source["retryCount"];
@@ -191,6 +193,7 @@ export namespace task {
 	
 	export class StartTaskRequest {
 	    count: number;
+	    successTarget: number;
 	    concurrency: number;
 	    delay: number;
 	    retryCount: number;
@@ -211,6 +214,7 @@ export namespace task {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.count = source["count"];
+	        this.successTarget = source["successTarget"];
 	        this.concurrency = source["concurrency"];
 	        this.delay = source["delay"];
 	        this.retryCount = source["retryCount"];

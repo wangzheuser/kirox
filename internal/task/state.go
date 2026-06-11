@@ -12,19 +12,21 @@ import (
 
 // State 任务状态（从原 App 脱离为独立单例）
 type State struct {
-	mu         sync.Mutex
-	running    bool
-	stopCh     chan struct{}
-	cancelFunc context.CancelFunc // 强制取消所有 HTTP 请求
-	total      int
-	completed  int
-	success    int
-	failed     int
-	results    []map[string]interface{}
-	startTime  time.Time
-	logs       []string
-	logsMu     sync.Mutex
-	logFile    *lumberjack.Logger // 日志文件写入器，支持自动轮转
+	mu                   sync.Mutex
+	running              bool
+	stopCh               chan struct{}
+	cancelFunc           context.CancelFunc // 强制取消所有 HTTP 请求
+	total                int
+	completed            int
+	success              int
+	failed               int
+	successTarget        int
+	successTargetEnabled bool
+	results              []map[string]interface{}
+	startTime            time.Time
+	logs                 []string
+	logsMu               sync.Mutex
+	logFile              *lumberjack.Logger // 日志文件写入器，支持自动轮转
 	// OnSyncResult 同步完成回调（由 app.go 注入，用于通知前端）
 	OnSyncResult func(interface{})
 }
@@ -103,11 +105,13 @@ func (s *State) GetStatus() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"running":   s.running,
-		"total":     s.total,
-		"completed": s.completed,
-		"success":   s.success,
-		"failed":    s.failed,
-		"elapsed":   elapsed,
+		"running":              s.running,
+		"total":                s.total,
+		"completed":            s.completed,
+		"success":              s.success,
+		"failed":               s.failed,
+		"successTarget":        s.successTarget,
+		"successTargetEnabled": s.successTargetEnabled,
+		"elapsed":              elapsed,
 	}
 }

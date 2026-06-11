@@ -60,6 +60,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	}
 	if err := SetRegistrationConfig(RegistrationConfig{
 		Count:             7,
+		SuccessTarget:     5,
 		Concurrency:       3,
 		Delay:             0,
 		EmailProvider:     "moemail",
@@ -105,7 +106,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if got := GetVerifyModelsEnabled(); !got {
 		t.Fatalf("verify models true should persist")
 	}
-	if got := GetRegistrationConfig(); got.Count != 7 || got.Concurrency != 3 || got.Delay != 0 || got.EmailProvider != "moemail" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.Saved {
+	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || got.EmailProvider != "moemail" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.Saved {
 		t.Fatalf("registration config round-trip failed: got %+v", got)
 	}
 
@@ -187,12 +188,15 @@ func TestRegistrationConfigDefaultsAndValidation(t *testing.T) {
 	withTempStorageConfig(t, "")
 
 	defaults := GetRegistrationConfig()
-	if defaults.Count != 1 || defaults.Concurrency != 1 || defaults.Delay != 1 || defaults.EmailProvider != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.Saved {
+	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || defaults.EmailProvider != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.Saved {
 		t.Fatalf("registration defaults mismatch: got %+v", defaults)
 	}
 
 	if err := SetRegistrationConfig(RegistrationConfig{Count: 0, Concurrency: 1, Delay: 0, EmailProvider: "outlook"}); err == nil {
 		t.Fatalf("count < 1 should be rejected")
+	}
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, SuccessTarget: -1, Concurrency: 1, Delay: 0, EmailProvider: "outlook"}); err == nil {
+		t.Fatalf("success target < 0 should be rejected")
 	}
 	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 0, Delay: 0, EmailProvider: "outlook"}); err == nil {
 		t.Fatalf("concurrency < 1 should be rejected")

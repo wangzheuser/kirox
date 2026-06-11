@@ -63,7 +63,7 @@
       },
       logs: { title: '运行日志', copyLog: '复制日志', empty: '暂无日志' },
       register: {
-        newTask: '新建注册任务', count: '注册数量', concurrency: '并发数', delay: '延迟 (秒)',
+        newTask: '新建注册任务', count: '注册数量', successTarget: '注册成功数量', concurrency: '并发数', delay: '延迟 (秒)',
         emailProvider: '邮箱提供商', outlook: '微软邮箱', moemail: 'MoeMail', cloudmail: 'Cloud-Mail',
         selectDomain: '选择域名', selectAllDomain: '全选域名',
         domainHint: '邮箱名将自动生成随机字符串',
@@ -314,7 +314,7 @@
       },
       logs: { title: 'Logs', copyLog: 'Copy logs', empty: 'No logs' },
       register: {
-        newTask: 'New registration task', count: 'Count', concurrency: 'Concurrency', delay: 'Delay (s)',
+        newTask: 'New registration task', count: 'Count', successTarget: 'Success target', concurrency: 'Concurrency', delay: 'Delay (s)',
         emailProvider: 'Email provider', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail',
         selectDomain: 'Select domain', selectAllDomain: 'Select all',
         domainHint: 'Email username is auto-generated as random string',
@@ -565,7 +565,7 @@
       },
       logs: { title: 'ログ', copyLog: 'ログをコピー', empty: 'ログなし' },
       register: {
-        newTask: '新規登録タスク', count: '登録数', concurrency: '同時実行数', delay: '遅延 (秒)',
+        newTask: '新規登録タスク', count: '登録数', successTarget: '成功目標数', concurrency: '同時実行数', delay: '遅延 (秒)',
         emailProvider: 'メールプロバイダ', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail',
         selectDomain: 'ドメイン選択', selectAllDomain: 'すべて選択',
         domainHint: 'ユーザー名はランダム文字列で自動生成されます',

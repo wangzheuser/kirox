@@ -858,6 +858,7 @@ function getRegistrationConfigPayload() {
   var selection = getMoeMailSelectionForPersistence();
   return {
     count: readIntegerInput('cfg-count', 1, 1),
+    successTarget: readIntegerInput('cfg-success-target', 0, 0),
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
@@ -881,6 +882,7 @@ function applyRegistrationConfig(cfg) {
   cfg = cfg || {};
   registrationConfigApplying = true;
   writeIntegerInput('cfg-count', cfg.count, 1);
+  writeIntegerInput('cfg-success-target', cfg.successTarget, 0);
   writeIntegerInput('cfg-concurrency', cfg.concurrency, 1);
   writeIntegerInput('cfg-delay', cfg.delay, 1);
   writeIntegerInput('cfg-retry-count', cfg.retryCount, 1);
@@ -899,6 +901,7 @@ function applyRegistrationConfig(cfg) {
 function getFormConfig() {
   const config = {
     count: readIntegerInput('cfg-count', 1, 1),
+    successTarget: readIntegerInput('cfg-success-target', 0, 0),
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
@@ -1003,6 +1006,7 @@ async function migrateLegacyRegistrationConfigIfNeeded(cfg) {
     var legacy = JSON.parse(savedConfig);
     var payload = {
       count: Number.isFinite(parseInt(legacy.count, 10)) ? parseInt(legacy.count, 10) : 1,
+      successTarget: 0,
       concurrency: Number.isFinite(parseInt(legacy.concurrency, 10)) ? parseInt(legacy.concurrency, 10) : 1,
       delay: legacy.delay === 0 ? 0 : (Number.isFinite(parseInt(legacy.delay, 10)) ? parseInt(legacy.delay, 10) : 1),
       emailProvider: legacy.emailProvider || 'outlook',
@@ -1041,6 +1045,7 @@ async function loadRegistrationConfig() {
     console.error('[启动] 加载注册配置失败:', e);
     applyRegistrationConfig({
       count: 1,
+      successTarget: 0,
       concurrency: 1,
       delay: 1,
       retryCount: 1,
@@ -1053,7 +1058,7 @@ async function loadRegistrationConfig() {
 }
 
 // 自动保存
-['cfg-count', 'cfg-concurrency', 'cfg-delay', 'cfg-retry-count', 'cfg-otp-timeout'].forEach(function(id) {
+['cfg-count', 'cfg-success-target', 'cfg-concurrency', 'cfg-delay', 'cfg-retry-count', 'cfg-otp-timeout'].forEach(function(id) {
   var el = document.getElementById(id);
   if (el) {
     el.addEventListener('change', scheduleRegistrationConfigSave);

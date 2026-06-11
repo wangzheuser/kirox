@@ -195,7 +195,11 @@ async function startTask() {
     // 账号不足时弹窗确认，用户选择继续则以可用数量启动
     if (result.confirm === 'outlook_insufficient') {
       showConfirmModal('账号不足', result.message, '继续注册', function() {
-        cfg.count = result.available;
+        if (cfg.successTarget > 0) {
+          cfg.successTarget = result.available;
+        } else {
+          cfg.count = result.available;
+        }
         startTaskWithConfig(cfg);
       });
       return;
@@ -344,11 +348,16 @@ setInterval(async function() {
       regBadge.textContent = rTxt;
       regBadge.className = 'db-badge ' + (s.running ? 'db-badge-running' : 'db-badge-idle');
     }
-    document.getElementById('st-progress').textContent = s.completed + '/' + s.total;
+    var successTarget = s.successTargetEnabled ? (parseInt(s.successTarget, 10) || 0) : 0;
+    var successTargetMode = successTarget > 0;
+    var progressDone = successTargetMode ? s.success : s.completed;
+    var progressTotal = successTargetMode ? successTarget : s.total;
+    document.getElementById('st-progress').textContent = progressDone + '/' + progressTotal;
     document.getElementById('st-success').textContent = s.success;
     document.getElementById('st-failed').textContent = s.failed;
     if (s.elapsed > 0) document.getElementById('st-elapsed').textContent = formatTime(s.elapsed);
-    var pct = s.total > 0 ? Math.round(s.completed / s.total * 100) : 0;
+    var pct = progressTotal > 0 ? Math.round(progressDone / progressTotal * 100) : 0;
+    if (pct > 100) pct = 100;
     document.getElementById('progress-bar').style.width = pct + '%';
     // 检测任务完成
     if (_prevRunning && !s.running && s.completed > 0) {
@@ -376,7 +385,11 @@ setInterval(async function() {
     }
     // 预计剩余
     var etaEl = document.getElementById('st-eta');
-    if (s.running && s.completed > 0 && s.total > s.completed) {
+    if (s.running && successTargetMode && s.success > 0 && successTarget > s.success) {
+      var avgSuccessTime = s.elapsed / s.success;
+      var remaining = (successTarget - s.success) * avgSuccessTime;
+      etaEl.textContent = formatTime(remaining);
+    } else if (s.running && s.completed > 0 && s.total > s.completed) {
       var avgTime = s.elapsed / s.completed;
       var remaining = (s.total - s.completed) * avgTime;
       etaEl.textContent = formatTime(remaining);

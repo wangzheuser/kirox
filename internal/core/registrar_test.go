@@ -2,6 +2,24 @@ package core
 
 import "testing"
 
+type fakeTempEmailService struct {
+	address     string
+	createCalls int
+}
+
+func (s *fakeTempEmailService) Create() string {
+	s.createCalls++
+	return s.address
+}
+
+func (s *fakeTempEmailService) WaitForCode(int, int) (string, error) {
+	return "", nil
+}
+
+func (s *fakeTempEmailService) GetAddress() string {
+	return s.address
+}
+
 func TestMaxHTTPRetriesDisablesSameNodeRetryForProxyPool(t *testing.T) {
 	r := &Registrar{Cfg: &Config{Proxy: "https://node.test:pass@proxy.example.com:443", ProxySwitchable: true}}
 
@@ -66,5 +84,23 @@ func TestUseOutlookGraph(t *testing.T) {
 
 	if !cfg.UseOutlookGraph() {
 		t.Fatalf("OutlookScope=graph 时应启用 Graph 读取")
+	}
+}
+
+func TestStep3EmailUsesReusableTempEmailService(t *testing.T) {
+	service := &fakeTempEmailService{address: "reuse@example.com"}
+	r := &Registrar{Cfg: &Config{TempEmailService: service}}
+
+	if err := r.Step3Email(); err != nil {
+		t.Fatalf("Step3Email returned error: %v", err)
+	}
+	if r.Email != "reuse@example.com" {
+		t.Fatalf("Step3Email email = %q, want reuse@example.com", r.Email)
+	}
+	if r.EmailSvc != service {
+		t.Fatalf("Step3Email should use reusable service")
+	}
+	if service.createCalls != 0 {
+		t.Fatalf("existing reusable service should not create a new mailbox, createCalls=%d", service.createCalls)
 	}
 }

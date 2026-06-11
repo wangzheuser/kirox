@@ -27,9 +27,10 @@ const (
 	DefaultPageStayMinMs = 5000
 	DefaultPageStayMaxMs = 8000
 
-	DefaultRegistrationCount       = 1
-	DefaultRegistrationConcurrency = 1
-	DefaultRegistrationDelay       = 1
+	DefaultRegistrationCount         = 1
+	DefaultRegistrationSuccessTarget = 0
+	DefaultRegistrationConcurrency   = 1
+	DefaultRegistrationDelay         = 1
 
 	RegistrationEmailProviderOutlook    = "outlook"
 	RegistrationEmailProviderMoeMail    = "moemail"
@@ -61,6 +62,7 @@ const (
 	keyClashSkipConnectivityTest  = "clash_skip_connectivity_test"
 	keyRegistrationConfigSaved    = "registration_config_saved"
 	keyRegistrationCount          = "registration_count"
+	keyRegistrationSuccessTarget  = "registration_success_target"
 	keyRegistrationConcurrency    = "registration_concurrency"
 	keyRegistrationDelay          = "registration_delay"
 	keyRegistrationRetryCount     = "registration_retry_count"
@@ -82,6 +84,7 @@ type PageStayConfig struct {
 // RegistrationConfig 保存注册页面的业务配置。
 type RegistrationConfig struct {
 	Count             int      `json:"count"`
+	SuccessTarget     int      `json:"successTarget"`
 	Concurrency       int      `json:"concurrency"`
 	Delay             int      `json:"delay"`
 	RetryCount        int      `json:"retryCount"`
@@ -134,6 +137,7 @@ var configKeyOrder = []string{
 	keyClashSkipConnectivityTest,
 	keyRegistrationConfigSaved,
 	keyRegistrationCount,
+	keyRegistrationSuccessTarget,
 	keyRegistrationConcurrency,
 	keyRegistrationDelay,
 	keyRegistrationRetryCount,
@@ -787,6 +791,12 @@ func GetRegistrationConfig() RegistrationConfig {
 			cfg.Saved = true
 		}
 	}
+	if raw := strings.TrimSpace(m[keyRegistrationSuccessTarget]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value >= 0 {
+			cfg.SuccessTarget = value
+			cfg.Saved = true
+		}
+	}
 	if raw := strings.TrimSpace(m[keyRegistrationConcurrency]); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value >= 1 {
 			cfg.Concurrency = value
@@ -848,6 +858,7 @@ func SetRegistrationConfig(cfg RegistrationConfig) error {
 	return modifyConfigMap(func(m map[string]string) error {
 		m[keyRegistrationConfigSaved] = "true"
 		m[keyRegistrationCount] = strconv.Itoa(normalized.Count)
+		m[keyRegistrationSuccessTarget] = strconv.Itoa(normalized.SuccessTarget)
 		m[keyRegistrationConcurrency] = strconv.Itoa(normalized.Concurrency)
 		m[keyRegistrationDelay] = strconv.Itoa(normalized.Delay)
 		m[keyRegistrationRetryCount] = strconv.Itoa(normalized.RetryCount)
@@ -902,6 +913,7 @@ func normalizeOutlookScope(scope string) string {
 func defaultRegistrationConfig() RegistrationConfig {
 	return RegistrationConfig{
 		Count:             DefaultRegistrationCount,
+		SuccessTarget:     DefaultRegistrationSuccessTarget,
 		Concurrency:       DefaultRegistrationConcurrency,
 		Delay:             DefaultRegistrationDelay,
 		RetryCount:        1,
@@ -917,6 +929,9 @@ func normalizeRegistrationConfig(cfg RegistrationConfig) (RegistrationConfig, er
 	out := cfg
 	if out.Count < 1 {
 		return RegistrationConfig{}, fmt.Errorf("注册数量必须大于或等于 1")
+	}
+	if out.SuccessTarget < 0 {
+		return RegistrationConfig{}, fmt.Errorf("注册成功数量不能小于 0")
 	}
 	if out.Concurrency < 1 {
 		return RegistrationConfig{}, fmt.Errorf("并发数必须大于或等于 1")
