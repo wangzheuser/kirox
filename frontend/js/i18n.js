@@ -72,6 +72,8 @@
         cloudmailHint: '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。',
         cloudmailWarn: '⚠️ 每次注册会在 Cloud-Mail 上创建一个永久账号，需手动清理',
         outlookHintFull: '使用微软邮箱进行注册，代理配置请在设置页设置。',
+        reuseFailedEmail: '失败时复用邮箱',
+        reuseFailedEmailDesc: '默认关闭；开启后注册被拦截或代理网络错误时才会保留并复用同一个临时邮箱。',
         modeRandom: '随机', modeRoundRobin: '轮询',
         startBtn: '开始注册', stopBtn: '停止'
       },
@@ -323,6 +325,8 @@
         cloudmailHint: 'Register using self-hosted Cloud-Mail. ⚠️ Each run creates a permanent account — clean up manually.',
         cloudmailWarn: '⚠️ Each registration creates a permanent account on Cloud-Mail. Clean up manually.',
         outlookHintFull: 'Register using Microsoft mailboxes. Configure proxy in Settings.',
+        reuseFailedEmail: 'Reuse failed mailbox',
+        reuseFailedEmailDesc: 'Off by default. When enabled, blocked registration or proxy network errors keep and reuse the same temp mailbox.',
         modeRandom: 'Random', modeRoundRobin: 'Round-robin',
         startBtn: 'Start', stopBtn: 'Stop'
       },
@@ -574,6 +578,8 @@
         cloudmailHint: '自己ホスト型 Cloud-Mail で登録します。⚠️ 毎回永続的なアカウントが作成されるため、手動で削除してください。',
         cloudmailWarn: '⚠️ 登録のたびに Cloud-Mail 上で永続的なアカウントが作成されます。手動で削除してください。',
         outlookHintFull: 'Microsoft メールで登録します。プロキシは設定ページで構成してください。',
+        reuseFailedEmail: '失敗時にメールを再利用',
+        reuseFailedEmailDesc: 'デフォルトはオフです。有効にすると、登録ブロックやプロキシ通信エラー時のみ同じ一時メールを保持して再利用します。',
         modeRandom: 'ランダム', modeRoundRobin: 'ラウンドロビン',
         startBtn: '登録開始', stopBtn: '停止'
       },

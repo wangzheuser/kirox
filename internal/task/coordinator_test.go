@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"reg_go/internal/core"
 	"reg_go/internal/kirorsync"
 )
 
@@ -121,6 +122,69 @@ func TestReusableEmailPoolTakesCandidateOnce(t *testing.T) {
 	}
 	if _, ok := pool.take("mailporary"); ok {
 		t.Fatalf("candidate should be removed after first take")
+	}
+}
+
+func TestReusableEmailDisabledByDefault(t *testing.T) {
+	req := StartTaskRequest{}
+
+	if shouldUseReusableFailedEmail(req) {
+		t.Fatalf("failed email reuse should be disabled by default")
+	}
+}
+
+func TestReusableEmailEnabledByRequest(t *testing.T) {
+	req := StartTaskRequest{ReuseFailedEmail: true}
+
+	if !shouldUseReusableFailedEmail(req) {
+		t.Fatalf("failed email reuse should be enabled when requested")
+	}
+}
+
+func TestTakeReusableFailedEmailRequiresSwitch(t *testing.T) {
+	pool := &reusableEmailPool{}
+	service := &taskFakeTempEmailService{address: "reuse@example.com"}
+	pool.put(reusableEmailCandidate{provider: "mailporary", address: service.address, tempEmailService: service})
+
+	if _, ok := takeReusableFailedEmail(StartTaskRequest{}, pool, "mailporary"); ok {
+		t.Fatalf("disabled failed email reuse should not take a candidate")
+	}
+	if len(pool.items) != 1 {
+		t.Fatalf("disabled failed email reuse should keep candidate in pool, got %d", len(pool.items))
+	}
+
+	got, ok := takeReusableFailedEmail(StartTaskRequest{ReuseFailedEmail: true}, pool, "mailporary")
+	if !ok || got.address != service.address {
+		t.Fatalf("enabled failed email reuse should take candidate, got %#v ok=%v", got, ok)
+	}
+	if len(pool.items) != 0 {
+		t.Fatalf("enabled failed email reuse should remove candidate from pool, got %d", len(pool.items))
+	}
+}
+
+func TestRecycleReusableFailedEmailRequiresSwitch(t *testing.T) {
+	service := &taskFakeTempEmailService{address: "reuse@example.com"}
+	cfg := &core.Config{TempEmailService: service}
+	result := map[string]interface{}{
+		"status": "failed",
+		"error":  "注册被拦截: 请更换IP或稍后重试",
+	}
+
+	disabledPool := &reusableEmailPool{}
+	if _, ok := recycleReusableFailedEmail(StartTaskRequest{}, disabledPool, "mailporary", cfg, result, false); ok {
+		t.Fatalf("disabled failed email reuse should not recycle candidate")
+	}
+	if len(disabledPool.items) != 0 {
+		t.Fatalf("disabled failed email reuse should not write to pool, got %d", len(disabledPool.items))
+	}
+
+	enabledPool := &reusableEmailPool{}
+	candidate, ok := recycleReusableFailedEmail(StartTaskRequest{ReuseFailedEmail: true}, enabledPool, "mailporary", cfg, result, false)
+	if !ok || candidate.address != service.address {
+		t.Fatalf("enabled failed email reuse should recycle candidate, got %#v ok=%v", candidate, ok)
+	}
+	if len(enabledPool.items) != 1 {
+		t.Fatalf("enabled failed email reuse should write one candidate, got %d", len(enabledPool.items))
 	}
 }
 

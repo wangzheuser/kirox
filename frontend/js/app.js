@@ -866,6 +866,17 @@ function writeIntegerInput(id, value, fallback) {
   el.value = Number.isFinite(n) ? String(n) : String(fallback);
 }
 
+function readCheckboxInput(id) {
+  var el = document.getElementById(id);
+  return !!(el && el.checked);
+}
+
+function writeCheckboxInput(id, value) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.checked = !!value;
+}
+
 function getMoeMailSelectionForPersistence() {
   var selected = Array.isArray(selectedMoeMailDomains) ? selectedMoeMailDomains.slice() : [];
   if (selected.includes('__all__')) {
@@ -886,6 +897,7 @@ function getRegistrationConfigPayload() {
     delay: readIntegerInput('cfg-delay', 1, 0),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     otpTimeout: readIntegerInput('cfg-otp-timeout', 120, 30),
+    reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
     emailProvider: selectedEmailProvider || 'outlook',
     moemailDomainMode: selection.moemailDomainMode,
     moemailDomains: selection.moemailDomains
@@ -910,6 +922,7 @@ function applyRegistrationConfig(cfg) {
   writeIntegerInput('cfg-delay', cfg.delay, 1);
   writeIntegerInput('cfg-retry-count', cfg.retryCount, 1);
   writeIntegerInput('cfg-otp-timeout', cfg.otpTimeout, 120);
+  writeCheckboxInput('cfg-reuse-failed-email', cfg.reuseFailedEmail);
   selectedMoeMailDomains = moeMailSelectionFromConfig(cfg);
   if (typeof selectEmailProvider === 'function') {
     selectEmailProvider(cfg.emailProvider || 'outlook', {
@@ -929,6 +942,7 @@ function getFormConfig() {
     delay: readIntegerInput('cfg-delay', 1, 0),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     otpTimeout: readIntegerInput('cfg-otp-timeout', 120, 30),
+    reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
     emailProvider: selectedEmailProvider || 'outlook'
   };
 
@@ -1032,6 +1046,7 @@ async function migrateLegacyRegistrationConfigIfNeeded(cfg) {
       successTarget: 0,
       concurrency: Number.isFinite(parseInt(legacy.concurrency, 10)) ? parseInt(legacy.concurrency, 10) : 1,
       delay: legacy.delay === 0 ? 0 : (Number.isFinite(parseInt(legacy.delay, 10)) ? parseInt(legacy.delay, 10) : 1),
+      reuseFailedEmail: false,
       emailProvider: legacy.emailProvider || 'outlook',
       moemailDomainMode: 'random',
       moemailDomains: []
@@ -1073,6 +1088,7 @@ async function loadRegistrationConfig() {
       delay: 1,
       retryCount: 1,
       otpTimeout: 120,
+      reuseFailedEmail: false,
       emailProvider: 'outlook',
       moemailDomainMode: 'random',
       moemailDomains: []
@@ -1086,6 +1102,12 @@ async function loadRegistrationConfig() {
   if (el) {
     el.addEventListener('change', scheduleRegistrationConfigSave);
     el.addEventListener('input', scheduleRegistrationConfigSave);
+  }
+});
+['cfg-reuse-failed-email'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) {
+    el.addEventListener('change', scheduleRegistrationConfigSave);
   }
 });
 

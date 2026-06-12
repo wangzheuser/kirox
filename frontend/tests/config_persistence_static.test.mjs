@@ -20,11 +20,15 @@ test('settings page sound switch is persisted through backend APIs', () => {
 
 test('registration form is persisted through backend APIs instead of long-term localStorage', () => {
   assert.match(html, /id="cfg-success-target"/);
+  assert.match(html, /id="cfg-reuse-failed-email"/);
   assert.match(appJs, /GetRegistrationConfig\(\)/);
   assert.match(appJs, /SetRegistrationConfig\(/);
   assert.match(appJs, /successTarget:\s*readIntegerInput\(['"]cfg-success-target['"]/);
+  assert.match(appJs, /reuseFailedEmail:\s*readCheckboxInput\(['"]cfg-reuse-failed-email['"]/);
   assert.match(appJs, /writeIntegerInput\(['"]cfg-success-target['"]\s*,\s*cfg\.successTarget/);
+  assert.match(appJs, /writeCheckboxInput\(['"]cfg-reuse-failed-email['"]\s*,\s*cfg\.reuseFailedEmail/);
   assert.match(appJs, /\['cfg-count',\s*'cfg-success-target'/);
+  assert.match(appJs, /\['cfg-reuse-failed-email'\]/);
   assert.doesNotMatch(appJs, /localStorage\.setItem\(['"]kiro-config['"]/);
   assert.doesNotMatch(appJs, /cfg\.delay\s*\|\|/);
   assert.match(appJs, /localStorage\.removeItem\(['"]kiro-config['"]\)/);

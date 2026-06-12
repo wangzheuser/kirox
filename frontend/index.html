@@ -872,6 +872,13 @@
               <input type="number" id="cfg-otp-timeout" value="120" min="30" max="600" class="form-input" style="height:38px;">
             </div>
           </div>
+          <label style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-subtle);cursor:pointer;">
+            <input type="checkbox" id="cfg-reuse-failed-email" style="margin-top:2px;">
+            <span style="display:flex;flex-direction:column;gap:3px;">
+              <span style="font-size:12px;font-weight:700;color:var(--text);" data-i18n="register.reuseFailedEmail">失败时复用邮箱</span>
+              <span style="font-size:11px;color:var(--text-muted);line-height:1.4;" data-i18n="register.reuseFailedEmailDesc">默认关闭；开启后注册被拦截或代理网络错误时才会保留并复用同一个临时邮箱。</span>
+            </span>
+          </label>
           <div class="form-group" style="margin-bottom:16px;">
             <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;display:block;" data-i18n="register.emailProvider">邮箱提供商</label>
             <div style="display:flex;gap:8px;">

@@ -41,39 +41,40 @@ const (
 	MoeMailDomainModeAll    = "all"
 	MoeMailDomainModeCustom = "custom"
 
-	keyDataDir                    = "data_dir"
-	keyResultOutputDir            = "result_output_dir"
-	keyPageStayMinMs              = "page_stay_min_ms"
-	keyPageStayMaxMs              = "page_stay_max_ms"
-	keyOutlookScope               = "outlook_scope"
-	keyProxyMode                  = "proxy_mode"
-	keyProxy                      = "proxy"
-	keyLanguage                   = "language"
-	keyClashProxy                 = "clash_proxy"
-	keyEmailProxy                 = "email_proxy"
-	keyKillSwitchEnabled          = "kill_switch_enabled"
-	keySoundEnabled               = "sound_enabled"
-	keyVerifyModelsEnabled        = "verify_models_enabled"
-	keyClashEnabled               = "clash_enabled"
-	keyClashAPIURL                = "clash_api_url"
-	keyClashAPISecret             = "clash_api_secret"
-	keyClashProxyGroup            = "clash_proxy_group"
-	keyClashTestURL               = "clash_test_url"
-	keyClashTestTimeout           = "clash_test_timeout"
-	keyClashSkipConnectivityTest  = "clash_skip_connectivity_test"
-	keyRegistrationConfigSaved    = "registration_config_saved"
-	keyRegistrationCount          = "registration_count"
-	keyRegistrationSuccessTarget  = "registration_success_target"
-	keyRegistrationConcurrency    = "registration_concurrency"
-	keyRegistrationDelay          = "registration_delay"
-	keyRegistrationRetryCount     = "registration_retry_count"
-	keyRegistrationOTPTimeout     = "registration_otp_timeout"
-	keyRegistrationEmailProvider  = "registration_email_provider"
-	keyRegistrationMoeMailMode    = "registration_moemail_domain_mode"
-	keyRegistrationMoeMailDomains = "registration_moemail_domains"
-	keyKiroRSAPIURL               = "kiro_rs_api_url"
-	keyKiroRSAPIKey               = "kiro_rs_api_key"
-	keyKiroRSAutoSync             = "kiro_rs_auto_sync"
+	keyDataDir                      = "data_dir"
+	keyResultOutputDir              = "result_output_dir"
+	keyPageStayMinMs                = "page_stay_min_ms"
+	keyPageStayMaxMs                = "page_stay_max_ms"
+	keyOutlookScope                 = "outlook_scope"
+	keyProxyMode                    = "proxy_mode"
+	keyProxy                        = "proxy"
+	keyLanguage                     = "language"
+	keyClashProxy                   = "clash_proxy"
+	keyEmailProxy                   = "email_proxy"
+	keyKillSwitchEnabled            = "kill_switch_enabled"
+	keySoundEnabled                 = "sound_enabled"
+	keyVerifyModelsEnabled          = "verify_models_enabled"
+	keyClashEnabled                 = "clash_enabled"
+	keyClashAPIURL                  = "clash_api_url"
+	keyClashAPISecret               = "clash_api_secret"
+	keyClashProxyGroup              = "clash_proxy_group"
+	keyClashTestURL                 = "clash_test_url"
+	keyClashTestTimeout             = "clash_test_timeout"
+	keyClashSkipConnectivityTest    = "clash_skip_connectivity_test"
+	keyRegistrationConfigSaved      = "registration_config_saved"
+	keyRegistrationCount            = "registration_count"
+	keyRegistrationSuccessTarget    = "registration_success_target"
+	keyRegistrationConcurrency      = "registration_concurrency"
+	keyRegistrationDelay            = "registration_delay"
+	keyRegistrationRetryCount       = "registration_retry_count"
+	keyRegistrationOTPTimeout       = "registration_otp_timeout"
+	keyRegistrationEmailProvider    = "registration_email_provider"
+	keyRegistrationMoeMailMode      = "registration_moemail_domain_mode"
+	keyRegistrationMoeMailDomains   = "registration_moemail_domains"
+	keyRegistrationReuseFailedEmail = "registration_reuse_failed_email"
+	keyKiroRSAPIURL                 = "kiro_rs_api_url"
+	keyKiroRSAPIKey                 = "kiro_rs_api_key"
+	keyKiroRSAutoSync               = "kiro_rs_auto_sync"
 )
 
 // PageStayConfig 保存发送验证码前模拟页面停留的随机区间。
@@ -93,6 +94,7 @@ type RegistrationConfig struct {
 	EmailProvider     string   `json:"emailProvider"`
 	MoeMailDomainMode string   `json:"moemailDomainMode"`
 	MoeMailDomains    []string `json:"moemailDomains"`
+	ReuseFailedEmail  bool     `json:"reuseFailedEmail"`
 	Saved             bool     `json:"saved"`
 }
 
@@ -146,6 +148,7 @@ var configKeyOrder = []string{
 	keyRegistrationEmailProvider,
 	keyRegistrationMoeMailMode,
 	keyRegistrationMoeMailDomains,
+	keyRegistrationReuseFailedEmail,
 	keyKiroRSAPIURL,
 	keyKiroRSAPIKey,
 	keyKiroRSAutoSync,
@@ -841,6 +844,10 @@ func GetRegistrationConfig() RegistrationConfig {
 			cfg.MoeMailDomainMode = MoeMailDomainModeCustom
 		}
 	}
+	if raw := strings.TrimSpace(m[keyRegistrationReuseFailedEmail]); raw != "" {
+		cfg.ReuseFailedEmail = parseBool(raw)
+		cfg.Saved = true
+	}
 
 	normalized, err := normalizeRegistrationConfig(cfg)
 	if err != nil {
@@ -866,6 +873,7 @@ func SetRegistrationConfig(cfg RegistrationConfig) error {
 		m[keyRegistrationOTPTimeout] = strconv.Itoa(normalized.OTPTimeout)
 		m[keyRegistrationEmailProvider] = normalized.EmailProvider
 		m[keyRegistrationMoeMailMode] = normalized.MoeMailDomainMode
+		m[keyRegistrationReuseFailedEmail] = strconv.FormatBool(normalized.ReuseFailedEmail)
 		if len(normalized.MoeMailDomains) == 0 {
 			delete(m, keyRegistrationMoeMailDomains)
 		} else {

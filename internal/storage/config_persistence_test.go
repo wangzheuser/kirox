@@ -66,6 +66,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 		EmailProvider:     "moemail",
 		MoeMailDomainMode: "custom",
 		MoeMailDomains:    []string{"alpha.example", "beta.example"},
+		ReuseFailedEmail:  true,
 	}); err != nil {
 		t.Fatalf("SetRegistrationConfig returned error: %v", err)
 	}
@@ -106,7 +107,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if got := GetVerifyModelsEnabled(); !got {
 		t.Fatalf("verify models true should persist")
 	}
-	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || got.EmailProvider != "moemail" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.Saved {
+	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || got.EmailProvider != "moemail" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.ReuseFailedEmail || !got.Saved {
 		t.Fatalf("registration config round-trip failed: got %+v", got)
 	}
 
@@ -188,7 +189,7 @@ func TestRegistrationConfigDefaultsAndValidation(t *testing.T) {
 	withTempStorageConfig(t, "")
 
 	defaults := GetRegistrationConfig()
-	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || defaults.EmailProvider != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.Saved {
+	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || defaults.EmailProvider != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.ReuseFailedEmail || defaults.Saved {
 		t.Fatalf("registration defaults mismatch: got %+v", defaults)
 	}
 

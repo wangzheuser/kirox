@@ -166,6 +166,7 @@ export namespace storage {
 	    emailProvider: string;
 	    moemailDomainMode: string;
 	    moemailDomains: string[];
+	    reuseFailedEmail: boolean;
 	    saved: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -183,6 +184,7 @@ export namespace storage {
 	        this.emailProvider = source["emailProvider"];
 	        this.moemailDomainMode = source["moemailDomainMode"];
 	        this.moemailDomains = source["moemailDomains"];
+	        this.reuseFailedEmail = source["reuseFailedEmail"];
 	        this.saved = source["saved"];
 	    }
 	}
@@ -198,6 +200,7 @@ export namespace task {
 	    delay: number;
 	    retryCount: number;
 	    otpTimeout: number;
+	    reuseFailedEmail: boolean;
 	    outputPath: string;
 	    emailProvider: string;
 	    moemailDomains: string[];
@@ -219,6 +222,7 @@ export namespace task {
 	        this.delay = source["delay"];
 	        this.retryCount = source["retryCount"];
 	        this.otpTimeout = source["otpTimeout"];
+	        this.reuseFailedEmail = source["reuseFailedEmail"];
 	        this.outputPath = source["outputPath"];
 	        this.emailProvider = source["emailProvider"];
 	        this.moemailDomains = source["moemailDomains"];

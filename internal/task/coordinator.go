@@ -41,6 +41,7 @@ type StartTaskRequest struct {
 	Delay             int                              `json:"delay"`
 	RetryCount        int                              `json:"retryCount"`
 	OTPTimeout        int                              `json:"otpTimeout"`
+	ReuseFailedEmail  bool                             `json:"reuseFailedEmail"`
 	OutputPath        string                           `json:"outputPath"`
 	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary" 或 "cloudmail"
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
@@ -157,6 +158,34 @@ func effectiveSuccessTarget(req StartTaskRequest) int {
 		return req.SuccessTarget
 	}
 	return req.Count
+}
+
+func shouldUseReusableFailedEmail(req StartTaskRequest) bool {
+	return req.ReuseFailedEmail
+}
+
+func takeReusableFailedEmail(req StartTaskRequest, pool *reusableEmailPool, provider string) (reusableEmailCandidate, bool) {
+	if !shouldUseReusableFailedEmail(req) || provider == "outlook" || pool == nil {
+		return reusableEmailCandidate{}, false
+	}
+	return pool.take(provider)
+}
+
+func recycleReusableFailedEmail(req StartTaskRequest, pool *reusableEmailPool, provider string, cfg *core.Config, result map[string]interface{}, killSwitchBlocked bool) (reusableEmailCandidate, bool) {
+	if !shouldUseReusableFailedEmail(req) || pool == nil || killSwitchBlocked || result == nil || result["status"] == "success" {
+		return reusableEmailCandidate{}, false
+	}
+	if !shouldRecycleReusableEmail(result) {
+		return reusableEmailCandidate{}, false
+	}
+	candidate, ok := reusableEmailCandidateFromConfig(provider, cfg)
+	if !ok {
+		return reusableEmailCandidate{}, false
+	}
+	if !pool.put(candidate) {
+		return reusableEmailCandidate{}, false
+	}
+	return candidate, true
 }
 
 // StartTask 公开方法（包装器）
@@ -600,13 +629,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		}
 
 		reusedEmail := false
-		if emailProvider != "outlook" {
-			if candidate, ok := reusableEmails.take(emailProvider); ok {
-				if address, applied := applyReusableEmailCandidate(emailProvider, &taskCfg, candidate); applied {
-					currentEmail = address
-					reusedEmail = true
-					log.Printf("[Kiro][%d/%d] 复用临时邮箱: %s", i+1, displayTotal, currentEmail)
-				}
+		if candidate, ok := takeReusableFailedEmail(req, &reusableEmails, emailProvider); ok {
+			if address, applied := applyReusableEmailCandidate(emailProvider, &taskCfg, candidate); applied {
+				currentEmail = address
+				reusedEmail = true
+				log.Printf("[Kiro][%d/%d] 复用临时邮箱: %s", i+1, displayTotal, currentEmail)
 			}
 		}
 
@@ -908,12 +935,8 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		statsMu.Unlock()
 
 		recycleErrorMsg, _ := result["error"].(string)
-		if !success && shouldRecycleReusableEmail(result) && !(killSwitchEnabled && isKillSwitchError(recycleErrorMsg, emailProvider)) {
-			if candidate, ok := reusableEmailCandidateFromConfig(emailProvider, &taskCfg); ok {
-				if reusableEmails.put(candidate) {
-					log.Printf("[Kiro][%d/%d] 回收可复用临时邮箱: %s", completedCount, displayTotal, candidate.address)
-				}
-			}
+		if candidate, ok := recycleReusableFailedEmail(req, &reusableEmails, emailProvider, &taskCfg, result, killSwitchEnabled && isKillSwitchError(recycleErrorMsg, emailProvider)); ok {
+			log.Printf("[Kiro][%d/%d] 回收可复用临时邮箱: %s", completedCount, displayTotal, candidate.address)
 		}
 
 		// log.Printf 必须在 state.mu 外调用，否则与 logWriter 死锁
