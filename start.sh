@@ -30,7 +30,7 @@ require_command() {
   local hint="$2"
 
   if ! command -v "$name" >/dev/null 2>&1; then
-    fail "未找到 $name，$hint"
+    fail "未找到 ${name}，${hint}"
   fi
 }
 
@@ -87,7 +87,7 @@ ensure_go_dependencies() {
     return 0
   fi
 
-  log "检查 Go 依赖，GOTOOLCHAIN=$GOTOOLCHAIN，GOPROXY=$GOPROXY"
+  log "检查 Go 依赖，GOTOOLCHAIN=${GOTOOLCHAIN}，GOPROXY=${GOPROXY}"
   go mod download
 }
 
