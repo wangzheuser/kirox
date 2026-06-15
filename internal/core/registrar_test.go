@@ -1,6 +1,10 @@
 package core
 
-import "testing"
+import (
+	"testing"
+
+	"reg_go/internal/email"
+)
 
 type fakeTempEmailService struct {
 	address     string
@@ -102,5 +106,31 @@ func TestStep3EmailUsesReusableTempEmailService(t *testing.T) {
 	}
 	if service.createCalls != 0 {
 		t.Fatalf("existing reusable service should not create a new mailbox, createCalls=%d", service.createCalls)
+	}
+}
+
+func TestStep3EmailCreatesEmailnatorService(t *testing.T) {
+	oldFactory := newEmailnatorTempEmailService
+	service := &fakeTempEmailService{address: "generated@gmail.com"}
+	newEmailnatorTempEmailService = func(proxyURL string) email.TempEmailService {
+		if proxyURL != "http://proxy.example:8080" {
+			t.Fatalf("proxyURL = %q, want http://proxy.example:8080", proxyURL)
+		}
+		return service
+	}
+	t.Cleanup(func() { newEmailnatorTempEmailService = oldFactory })
+
+	r := &Registrar{Cfg: &Config{EmailProvider: "emailnator", EmailProxy: "http://proxy.example:8080"}}
+	if err := r.Step3Email(); err != nil {
+		t.Fatalf("Step3Email returned error: %v", err)
+	}
+	if r.Email != "generated@gmail.com" {
+		t.Fatalf("Step3Email email = %q, want generated@gmail.com", r.Email)
+	}
+	if r.EmailSvc != service {
+		t.Fatalf("Step3Email should bind generated Emailnator service")
+	}
+	if service.createCalls != 1 {
+		t.Fatalf("Emailnator service should create mailbox once, createCalls=%d", service.createCalls)
 	}
 }

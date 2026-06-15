@@ -881,7 +881,7 @@
           </label>
           <div class="form-group" style="margin-bottom:16px;">
             <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;display:block;" data-i18n="register.emailProvider">邮箱提供商</label>
-            <div style="display:flex;gap:8px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;" onclick="selectEmailProvider('outlook')">
                 <input type="radio" name="email-provider" value="outlook" checked style="display:none;">
                 <div id="provider-outlook" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
@@ -922,6 +922,18 @@
                     <path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/>
                   </svg>
                   <span data-i18n="register.cloudmail">Cloud-Mail</span>
+                </div>
+              </label>
+              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;min-width:130px;" onclick="selectEmailProvider('emailnator')">
+                <input type="radio" name="email-provider" value="emailnator" style="display:none;">
+                <div id="provider-emailnator" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ea4335" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+                    <path d="M3 7l9 6 9-6"></path>
+                    <path d="M8 3h8"></path>
+                    <path d="M10 21h4"></path>
+                  </svg>
+                  <span data-i18n="register.emailnator">Emailnator</span>
                 </div>
               </label>
             </div>

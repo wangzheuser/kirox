@@ -36,6 +36,7 @@ const (
 	RegistrationEmailProviderOutlook    = "outlook"
 	RegistrationEmailProviderMoeMail    = "moemail"
 	RegistrationEmailProviderMailporary = "mailporary"
+	RegistrationEmailProviderEmailnator = "emailnator"
 
 	MoeMailDomainModeRandom = "random"
 	MoeMailDomainModeAll    = "all"
@@ -995,6 +996,8 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderMoeMail
 	case RegistrationEmailProviderMailporary:
 		return RegistrationEmailProviderMailporary
+	case RegistrationEmailProviderEmailnator:
+		return RegistrationEmailProviderEmailnator
 	default:
 		return ""
 	}

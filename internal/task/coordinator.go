@@ -43,7 +43,7 @@ type StartTaskRequest struct {
 	OTPTimeout        int                              `json:"otpTimeout"`
 	ReuseFailedEmail  bool                             `json:"reuseFailedEmail"`
 	OutputPath        string                           `json:"outputPath"`
-	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary" 或 "cloudmail"
+	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary"、"emailnator" 或 "cloudmail"
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
 	MoeMailConfigs    map[string][]email.MoeMailConfig `json:"moemailConfigs"`    // 域名 -> 配置列表映射
 	MoeMailRandomMode bool                             `json:"moemailRandomMode"` // 是否为随机模式
@@ -111,7 +111,7 @@ func applyReusableEmailCandidate(provider string, cfg *core.Config, candidate re
 		cfg.CloudMailProvider = candidate.cloudMailProvider
 		address := strings.TrimSpace(candidate.cloudMailProvider.GetAddress())
 		return address, address != ""
-	case "mailporary":
+	case "mailporary", "emailnator":
 		if candidate.tempEmailService == nil {
 			return "", false
 		}
@@ -141,7 +141,7 @@ func reusableEmailCandidateFromConfig(provider string, cfg *core.Config) (reusab
 		}
 		address := strings.TrimSpace(cfg.CloudMailProvider.GetAddress())
 		return reusableEmailCandidate{provider: provider, address: address, cloudMailProvider: cfg.CloudMailProvider}, address != ""
-	case "mailporary":
+	case "mailporary", "emailnator":
 		if cfg.TempEmailService == nil {
 			return reusableEmailCandidate{}, false
 		}
@@ -221,8 +221,8 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 			return map[string]interface{}{"error": "MoeMail 配置缺失"}
 		}
 		// MoeMail 不需要预先加载账号，每次任务动态生成
-	} else if emailProvider == "mailporary" {
-		// Mailporary 为零配置临时邮箱，不需要预加载账号或域名配置。
+	} else if emailProvider == "mailporary" || emailProvider == "emailnator" {
+		// Mailporary / Emailnator 为零配置临时邮箱，不需要预加载账号或域名配置。
 	} else if emailProvider == "cloudmail" {
 		if len(req.CloudMailDomains) == 0 {
 			Manager.mu.Unlock()
@@ -468,6 +468,8 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Printf("[Kiro] Outlook 读取方式: %s", taskConfig.OutlookScope)
 	} else if emailProvider == "mailporary" {
 		log.Println("[Kiro] Mailporary 零配置邮箱模式")
+	} else if emailProvider == "emailnator" {
+		log.Println("[Kiro] Emailnator 零配置邮箱模式")
 	}
 
 	// 预先准备 CloudMail 域名池
@@ -716,6 +718,24 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				address, err := service.CreateWithError()
 				if err != nil {
 					log.Printf("[Kiro][%d/%d] 生成 Mailporary 邮箱失败: %v", i+1, displayTotal, err)
+					Manager.mu.Lock()
+					Manager.completed++
+					Manager.failed++
+					Manager.mu.Unlock()
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "emailnator" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 Emailnator 邮箱", i+1, displayTotal)
+				service := email.NewEmailnatorService(taskCfg.EmailProxy)
+				address, err := service.CreateWithError()
+				if err != nil {
+					log.Printf("[Kiro][%d/%d] 生成 Emailnator 邮箱失败: %v", i+1, displayTotal, err)
 					Manager.mu.Lock()
 					Manager.completed++
 					Manager.failed++
@@ -1383,13 +1403,13 @@ func isReusableEmailError(errorMsg string) bool {
 }
 
 // isKillSwitchError 判断该错误是否属于"AWS 已把我们拉黑，继续跑没意义"的熔断级错误。
-// Mailporary 的 send-otp 400 更可能是单个临时邮箱域名被拒，不能直接升级为全局熔断。
+// Mailporary / Emailnator 的 send-otp 400 更可能是单个临时邮箱域名被拒，不能直接升级为全局熔断。
 func isKillSwitchError(errorMsg, emailProvider string) bool {
 	if errorMsg == "" {
 		return false
 	}
 	if strings.Contains(errorMsg, "send-otp 失败 (400)") {
-		return emailProvider != "mailporary"
+		return emailProvider != "mailporary" && emailProvider != "emailnator"
 	}
 	triggers := []string{
 		"注册被拦截",       // formatError 对 BLOCKED/注册请求被拦截 的翻译

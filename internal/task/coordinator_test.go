@@ -162,6 +162,30 @@ func TestTakeReusableFailedEmailRequiresSwitch(t *testing.T) {
 	}
 }
 
+func TestReusableEmailSupportsEmailnatorProvider(t *testing.T) {
+	pool := &reusableEmailPool{}
+	service := &taskFakeTempEmailService{address: "reuse@gmail.com"}
+	pool.put(reusableEmailCandidate{provider: "emailnator", address: service.address, tempEmailService: service})
+
+	candidate, ok := takeReusableFailedEmail(StartTaskRequest{ReuseFailedEmail: true}, pool, "emailnator")
+	if !ok {
+		t.Fatalf("expected emailnator reusable candidate")
+	}
+	cfg := &core.Config{}
+	address, applied := applyReusableEmailCandidate("emailnator", cfg, candidate)
+	if !applied || address != "reuse@gmail.com" {
+		t.Fatalf("emailnator candidate not applied: address=%q applied=%v", address, applied)
+	}
+	if cfg.TempEmailService != service {
+		t.Fatalf("emailnator should reuse TempEmailService")
+	}
+
+	extracted, ok := reusableEmailCandidateFromConfig("emailnator", cfg)
+	if !ok || extracted.address != "reuse@gmail.com" || extracted.tempEmailService != service {
+		t.Fatalf("emailnator candidate extraction failed: %#v ok=%v", extracted, ok)
+	}
+}
+
 func TestRecycleReusableFailedEmailRequiresSwitch(t *testing.T) {
 	service := &taskFakeTempEmailService{address: "reuse@example.com"}
 	cfg := &core.Config{TempEmailService: service}
@@ -224,5 +248,14 @@ func TestShouldRecycleReusableEmailRejectsPasswordSet(t *testing.T) {
 
 	if shouldRecycleReusableEmail(result) {
 		t.Fatalf("passwordSet=true should not recycle reusable email")
+	}
+}
+
+func TestEmailnatorSendOTP400DoesNotTriggerKillSwitch(t *testing.T) {
+	if isKillSwitchError("send-otp 失败 (400): domain rejected", "emailnator") {
+		t.Fatalf("emailnator send-otp 400 should be treated as single mailbox failure")
+	}
+	if !isKillSwitchError("注册请求被拦截 BLOCKED", "emailnator") {
+		t.Fatalf("emailnator BLOCKED/IP risk should still trigger kill switch")
 	}
 }

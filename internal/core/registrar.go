@@ -20,6 +20,10 @@ import (
 	httputil "reg_go/internal/http"
 )
 
+var newEmailnatorTempEmailService = func(proxyURL string) email.TempEmailService {
+	return email.NewEmailnatorService(proxyURL)
+}
+
 // Registrar 完整的注册流程
 type Registrar struct {
 	Cfg      *Config
@@ -347,6 +351,19 @@ func (r *Registrar) Step3Email() error {
 		address, err := svc.CreateWithError()
 		if err != nil {
 			return fmt.Errorf("创建 Mailporary 邮箱失败: %w", err)
+		}
+		r.EmailSvc = svc
+		r.Email = address
+		log.Printf("email=%s", r.Email)
+		return nil
+	}
+
+	if r.Cfg.EmailProvider == "emailnator" {
+		log.Println("[3] 使用 Emailnator 临时邮箱")
+		svc := newEmailnatorTempEmailService(r.Cfg.EmailProxy)
+		address := strings.TrimSpace(svc.Create())
+		if address == "" {
+			return fmt.Errorf("创建 Emailnator 邮箱失败")
 		}
 		r.EmailSvc = svc
 		r.Email = address

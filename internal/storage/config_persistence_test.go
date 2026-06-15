@@ -209,3 +209,20 @@ func TestRegistrationConfigDefaultsAndValidation(t *testing.T) {
 		t.Fatalf("invalid email provider should be rejected")
 	}
 }
+
+func TestRegistrationConfigAcceptsEmailnatorProvider(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	if err := SetRegistrationConfig(RegistrationConfig{
+		Count:         1,
+		Concurrency:   1,
+		Delay:         0,
+		EmailProvider: "emailnator",
+	}); err != nil {
+		t.Fatalf("emailnator provider should be accepted: %v", err)
+	}
+
+	if got := GetRegistrationConfig(); got.EmailProvider != "emailnator" {
+		t.Fatalf("EmailProvider = %q, want emailnator", got.EmailProvider)
+	}
+}
