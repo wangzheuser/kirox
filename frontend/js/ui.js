@@ -166,7 +166,7 @@ function selectEmailProvider(provider, options) {
   selectedEmailProvider = provider;
 
   // 更新按钮样式
-  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator'].forEach(function(name) {
+  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol'].forEach(function(name) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
     if (!btn) return;
     const active = provider === name;
@@ -195,6 +195,18 @@ function selectEmailProvider(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.emailnatorHint', '使用 Emailnator Gmail 风格临时邮箱进行注册，零配置。');
     hintDiv.setAttribute('data-i18n', 'register.emailnatorHint');
+  } else if (provider === 'mailgw') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.mailgwHint', '使用 mail.gw 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.mailgwHint');
+  } else if (provider === 'mailtm') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.mailtmHint', '使用 mail.tm 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.mailtmHint');
+  } else if (provider === 'tempmail_lol') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.tempmailLolHint', '使用 TempMail.lol 随机临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.tempmailLolHint');
   } else if (provider === 'cloudmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');

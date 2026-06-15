@@ -25,6 +25,17 @@ func TestCheckEndpointResponseTreats403AsSuspended(t *testing.T) {
 	}
 }
 
+func TestCheckEndpointResponseModels403IsOrdinaryFailure(t *testing.T) {
+	res := checkEndpointResponse("https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR", 403, []byte(`{"message":"forbidden"}`))
+
+	if res.suspended {
+		t.Fatalf("models HTTP 403 should not mark account suspended: %+v", res)
+	}
+	if res.ok {
+		t.Fatalf("models HTTP 403 should not be ok: %+v", res)
+	}
+}
+
 func TestCheckEndpointResponseTreatsReasonJSONAsSuspendedAndLogsFullBody(t *testing.T) {
 	body := []byte(`{"reason":"ACCOUNT_SUSPENDED","message":"temporarily suspended by upstream"}`)
 

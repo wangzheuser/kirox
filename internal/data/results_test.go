@@ -39,8 +39,8 @@ func TestSaveKiroSuccessPersistsPasswordAccessTokenAndPriority(t *testing.T) {
 		got["clientSecret"] != "client-secret" {
 		t.Fatalf("saved account missing reference export fields: %#v", got)
 	}
-	if got["priority"] == nil {
-		t.Fatalf("saved account should include calculated priority: %#v", got)
+	if got["priority"] != float64(9999) {
+		t.Fatalf("saved account priority=%#v, want 9999", got["priority"])
 	}
 	if synced, ok := got["kiroRsSynced"].(bool); !ok || synced {
 		t.Fatalf("newly saved account should default kiroRsSynced=false: %#v", got)

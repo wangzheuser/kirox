@@ -83,6 +83,10 @@ type endpointResult struct {
 func checkEndpointResponse(url string, statusCode int, body []byte) endpointResult {
 	label := endpointLabel(url)
 	if statusCode == 403 {
+		if label == "models" {
+			log.Printf("端点查询失败 [%s]: %d", label, statusCode)
+			return endpointResult{}
+		}
 		log.Printf("账号已被封禁 (403) [%s]", label)
 		return endpointResult{suspended: true}
 	}

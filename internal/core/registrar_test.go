@@ -134,3 +134,26 @@ func TestStep3EmailCreatesEmailnatorService(t *testing.T) {
 		t.Fatalf("Emailnator service should create mailbox once, createCalls=%d", service.createCalls)
 	}
 }
+
+func TestStep3EmailCreatesMailGWService(t *testing.T) {
+	oldFactory := newMailGWTempEmailService
+	service := &fakeTempEmailService{address: "user@oakon.com"}
+	newMailGWTempEmailService = func(proxyURL string) email.TempEmailService {
+		if proxyURL != "http://mail-proxy" {
+			t.Fatalf("proxyURL=%q, want http://mail-proxy", proxyURL)
+		}
+		return service
+	}
+	t.Cleanup(func() { newMailGWTempEmailService = oldFactory })
+
+	r := &Registrar{Cfg: &Config{EmailProvider: "mailgw", EmailProxy: "http://mail-proxy"}}
+	if err := r.Step3Email(); err != nil {
+		t.Fatalf("Step3Email returned error: %v", err)
+	}
+	if r.Email != "user@oakon.com" || r.EmailSvc != service {
+		t.Fatalf("Step3Email should bind generated mail.gw service, email=%q svc=%#v", r.Email, r.EmailSvc)
+	}
+	if service.createCalls != 1 {
+		t.Fatalf("mail.gw service should create mailbox once, createCalls=%d", service.createCalls)
+	}
+}

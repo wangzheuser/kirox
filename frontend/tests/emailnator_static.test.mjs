@@ -14,7 +14,8 @@ test('registration page exposes Emailnator provider', () => {
 });
 
 test('provider selection styles and hints include Emailnator', () => {
-  assert.match(uiJs, /\['outlook',\s*'moemail',\s*'mailporary',\s*'cloudmail',\s*'emailnator'\]/);
+  assert.match(uiJs, /'emailnator'/);
+  assert.match(uiJs, /'mailgw'/);
   assert.match(uiJs, /provider === 'emailnator'/);
   assert.match(uiJs, /register\.emailnatorHint/);
 });

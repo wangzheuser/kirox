@@ -107,7 +107,7 @@ func ImportAccountPoolJSON(outDir, raw string) (AccountPoolImportSummary, error)
 		if sub, ok := stringFieldIfPresent(src, "subscription"); ok {
 			item["subscription"] = sub
 		}
-		ensureAccountPoolDefaults(item, true)
+		ensureAccountPoolDefaults(item, false)
 		item["kiroRsSynced"] = false
 		existing = append(existing, item)
 		index[key] = len(existing) - 1
@@ -247,33 +247,5 @@ func priorityFieldIfPresent(item map[string]interface{}, key string) (int, bool)
 }
 
 func calculateAccountPriority(timeStr string) int {
-	t, ok := parseAccountTime(timeStr)
-	if !ok {
-		return 9999
-	}
-	t = t.AddDate(0, 1, 0)
-	return int(t.Month())*100 + t.Day()
-}
-
-func parseAccountTime(raw string) (time.Time, bool) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return time.Time{}, false
-	}
-	layouts := []string{
-		"2006-01-02 15:04:05",
-		"2006/1/2 15:04:05",
-		"2006/01/02 15:04:05",
-		"2006-01-02",
-		"2006/1/2",
-		"2006/01/02",
-		time.RFC3339,
-		time.RFC3339Nano,
-	}
-	for _, layout := range layouts {
-		if t, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
-			return t, true
-		}
-	}
-	return time.Time{}, false
+	return 9999
 }

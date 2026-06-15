@@ -24,6 +24,18 @@ var newEmailnatorTempEmailService = func(proxyURL string) email.TempEmailService
 	return email.NewEmailnatorService(proxyURL)
 }
 
+var newMailGWTempEmailService = func(proxyURL string) email.TempEmailService {
+	return email.NewMailGWService(proxyURL)
+}
+
+var newMailTMTempEmailService = func(proxyURL string) email.TempEmailService {
+	return email.NewMailTMService(proxyURL)
+}
+
+var newTempMailLOLTempEmailService = func(proxyURL string) email.TempEmailService {
+	return email.NewTempMailLOLService(proxyURL)
+}
+
 // Registrar 完整的注册流程
 type Registrar struct {
 	Cfg      *Config
@@ -364,6 +376,45 @@ func (r *Registrar) Step3Email() error {
 		address := strings.TrimSpace(svc.Create())
 		if address == "" {
 			return fmt.Errorf("创建 Emailnator 邮箱失败")
+		}
+		r.EmailSvc = svc
+		r.Email = address
+		log.Printf("email=%s", r.Email)
+		return nil
+	}
+
+	if r.Cfg.EmailProvider == "mailgw" {
+		log.Println("[3] 使用 mail.gw 临时邮箱")
+		svc := newMailGWTempEmailService(r.Cfg.EmailProxy)
+		address := strings.TrimSpace(svc.Create())
+		if address == "" {
+			return fmt.Errorf("创建 mail.gw 邮箱失败")
+		}
+		r.EmailSvc = svc
+		r.Email = address
+		log.Printf("email=%s", r.Email)
+		return nil
+	}
+
+	if r.Cfg.EmailProvider == "mailtm" {
+		log.Println("[3] 使用 mail.tm 临时邮箱")
+		svc := newMailTMTempEmailService(r.Cfg.EmailProxy)
+		address := strings.TrimSpace(svc.Create())
+		if address == "" {
+			return fmt.Errorf("创建 mail.tm 邮箱失败")
+		}
+		r.EmailSvc = svc
+		r.Email = address
+		log.Printf("email=%s", r.Email)
+		return nil
+	}
+
+	if r.Cfg.EmailProvider == "tempmail_lol" {
+		log.Println("[3] 使用 TempMail.lol 临时邮箱")
+		svc := newTempMailLOLTempEmailService(r.Cfg.EmailProxy)
+		address := strings.TrimSpace(svc.Create())
+		if address == "" {
+			return fmt.Errorf("创建 TempMail.lol 邮箱失败")
 		}
 		r.EmailSvc = svc
 		r.Email = address

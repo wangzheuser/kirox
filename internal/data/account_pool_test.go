@@ -94,8 +94,11 @@ func TestImportAccountPoolJSONAddsAndUpdatesByEmail(t *testing.T) {
 	if added["provider"] != "BuilderId" || added["region"] != "us-east-1" {
 		t.Fatalf("new account defaults not set: %#v", added)
 	}
-	if added["time"] == "" || added["priority"] == nil {
-		t.Fatalf("new account should receive time and calculated priority: %#v", added)
+	if added["time"] == "" {
+		t.Fatalf("new account should receive time: %#v", added)
+	}
+	if added["priority"] != float64(9999) {
+		t.Fatalf("new account priority=%#v, want 9999", added["priority"])
 	}
 }
 
@@ -157,7 +160,7 @@ func TestExportAccountPoolJSONUsesReferenceShapeAndPriority(t *testing.T) {
 		row["clientSecret"] != "secret" ||
 		row["accessToken"] != "access" ||
 		row["refreshToken"] != "refresh" ||
-		row["priority"] != float64(601) {
+		row["priority"] != float64(9999) {
 		t.Fatalf("unexpected exported row: %#v", row)
 	}
 	if _, ok := row["subscription"]; ok {
@@ -248,5 +251,27 @@ func TestMarkKiroRSSyncedMarksOnlySuccessfulEmails(t *testing.T) {
 	}
 	if synced, ok := second["kiroRsSynced"].(bool); !ok || !synced {
 		t.Fatalf("successful account should be marked synced: %#v", second)
+	}
+}
+
+func TestImportAccountPoolJSONPreservesExplicitPriority(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := ImportAccountPoolJSON(dir, `[{
+	  "email": "explicit@example.com",
+	  "password": "pass",
+	  "priority": 601
+	}]`)
+	if err != nil {
+		t.Fatalf("ImportAccountPoolJSON returned error: %v", err)
+	}
+
+	accounts, err := LoadAccounts(dir)
+	if err != nil {
+		t.Fatalf("LoadAccounts: %v", err)
+	}
+	got := accountByEmail(t, accounts, "explicit@example.com")
+	if got["priority"] != float64(601) {
+		t.Fatalf("explicit priority should be preserved: %#v", got)
 	}
 }

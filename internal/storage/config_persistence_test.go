@@ -226,3 +226,23 @@ func TestRegistrationConfigAcceptsEmailnatorProvider(t *testing.T) {
 		t.Fatalf("EmailProvider = %q, want emailnator", got.EmailProvider)
 	}
 }
+
+func TestRegistrationConfigAcceptsMailGWProvider(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	cfg := RegistrationConfig{
+		Count:         1,
+		SuccessTarget: 1,
+		Concurrency:   1,
+		Delay:         0,
+		RetryCount:    0,
+		OTPTimeout:    120,
+		EmailProvider: "mailgw",
+	}
+	if err := SetRegistrationConfig(cfg); err != nil {
+		t.Fatalf("SetRegistrationConfig(mailgw) error: %v", err)
+	}
+	if got := GetRegistrationConfig(); got.EmailProvider != "mailgw" {
+		t.Fatalf("EmailProvider=%q, want mailgw", got.EmailProvider)
+	}
+}

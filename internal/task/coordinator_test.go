@@ -1,6 +1,7 @@
 package task
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -257,5 +258,45 @@ func TestEmailnatorSendOTP400DoesNotTriggerKillSwitch(t *testing.T) {
 	}
 	if !isKillSwitchError("注册请求被拦截 BLOCKED", "emailnator") {
 		t.Fatalf("emailnator BLOCKED/IP risk should still trigger kill switch")
+	}
+}
+
+func TestMailGWDoesNotRequireOutlookAccounts(t *testing.T) {
+	Manager.mu.Lock()
+	Manager.running = false
+	Manager.mu.Unlock()
+
+	result := StartTask(StartTaskRequest{Count: 1, EmailProvider: "mailgw"})
+	if errText, _ := result["error"].(string); strings.Contains(errText, "微软邮箱") || strings.Contains(errText, "Outlook") {
+		t.Fatalf("mailgw should not require Outlook accounts, got error %q", errText)
+	}
+	StopTask(true)
+}
+
+func TestReusableEmailSupportsMailGWProvider(t *testing.T) {
+	pool := reusableEmailPool{}
+	service := &taskFakeTempEmailService{address: "reuse@oakon.com"}
+	pool.put(reusableEmailCandidate{provider: "mailgw", address: service.address, tempEmailService: service})
+
+	candidate, ok := pool.take("mailgw")
+	if !ok {
+		t.Fatalf("expected mailgw reusable candidate")
+	}
+	var cfg core.Config
+	address, applied := applyReusableEmailCandidate("mailgw", &cfg, candidate)
+	if !applied || address != service.address {
+		t.Fatalf("mailgw reusable candidate not applied, address=%q applied=%v", address, applied)
+	}
+	if cfg.TempEmailService != service {
+		t.Fatalf("mailgw should reuse TempEmailService")
+	}
+}
+
+func TestMailGWSendOTP400DoesNotTriggerKillSwitch(t *testing.T) {
+	if isKillSwitchError("send-otp 失败 (400): domain rejected", "mailgw") {
+		t.Fatalf("mailgw send-otp 400 should be treated as single mailbox failure")
+	}
+	if !isKillSwitchError("注册请求被拦截 BLOCKED", "mailgw") {
+		t.Fatalf("mailgw BLOCKED/IP risk should still trigger kill switch")
 	}
 }
