@@ -170,8 +170,7 @@ function selectEmailProvider(provider, options) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
     if (!btn) return;
     const active = provider === name;
-    btn.style.borderColor = active ? 'var(--primary)' : 'var(--border)';
-    btn.style.background = active ? 'rgba(59, 130, 246, 0.1)' : 'transparent';
+    btn.classList.toggle('is-active', active);
   });
 
   // 显示/隐藏配置块

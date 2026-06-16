@@ -12,6 +12,18 @@ import (
 	httputil "reg_go/internal/http"
 )
 
+type verifyHTTPClient interface {
+	Do(req *fhttp.Request) (*fhttp.Response, error)
+}
+
+var newVerifyHTTPClient = func(cfg *Config, chromeVer string) verifyHTTPClient {
+	proxy := ""
+	if cfg != nil {
+		proxy = cfg.Proxy
+	}
+	return httputil.NewTLSClient(proxy, true, chromeVer)
+}
+
 // VerifyAlive 验活: 刷新 Token + 查用量；可选查模型
 func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]interface{} {
 	if shouldVerifyModels(r.Cfg) {
@@ -19,7 +31,11 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 	} else {
 		log.Println("[验活] 刷新 Token + 查用量")
 	}
-	client := httputil.NewTLSClient(r.Cfg.Proxy, true, r.Identity.ChromeVer)
+	chromeVer := ""
+	if r.Identity != nil {
+		chromeVer = r.Identity.ChromeVer
+	}
+	client := newVerifyHTTPClient(r.Cfg, chromeVer)
 
 	refreshToken, _ := awsToken["refreshToken"].(string)
 
@@ -65,6 +81,9 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 		if modelRes.suspended {
 			return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
 		}
+		if !modelRes.ok {
+			return map[string]interface{}{"alive": false, "error": fmt.Sprintf("models query failed: %d", modelRes.statusCode)}
+		}
 	}
 
 	return r.parseUsage(usageRes.body)
@@ -75,9 +94,10 @@ func shouldVerifyModels(cfg *Config) bool {
 }
 
 type endpointResult struct {
-	body      []byte
-	ok        bool
-	suspended bool
+	body       []byte
+	ok         bool
+	suspended  bool
+	statusCode int
 }
 
 func checkEndpointResponse(url string, statusCode int, body []byte) endpointResult {
@@ -85,22 +105,22 @@ func checkEndpointResponse(url string, statusCode int, body []byte) endpointResu
 	if statusCode == 403 {
 		if label == "models" {
 			log.Printf("端点查询失败 [%s]: %d", label, statusCode)
-			return endpointResult{}
+			return endpointResult{statusCode: statusCode}
 		}
 		log.Printf("账号已被封禁 (403) [%s]", label)
-		return endpointResult{suspended: true}
+		return endpointResult{suspended: true, statusCode: statusCode}
 	}
 	if statusCode != 200 {
 		if label == "usage" {
 			if reason := responseReason(body); reason != "" {
 				log.Printf("账号已被封禁 (reason) [%s]: status=%d reason=%s body=%s", label, statusCode, reason, string(body))
-				return endpointResult{suspended: true}
+				return endpointResult{suspended: true, statusCode: statusCode}
 			}
 		}
 		log.Printf("端点查询失败 [%s]: %d", label, statusCode)
-		return endpointResult{}
+		return endpointResult{statusCode: statusCode}
 	}
-	return endpointResult{body: body, ok: true}
+	return endpointResult{body: body, ok: true, statusCode: statusCode}
 }
 
 func responseReason(body []byte) string {

@@ -313,16 +313,38 @@ func (r *Registrar) Run() map[string]interface{} {
 	}
 
 	verify := r.VerifyAlive(awsToken)
-	if suspended, _ := verify["suspended"].(bool); suspended {
+	result := buildFinalRegistrationResult(r, awsToken, kiroTokens, verify)
+	if result["status"] == "success" {
+		log.Printf("%s 注册成功", prefix)
+	} else if suspended, _ := verify["suspended"].(bool); suspended {
 		log.Printf("%s 账号已被封禁", prefix)
-		return map[string]interface{}{"status": "failed", "error": "suspended", "email": r.Email, "passwordSet": true}
+	} else {
+		if errMsg, _ := result["error"].(string); errMsg != "" {
+			log.Printf("%s %s", prefix, errMsg)
+		} else {
+			log.Printf("%s 验活失败", prefix)
+		}
+	}
+	return result
+}
+
+func buildFinalRegistrationResult(r *Registrar, awsToken, kiroTokens map[string]interface{}, verify map[string]interface{}) map[string]interface{} {
+	if suspended, _ := verify["suspended"].(bool); suspended {
+		return map[string]interface{}{"status": "failed", "error": "suspended", "email": r.Email, "passwordSet": true, "verify": verify}
 	}
 
-	alive, _ := verify["alive"].(bool)
-	if alive {
-		log.Printf("%s 注册成功", prefix)
-	} else {
-		log.Printf("%s 注册完成", prefix)
+	if alive, _ := verify["alive"].(bool); !alive {
+		errMsg, _ := verify["error"].(string)
+		if strings.TrimSpace(errMsg) == "" {
+			errMsg = "unknown"
+		}
+		return map[string]interface{}{
+			"status":      "failed",
+			"error":       "验活失败: " + errMsg,
+			"email":       r.Email,
+			"passwordSet": true,
+			"verify":      verify,
+		}
 	}
 
 	return map[string]interface{}{

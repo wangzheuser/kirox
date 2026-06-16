@@ -687,3 +687,76 @@ tbody td a:hover {
 [data-theme="dark"] .moemail-config-item:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
 }
+
+/* ===== Email Provider Grid ===== */
+.email-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.email-provider-card {
+  min-width: 0;
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s, transform 0.15s;
+  user-select: none;
+}
+
+.email-provider-card:hover {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.04);
+}
+
+.email-provider-card.is-active {
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.08);
+}
+
+.email-provider-content {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.email-provider-content svg,
+.email-provider-content img {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 560px) {
+  .email-provider-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 360px) {
+  .email-provider-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+[data-theme="dark"] .email-provider-card:hover {
+  border-color: rgba(96, 165, 250, 0.38);
+  background: rgba(96, 165, 250, 0.07);
+}
+
+[data-theme="dark"] .email-provider-card.is-active {
+  background: rgba(96, 165, 250, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.12);
+}

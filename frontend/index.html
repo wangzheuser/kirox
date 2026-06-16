@@ -881,17 +881,17 @@
           </label>
           <div class="form-group" style="margin-bottom:16px;">
             <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;display:block;" data-i18n="register.emailProvider">邮箱提供商</label>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;" onclick="selectEmailProvider('outlook')">
+            <div class="email-provider-grid">
+              <label class="email-provider-card" onclick="selectEmailProvider('outlook')">
                 <input type="radio" name="email-provider" value="outlook" checked style="display:none;">
-                <div id="provider-outlook" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                <div id="provider-outlook" class="email-provider-content">
                   <img src="assets/outlook.png" style="width:20px;height:20px;border-radius:4px;">
                   <span data-i18n="register.outlook">微软邮箱</span>
                 </div>
               </label>
-              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;" onclick="selectEmailProvider('moemail')">
+              <label class="email-provider-card" onclick="selectEmailProvider('moemail')">
                 <input type="radio" name="email-provider" value="moemail" style="display:none;">
-                <div id="provider-moemail" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                <div id="provider-moemail" class="email-provider-content">
                   <svg viewBox="0 0 32 32" width="20" height="20" fill="none" style="color:#8b5cf6;">
                     <path d="M4 8h24v16H4V8z" fill="currentColor" opacity="0.2"/>
                     <path d="M4 8h24v2H4V8zM4 22h24v2H4v-2z" fill="currentColor"/>
@@ -903,9 +903,9 @@
                   <span>MoeMail</span>
                 </div>
               </label>
-              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;" onclick="selectEmailProvider('mailporary')">
+              <label class="email-provider-card" onclick="selectEmailProvider('mailporary')">
                 <input type="radio" name="email-provider" value="mailporary" style="display:none;">
-                <div id="provider-mailporary" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                <div id="provider-mailporary" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#8b5cf6;">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
                     <path d="M3 7l9 6 9-6"></path>
@@ -915,18 +915,18 @@
                   <span>Mailporary</span>
                 </div>
               </label>
-              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;" onclick="selectEmailProvider('cloudmail')">
+              <label class="email-provider-card" onclick="selectEmailProvider('cloudmail')">
                 <input type="radio" name="email-provider" value="cloudmail" style="display:none;">
-                <div id="provider-cloudmail" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                <div id="provider-cloudmail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/>
                   </svg>
                   <span data-i18n="register.cloudmail">Cloud-Mail</span>
                 </div>
               </label>
-              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;min-width:120px;" onclick="selectEmailProvider('mailgw')">
+              <label class="email-provider-card" onclick="selectEmailProvider('mailgw')">
                 <input type="radio" name="email-provider" value="mailgw" style="display:none;">
-                <div id="provider-mailgw" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                <div id="provider-mailgw" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
                     <path d="M3 7l9 6 9-6"></path>
@@ -936,9 +936,9 @@
                   <span data-i18n="register.mailgw">mail.gw</span>
                 </div>
               </label>
-              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;min-width:120px;" onclick="selectEmailProvider('mailtm')">
+              <label class="email-provider-card" onclick="selectEmailProvider('mailtm')">
                 <input type="radio" name="email-provider" value="mailtm" style="display:none;">
-                <div id="provider-mailtm" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                <div id="provider-mailtm" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
                     <path d="M3 7l9 6 9-6"></path>
@@ -948,9 +948,9 @@
                   <span data-i18n="register.mailtm">mail.tm</span>
                 </div>
               </label>
-              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;min-width:140px;" onclick="selectEmailProvider('tempmail_lol')">
+              <label class="email-provider-card" onclick="selectEmailProvider('tempmail_lol')">
                 <input type="radio" name="email-provider" value="tempmail_lol" style="display:none;">
-                <div id="provider-tempmail_lol" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                <div id="provider-tempmail_lol" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
                     <path d="M3 7l9 6 9-6"></path>
@@ -959,9 +959,9 @@
                   <span data-i18n="register.tempmailLol">TempMail.lol</span>
                 </div>
               </label>
-              <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all 0.2s;min-width:130px;" onclick="selectEmailProvider('emailnator')">
+              <label class="email-provider-card" onclick="selectEmailProvider('emailnator')">
                 <input type="radio" name="email-provider" value="emailnator" style="display:none;">
-                <div id="provider-emailnator" style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);">
+                <div id="provider-emailnator" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ea4335" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
                     <path d="M3 7l9 6 9-6"></path>
