@@ -524,3 +524,46 @@ func TestBuildAvailableOutlookAccountsPreservesRegistrationEmail(t *testing.T) {
 		t.Fatalf("RegistrationEmail should be preserved from storage, got %#v", got[0])
 	}
 }
+
+func TestResolveOutlookGraphRegistrationEmailMapsOnlyClaimedAccount(t *testing.T) {
+	accounts := []email.OutlookAccount{
+		{Email: "first@outlook.jp", ClientID: "c1", RefreshToken: "r1"},
+		{Email: "second@outlook.jp", ClientID: "c2", RefreshToken: "r2"},
+	}
+	calls := 0
+	resolver := func(acc email.OutlookAccount, proxyURL string) (string, error) {
+		calls++
+		if acc.Email != "first@outlook.jp" {
+			t.Fatalf("should only resolve claimed account, got %s", acc.Email)
+		}
+		return "first@hotmail.com", nil
+	}
+
+	resolved := resolveOutlookGraphRegistrationEmail(accounts[0], "", resolver)
+
+	if calls != 1 {
+		t.Fatalf("expected one lazy Graph /me lookup for the claimed account, got %d", calls)
+	}
+	if resolved.RegistrationEmail != "first@hotmail.com" {
+		t.Fatalf("RegistrationEmail not set from Graph /me: %#v", resolved)
+	}
+	if accounts[1].RegistrationEmail != "" {
+		t.Fatalf("unclaimed account must not be pre-resolved: %#v", accounts[1])
+	}
+}
+
+func TestResolveOutlookGraphRegistrationEmailKeepsExistingMappingWithoutLookup(t *testing.T) {
+	acc := email.OutlookAccount{Email: "alias@outlook.jp", RegistrationEmail: "actual@hotmail.com"}
+	calls := 0
+	resolved := resolveOutlookGraphRegistrationEmail(acc, "", func(email.OutlookAccount, string) (string, error) {
+		calls++
+		return "unexpected@hotmail.com", nil
+	})
+
+	if calls != 0 {
+		t.Fatalf("existing RegistrationEmail should not trigger Graph /me lookup, got %d calls", calls)
+	}
+	if resolved.RegistrationEmail != "actual@hotmail.com" {
+		t.Fatalf("existing mapping should be kept: %#v", resolved)
+	}
+}

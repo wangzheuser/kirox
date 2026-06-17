@@ -239,22 +239,25 @@ func shouldDeferOutlookAccountForPreviousFailure(failReason string) bool {
 		return false
 	}
 }
-func prepareGraphRegistrationEmails(accounts []email.OutlookAccount, emailProxy string) []email.OutlookAccount {
-	out := make([]email.OutlookAccount, len(accounts))
-	copy(out, accounts)
-	for i := range out {
-		upn, err := email.GetOutlookGraphUserPrincipalNameWithProxy(out[i], emailProxy)
-		if err != nil {
-			log.Printf("[Kiro] Outlook Graph 地址预检失败: %s: %v", out[i].Email, err)
-			continue
-		}
-		if upn != "" && !strings.EqualFold(upn, out[i].Email) {
-			log.Printf("[Kiro] Outlook Graph 注册邮箱映射: %s -> %s", out[i].Email, upn)
-		}
-		out[i].RegistrationEmail = upn
+
+type outlookGraphUPNResolver func(email.OutlookAccount, string) (string, error)
+
+func resolveOutlookGraphRegistrationEmail(acc email.OutlookAccount, emailProxy string, resolver outlookGraphUPNResolver) email.OutlookAccount {
+	if strings.TrimSpace(acc.RegistrationEmail) != "" || resolver == nil {
+		return acc
 	}
-	return out
+	upn, err := resolver(acc, emailProxy)
+	if err != nil {
+		log.Printf("[Kiro] Outlook Graph 地址解析失败: %s: %v", acc.Email, err)
+		return acc
+	}
+	if upn != "" && !strings.EqualFold(upn, acc.Email) {
+		log.Printf("[Kiro] Outlook Graph 注册邮箱映射: %s -> %s", acc.Email, upn)
+	}
+	acc.RegistrationEmail = upn
+	return acc
 }
+
 func prepareMoeMailStartRequest(req StartTaskRequest, loadSavedConfigs func() []email.MoeMailConfig) StartTaskRequest {
 	if strings.TrimSpace(req.EmailProvider) != "moemail" || len(req.MoeMailDomains) == 0 || loadSavedConfigs == nil {
 		return req
@@ -379,9 +382,6 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 		// 筛选未注册的账号；上次已在 send-otp/TES 阶段失败的账号延后使用，
 		// 避免每次启动都卡在同一个已知被目标拒绝的邮箱/域组合。
 		outlookAccounts = buildAvailableOutlookAccounts(storedAccounts)
-		if storage.GetOutlookScope() == core.OutlookScopeGraph {
-			outlookAccounts = prepareGraphRegistrationEmails(outlookAccounts, storage.GetEmailProxy())
-		}
 
 		if len(outlookAccounts) == 0 {
 			Manager.mu.Unlock()
@@ -761,6 +761,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		}
 		var currentEmail string
 		setOutlookAccount := func(acc email.OutlookAccount) {
+			if taskCfg.UseOutlookGraph() {
+				acc = resolveOutlookGraphRegistrationEmail(acc, taskCfg.EmailProxy, email.GetOutlookGraphUserPrincipalNameWithProxy)
+			}
 			taskCfg.OutlookAccount = &acc
 			accountEmail = acc.Email
 			currentEmail = acc.Email
