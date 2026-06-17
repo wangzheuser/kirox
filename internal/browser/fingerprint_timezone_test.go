@@ -10,7 +10,7 @@ func TestBuildFingerprintDataUsesConfiguredTimeZone(t *testing.T) {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
 
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -7))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -7))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -26,7 +26,7 @@ func TestBuildFingerprintDataIncludesEmailHashForProfileSubmit(t *testing.T) {
 	ctx := NewFPContext(identity)
 	email := "user@example.test"
 
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len(email), email, -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len(email), email, -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -44,7 +44,7 @@ func TestBuildFingerprintDataIncludesEmailHashForProfileSubmit(t *testing.T) {
 		t.Fatalf("canvas.emailHash=%v, want non-zero numeric value", emailHash)
 	}
 
-	otherRaw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("other@example.test"), "other@example.test", -8))
+	otherRaw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len("other@example.test"), "other@example.test", -8))
 	var otherDecoded map[string]interface{}
 	if err := json.Unmarshal([]byte(otherRaw), &otherDecoded); err != nil {
 		t.Fatalf("second fingerprint JSON decode failed: %v", err)
@@ -62,7 +62,7 @@ func TestBuildFingerprintDataIncludesNullDNTWhenBrowserExposesUnsetDNT(t *testin
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
 
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -77,7 +77,7 @@ func TestBuildFingerprintDataUsesPostAuthMethodForProfileSubmit(t *testing.T) {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
 
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -101,7 +101,7 @@ func TestBuildFingerprintDataUsesRealEmailInputNameForProfileSubmit(t *testing.T
 	ctx := NewFPContext(identity)
 	email := "user@example.test"
 
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len(email), email, -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len(email), email, -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -126,7 +126,7 @@ func TestBuildFingerprintDataProfileSubmitMatchesProfileFormBasics(t *testing.T)
 	ctx := NewFPContext(identity)
 	email := "user@example.test"
 
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len(email), email, -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len(email), email, -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {

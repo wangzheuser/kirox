@@ -210,74 +210,6 @@ async function resetResultOutputDir() {
   }
 }
 
-// 模拟页面停留时间设置
-var pageStaySaveTimer = null;
-var lastSavedPageStayPayload = '';
-
-function pageStaySecondsText(ms) {
-  var seconds = (parseInt(ms, 10) || 0) / 1000;
-  return Number.isInteger(seconds) ? String(seconds) : String(Number(seconds.toFixed(3)));
-}
-
-function readPageStayMs(inputId, label) {
-  var el = document.getElementById(inputId);
-  var value = parseFloat(el && el.value);
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(label + '必须大于或等于 0');
-  }
-  return Math.round(value * 1000);
-}
-
-async function loadPageStayConfig() {
-  try {
-    var cfg = await window.go.main.App.GetPageStayConfig();
-    var minEl = document.getElementById('cfg-page-stay-min-seconds');
-    var maxEl = document.getElementById('cfg-page-stay-max-seconds');
-    if (minEl) minEl.value = pageStaySecondsText(cfg.minMs);
-    if (maxEl) maxEl.value = pageStaySecondsText(cfg.maxMs);
-    lastSavedPageStayPayload = JSON.stringify({ minMs: cfg.minMs, maxMs: cfg.maxMs });
-  } catch(e) {}
-}
-
-async function savePageStayConfig() {
-  try {
-    var minMs = readPageStayMs('cfg-page-stay-min-seconds', '最小停留时间');
-    var maxMs = readPageStayMs('cfg-page-stay-max-seconds', '最大停留时间');
-    if (minMs > maxMs) {
-      throw new Error('最小停留时间不能大于最大停留时间');
-    }
-    var payload = { minMs: minMs, maxMs: maxMs };
-    var payloadKey = JSON.stringify(payload);
-    if (payloadKey === lastSavedPageStayPayload) {
-      return;
-    }
-    var result = await window.go.main.App.SetPageStayConfig(payload);
-    if (result.error) {
-      showToast(result.error, 'error');
-      return;
-    }
-    var cfg = result.config || { minMs: minMs, maxMs: maxMs };
-    var minEl = document.getElementById('cfg-page-stay-min-seconds');
-    var maxEl = document.getElementById('cfg-page-stay-max-seconds');
-    if (minEl) minEl.value = pageStaySecondsText(cfg.minMs);
-    if (maxEl) maxEl.value = pageStaySecondsText(cfg.maxMs);
-    lastSavedPageStayPayload = JSON.stringify({ minMs: cfg.minMs, maxMs: cfg.maxMs });
-    showToast(cfg.minMs === 0 && cfg.maxMs === 0 ? '已关闭模拟页面停留' : '模拟页面停留时间已保存');
-  } catch(e) {
-    showToast('保存失败: ' + e.message, 'error');
-  }
-}
-
-function schedulePageStayConfigSave() {
-  if (pageStaySaveTimer) {
-    clearTimeout(pageStaySaveTimer);
-  }
-  pageStaySaveTimer = setTimeout(function() {
-    pageStaySaveTimer = null;
-    savePageStayConfig();
-  }, 450);
-}
-
 // Outlook 读取方式设置
 async function loadOutlookScope() {
   try {
@@ -329,12 +261,6 @@ async function saveOutlookGraphRegistrationEmailMode() {
 }
 
 function bindSettingsAutosave() {
-  ['cfg-page-stay-min-seconds', 'cfg-page-stay-max-seconds'].forEach(function(id) {
-    var el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('input', schedulePageStayConfigSave);
-    el.addEventListener('change', schedulePageStayConfigSave);
-  });
 
   var outlookScopeEl = document.getElementById('cfg-outlook-scope');
   if (outlookScopeEl) {
@@ -1240,7 +1166,6 @@ async function loadConfig() {
   loadOutlookAccountsList();
   loadDataDir();
   loadResultOutputDir();
-  loadPageStayConfig();
   loadOutlookScope();
   loadOutlookGraphRegistrationEmailMode();
   loadProxyMode();

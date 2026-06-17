@@ -9,7 +9,7 @@ func fixedProfileSubmitJSONForOrderTest() string {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
 	ctx.SetProfileHTML(`<html><head><script src="/dist/main/app_realhash.min.js"></script><script>window.__profileBoot=true;</script></head></html>`)
-	return MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	return MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 }
 
 func TestFingerprintMetricsJSONUsesCollectorOrder(t *testing.T) {

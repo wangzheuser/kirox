@@ -387,29 +387,15 @@ func TestShouldForceStopTaskIgnoresKillSwitchForTESBlocked(t *testing.T) {
 	}
 }
 
-func TestEffectiveSendOTPPageStayUsesSafeDefaultWhenDisabled(t *testing.T) {
-	cfg := effectiveSendOTPPageStayConfig(0, 0)
-	if cfg.MinMs != 5000 || cfg.MaxMs != 8000 {
-		t.Fatalf("disabled page stay should use safe send-otp default, got %+v", cfg)
-	}
-}
-
-func TestEffectiveSendOTPPageStayRaisesTooShortRangeToSafeDefault(t *testing.T) {
-	cfg := effectiveSendOTPPageStayConfig(0, 1000)
-	if cfg.MinMs != storage.DefaultPageStayMinMs || cfg.MaxMs != storage.DefaultPageStayMaxMs {
-		t.Fatalf("too-short send-otp page stay should use safe default, got %+v", cfg)
-	}
-}
-
 func TestSendOTPBlockedFriendlyErrorForcesStopForOutlookEvenWhenKillSwitchDisabled(t *testing.T) {
-	errText := `注册被拦截: 请更换IP或稍后重试 [provider=outlook, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=0-0ms, timeOnPage=0ms]`
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=outlook, domain=example.com, emailProxy=enabled, proxy=enabled]`
 	if !shouldForceStopTask(errText, "outlook", false) {
 		t.Fatalf("formatted send-otp blocked error should force-stop for outlook even when kill switch setting is disabled")
 	}
 }
 
 func TestSendOTPBlockedFriendlyErrorIsNotProxyNetworkError(t *testing.T) {
-	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=0-0ms, timeOnPage=0ms]`
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled]`
 	if isProxyNetworkError(errText) {
 		t.Fatalf("send-otp blocked diagnostics include proxy=enabled but should not be treated as proxy network error")
 	}
@@ -428,21 +414,21 @@ func TestShouldForceStopTaskRespectsKillSwitchForPlainSendOTP400(t *testing.T) {
 }
 
 func TestTemporaryEmailSendOTPBlockedDoesNotForceStopWholeBatch(t *testing.T) {
-	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=5592ms]`
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled]`
 	if shouldForceStopTask(errText, "tempmail_lol", false) {
 		t.Fatalf("temporary-email TES/BLOCKED should fail the current mailbox but not force-stop the whole batch")
 	}
 }
 
 func TestOutlookSendOTPBlockedStillForceStopsWholeBatch(t *testing.T) {
-	errText := `注册被拦截: 请更换IP或稍后重试 [provider=outlook, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=5592ms]`
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=outlook, domain=example.com, emailProxy=enabled, proxy=enabled]`
 	if !shouldForceStopTask(errText, "outlook", false) {
 		t.Fatalf("outlook TES/BLOCKED should still force-stop because accounts are not throwaway domains")
 	}
 }
 
 func TestTemporaryEmailSendOTPBlockedDoesNotRetrySameMailbox(t *testing.T) {
-	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=5592ms]`
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled]`
 	if shouldRetrySameMailboxAfterFailure(errText, "tempmail_lol") {
 		t.Fatalf("temporary-email TES/BLOCKED should move to next mailbox instead of retrying same rejected domain")
 	}
@@ -459,7 +445,7 @@ func TestTemporaryEmailSendOTPBlockedDoesNotRecycleReusableMailbox(t *testing.T)
 	cfg := &core.Config{TempEmailService: &taskFakeTempEmailService{address: "blocked@example.test"}}
 	result := map[string]interface{}{
 		"status": "failed",
-		"error":  `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.test, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=5592ms]`,
+		"error":  `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.test, emailProxy=enabled, proxy=enabled]`,
 	}
 
 	if _, ok := recycleReusableFailedEmail(StartTaskRequest{ReuseFailedEmail: true}, pool, "tempmail_lol", cfg, result, false); ok {

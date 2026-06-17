@@ -112,7 +112,7 @@ func GenerateFingerprintJSON(
 	locationURL, referrer string,
 	ctx *FingerprintContext,
 	pageType, eventType string,
-	timeOnPage, emailLen int,
+	emailLen int,
 	email string,
 	timeZone ...int,
 ) string {
@@ -122,6 +122,6 @@ func GenerateFingerprintJSON(
 		tz = timeZone[0]
 	}
 	fpData := BuildFingerprintData(identity, locationURL, referrer, nowMs, ctx,
-		pageType, eventType, timeOnPage, emailLen, email, tz)
+		pageType, eventType, emailLen, email, tz)
 	return MarshalOrdered(fpData)
 }

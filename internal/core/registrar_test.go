@@ -48,33 +48,6 @@ func TestMaxHTTPRetriesKeepsDefaultForFixedProxy(t *testing.T) {
 	}
 }
 
-func TestRandomPageStayMsAllowsZeroRange(t *testing.T) {
-	cfg := &Config{PageStayMinMs: 0, PageStayMaxMs: 0}
-
-	if got := cfg.RandomPageStayMs(); got != 0 {
-		t.Fatalf("0/0 页面停留配置应返回 0: got %d", got)
-	}
-}
-
-func TestRandomPageStayMsAllowsFixedRange(t *testing.T) {
-	cfg := &Config{PageStayMinMs: 2500, PageStayMaxMs: 2500}
-
-	if got := cfg.RandomPageStayMs(); got != 2500 {
-		t.Fatalf("固定页面停留配置应返回固定值: got %d", got)
-	}
-}
-
-func TestRandomPageStayMsKeepsValueInRange(t *testing.T) {
-	cfg := &Config{PageStayMinMs: 1200, PageStayMaxMs: 1800}
-
-	for i := 0; i < 100; i++ {
-		got := cfg.RandomPageStayMs()
-		if got < cfg.PageStayMinMs || got > cfg.PageStayMaxMs {
-			t.Fatalf("页面停留随机值越界: got %d, range [%d,%d]", got, cfg.PageStayMinMs, cfg.PageStayMaxMs)
-		}
-	}
-}
-
 func TestNewConfigDefaultsOutlookScopeToIMAP(t *testing.T) {
 	cfg := NewConfig()
 

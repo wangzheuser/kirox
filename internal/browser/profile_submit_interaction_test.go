@@ -9,7 +9,7 @@ func TestProfileSubmitInteractionMatchesSingleEmailFieldAction(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		identity := RandomIdentity()
 		ctx := NewFPContext(identity)
-		raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+		raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 		var decoded map[string]interface{}
 		if err := json.Unmarshal([]byte(raw), &decoded); err != nil {

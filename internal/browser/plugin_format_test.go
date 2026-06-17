@@ -29,7 +29,7 @@ func TestFingerprintPluginsUseSingleSpaceBeforeScreenInfoSeparator(t *testing.T)
 	}
 	identity.Screen = ScreenInfo{Width: 1920, Height: 1080, AvailHeight: 1040, ColorDepth: 24}
 
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, NewFPContext(identity), "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, NewFPContext(identity), "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	want := `"plugins":"PDF Viewer Chrome PDF Viewer ||1920-1080-1040-24-*-*-*"`
 	if !strings.Contains(raw, want) {

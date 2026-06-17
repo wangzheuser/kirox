@@ -20,9 +20,6 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if _, err := SetResultOutputDir(resultDir); err != nil {
 		t.Fatalf("SetResultOutputDir returned error: %v", err)
 	}
-	if err := SetPageStayConfig(PageStayConfig{MinMs: 0, MaxMs: 0}); err != nil {
-		t.Fatalf("SetPageStayConfig returned error: %v", err)
-	}
 	if err := SetOutlookScope(OutlookScopeGraph); err != nil {
 		t.Fatalf("SetOutlookScope returned error: %v", err)
 	}
@@ -76,9 +73,6 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	}
 	if got := GetResultOutputDir(); got != resultDir {
 		t.Fatalf("result_output_dir round-trip failed: got %q, want %q", got, resultDir)
-	}
-	if got := GetPageStayConfig(); got.MinMs != 0 || got.MaxMs != 0 {
-		t.Fatalf("page stay 0/0 round-trip failed: got %+v", got)
 	}
 	if got := GetOutlookScope(); got != OutlookScopeGraph {
 		t.Fatalf("outlook_scope round-trip failed: got %q", got)

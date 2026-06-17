@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStep8ProfileStartBodyJSONUsesBrowserInsertionOrder(t *testing.T) {
@@ -73,16 +74,18 @@ func TestStep9SendOTPLocalTargetAcceptsValidRequest(t *testing.T) {
 
 	cfg := NewConfig()
 	cfg.ProfileBase = server.URL
-	cfg.PageStayMinMs = 0
-	cfg.PageStayMaxMs = 0
 	r := NewRegistrar(cfg)
 	r.WorkflowID = "wf-id"
 	r.WorkflowState = "wf-state"
 	r.Email = "user@example.test"
 	r.Ubid = "ubid"
 
+	started := time.Now()
 	if err := r.Step9SendOTP(); err != nil {
 		t.Fatalf("Step9SendOTP returned error: %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("Step9SendOTP should not wait before send-otp, elapsed=%s", elapsed)
 	}
 	if seenEmail != r.Email {
 		t.Fatalf("server saw email %q, want %q", seenEmail, r.Email)
@@ -107,8 +110,6 @@ func TestStep9SendOTPBodyJSONUsesBrowserInsertionOrder(t *testing.T) {
 
 	cfg := NewConfig()
 	cfg.ProfileBase = server.URL
-	cfg.PageStayMinMs = 0
-	cfg.PageStayMaxMs = 0
 	r := NewRegistrar(cfg)
 	r.WorkflowID = "wf-id"
 	r.WorkflowState = "wf-state"

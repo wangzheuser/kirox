@@ -9,7 +9,7 @@ import (
 func TestProfileSubmitStaticCollectorFieldsMatchFWCIMCapture(t *testing.T) {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -28,7 +28,7 @@ func TestProfileSubmitStaticCollectorFieldsMatchFWCIMCapture(t *testing.T) {
 func TestProfileSubmitCanvasHistogramMatchesFWCIMCanvasShape(t *testing.T) {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -59,7 +59,7 @@ func TestProfileSubmitCanvasHistogramMatchesFWCIMCanvasShape(t *testing.T) {
 func TestProfileSubmitCanvasEmailHashMatchesFWCIMCaptureForEmail(t *testing.T) {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -77,7 +77,7 @@ func TestProfileSubmitCanvasEmailHashMatchesFWCIMCaptureForEmail(t *testing.T) {
 func TestProfileSubmitPerformanceTimingIncludesPreviousDocumentUnload(t *testing.T) {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -103,7 +103,7 @@ func TestProfileSubmitPerformanceTimingIncludesPreviousDocumentUnload(t *testing
 func TestProfileSubmitPerformanceTimingUsesShortBrowserLoadShape(t *testing.T) {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
@@ -129,8 +129,8 @@ func TestProfileSubmitPerformanceTimingUsesShortBrowserLoadShape(t *testing.T) {
 func TestProfilePageLoadAndSubmitReuseSamePerformanceTiming(t *testing.T) {
 	identity := RandomIdentity()
 	ctx := NewFPContext(identity)
-	pageLoadRaw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/start", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageLoad", 0, 0, "", -8))
-	pageSubmitRaw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600007000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	pageLoadRaw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/start", "https://signin.aws.amazon.com/", 1781600000000, ctx, "profile", "PageLoad", 0, "", -8))
+	pageSubmitRaw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/?workflowID=wf#/signup/enter-email", "https://signin.aws.amazon.com/", 1781600007000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var pageLoad map[string]interface{}
 	if err := json.Unmarshal([]byte(pageLoadRaw), &pageLoad); err != nil {

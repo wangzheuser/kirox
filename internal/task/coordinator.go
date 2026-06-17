@@ -555,15 +555,6 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	if taskConfig.OTPTimeout < 30 {
 		taskConfig.OTPTimeout = 120
 	}
-	pageStayConfig := storage.GetPageStayConfig()
-	effectivePageStayConfig := effectiveSendOTPPageStayConfig(pageStayConfig.MinMs, pageStayConfig.MaxMs)
-	taskConfig.PageStayMinMs = effectivePageStayConfig.MinMs
-	taskConfig.PageStayMaxMs = effectivePageStayConfig.MaxMs
-	if pageStayConfig.MinMs != effectivePageStayConfig.MinMs || pageStayConfig.MaxMs != effectivePageStayConfig.MaxMs {
-		log.Printf("[Kiro] 模拟页面停留: 当前配置 %d-%dms 过短；send-otp 阶段自动使用安全默认 %d-%dms", pageStayConfig.MinMs, pageStayConfig.MaxMs, effectivePageStayConfig.MinMs, effectivePageStayConfig.MaxMs)
-	} else {
-		log.Printf("[Kiro] 模拟页面停留: %d-%dms", effectivePageStayConfig.MinMs, effectivePageStayConfig.MaxMs)
-	}
 	if taskConfig.EmailProxy == "" {
 		log.Printf("[Kiro] 邮箱代理: 直连")
 	} else {
@@ -1640,7 +1631,7 @@ func failureDiagnosisSummary(failCategories map[string]int, totalCount int, succ
 	windControl := failCategories["IP/指纹风控"]
 	sendOTPFailed := failCategories["验证码发送失败"]
 	if windControl*2 >= totalCount {
-		return "send-otp 阶段以 TES/BLOCKED 为主，当前配置更像代理/IP/指纹被风控；建议先停止批量重试并检查上方 provider/domain/proxy/pageStay 诊断"
+		return "send-otp 阶段以 TES/BLOCKED 为主，当前配置更像代理/IP/指纹被风控；建议先停止批量重试并检查上方 provider/domain/proxy 诊断"
 	}
 	if sendOTPFailed*2 >= totalCount {
 		return "send-otp 普通 400 占比过高，更像邮箱域名或邮件提供商被拒；建议根据上方 provider/domain 诊断更换合规邮件提供商或稍后重试"
@@ -1670,7 +1661,7 @@ func parseSendOTPDiagnostics(errorMsg string) (map[string]string, bool) {
 			continue
 		}
 		switch key {
-		case "provider", "domain", "emailProxy", "proxy", "pageStay", "timeOnPage":
+		case "provider", "domain", "emailProxy", "proxy":
 			out[key] = value
 		}
 	}
@@ -1720,16 +1711,6 @@ func topDiagnosticValue(items []map[string]string, key string) string {
 		return entries[i].count > entries[j].count
 	})
 	return fmt.Sprintf("%s=%s:%d", key, entries[0].value, entries[0].count)
-}
-
-func effectiveSendOTPPageStayConfig(minMs, maxMs int) storage.PageStayConfig {
-	if maxMs < storage.DefaultPageStayMinMs {
-		return storage.PageStayConfig{MinMs: storage.DefaultPageStayMinMs, MaxMs: storage.DefaultPageStayMaxMs}
-	}
-	if minMs < storage.DefaultPageStayMinMs {
-		minMs = storage.DefaultPageStayMinMs
-	}
-	return storage.PageStayConfig{MinMs: minMs, MaxMs: maxMs}
 }
 
 // isProxyNetworkError 判断错误是否更像代理节点不可用，而不是业务风控或邮箱问题。
@@ -1877,7 +1858,7 @@ func isSendOTPMailboxRejectedError(errorMsg string) bool {
 		return isSendOTPBlockedError(errorMsg)
 	}
 	if diagnostics, ok := parseSendOTPDiagnostics(errorMsg); ok {
-		return isSendOTPBlockedError(errorMsg) && diagnostics["provider"] != "" && diagnostics["domain"] != "" && diagnostics["pageStay"] != "" && diagnostics["timeOnPage"] != ""
+		return isSendOTPBlockedError(errorMsg) && diagnostics["provider"] != "" && diagnostics["domain"] != ""
 	}
 	return false
 }

@@ -256,19 +256,6 @@ func (r *Registrar) Step8ProfileStart() error {
 // Step9SendOTP 发送验证码
 func (r *Registrar) Step9SendOTP() error {
 	ref := fmt.Sprintf("%s/?workflowID=%s", r.Cfg.ProfileBase, r.WorkflowID)
-	timeOnPage := r.Cfg.RandomPageStayMs()
-	log.Printf("[9] 准备发送验证码，模拟页面停留 %dms", timeOnPage)
-
-	// 让真实等待时间与 browserData.timeSpentOnPage 保持一致。
-	if timeOnPage > 0 && r.Ctx != nil {
-		select {
-		case <-r.Ctx.Done():
-			return r.Ctx.Err()
-		case <-time.After(time.Duration(timeOnPage) * time.Millisecond):
-		}
-	} else if timeOnPage > 0 {
-		time.Sleep(time.Duration(timeOnPage) * time.Millisecond)
-	}
 
 	// Outlook 模式: 根据读取方式记录发送验证码前的定位信息。
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
@@ -287,13 +274,12 @@ func (r *Registrar) Step9SendOTP() error {
 	}
 
 	log.Println("[9] 发送验证码")
-	fp := r.GenFPWithTime("profile", "PageSubmit", timeOnPage, len(r.Email), r.Email)
-	tsp := fmt.Sprintf("%d", timeOnPage)
+	fp := r.GenFP("profile", "PageSubmit", len(r.Email), r.Email)
 
 	attrs := browser.NewOrderedMap()
 	attrs.Set("fingerprint", fp)
 	attrs.Set("eventTimestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
-	attrs.Set("timeSpentOnPage", tsp)
+	attrs.Set("timeSpentOnPage", "0")
 	attrs.Set("pageName", "EMAIL_COLLECTION")
 	attrs.Set("eventType", "PageSubmit")
 	attrs.Set("ubid", r.Ubid)
@@ -314,7 +300,7 @@ func (r *Registrar) Step9SendOTP() error {
 	}
 	if status != 200 {
 		bodyText := shortResponseBody(respBody, 500)
-		diagnostics := sendOTPFailureContext(r.Cfg, r.Email, timeOnPage)
+		diagnostics := sendOTPFailureContext(r.Cfg, r.Email)
 		log.Printf("[send-otp] 失败: status=%d, body=%s, fp_len=%d, %s", status, bodyText, len(fp), diagnostics)
 		if bodyText != "" {
 			return fmt.Errorf("send-otp 失败 (%d): %s [%s]", status, bodyText, diagnostics)
@@ -325,24 +311,14 @@ func (r *Registrar) Step9SendOTP() error {
 	return nil
 }
 
-func sendOTPFailureContext(cfg *Config, emailAddr string, timeOnPage int) string {
+func sendOTPFailureContext(cfg *Config, emailAddr string) string {
 	provider := "<unknown>"
-	pageStayMin := 0
-	pageStayMax := 0
 	emailProxyState := "direct"
 	proxyState := "direct"
 	locale := DefaultBrowserLocale()
 	if cfg != nil {
 		if strings.TrimSpace(cfg.EmailProvider) != "" {
 			provider = strings.TrimSpace(cfg.EmailProvider)
-		}
-		pageStayMin = cfg.PageStayMinMs
-		pageStayMax = cfg.PageStayMaxMs
-		if pageStayMin < 0 {
-			pageStayMin = 0
-		}
-		if pageStayMax < pageStayMin {
-			pageStayMax = pageStayMin
 		}
 		if strings.TrimSpace(cfg.EmailProxy) != "" {
 			emailProxyState = "enabled"
@@ -356,11 +332,8 @@ func sendOTPFailureContext(cfg *Config, emailAddr string, timeOnPage int) string
 	if at := strings.LastIndex(strings.TrimSpace(emailAddr), "@"); at >= 0 && at+1 < len(strings.TrimSpace(emailAddr)) {
 		domain = strings.ToLower(strings.TrimSpace(emailAddr)[at+1:])
 	}
-	if timeOnPage < 0 {
-		timeOnPage = 0
-	}
-	return fmt.Sprintf("provider=%s, domain=%s, emailProxy=%s, proxy=%s, pageStay=%d-%dms, timeOnPage=%dms, acceptLanguage=%s, i18next=%s, timeZone=%d",
-		provider, domain, emailProxyState, proxyState, pageStayMin, pageStayMax, timeOnPage, primaryLanguageTag(locale.AcceptLanguage), locale.I18Next, locale.TimeZone)
+	return fmt.Sprintf("provider=%s, domain=%s, emailProxy=%s, proxy=%s, acceptLanguage=%s, i18next=%s, timeZone=%d",
+		provider, domain, emailProxyState, proxyState, primaryLanguageTag(locale.AcceptLanguage), locale.I18Next, locale.TimeZone)
 }
 
 func primaryLanguageTag(acceptLanguage string) string {

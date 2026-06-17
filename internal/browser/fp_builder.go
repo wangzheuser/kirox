@@ -493,7 +493,7 @@ func BuildFingerprintData(
 	nowMs int64,
 	ctx *FingerprintContext,
 	pageType, eventType string,
-	timeOnPage, emailLen int,
+	emailLen int,
 	email string,
 	timeZone ...int,
 ) *OrderedMap {
@@ -582,9 +582,7 @@ func BuildFingerprintData(
 	// start / end 时间
 	endMs := nowMs + int64(rand.Intn(51))
 	var startTime int64
-	if eventType != "PageLoad" && eventType != "first_load" && timeOnPage > 0 {
-		startTime = endMs - int64(timeOnPage)
-	} else if ctx != nil {
+	if ctx != nil {
 		if eventType == "first_load" {
 			startTime = ctx.GetStartTime(nowMs - int64(500+rand.Intn(501)))
 		} else if eventType == "PageLoad" && pageType == "profile" {
@@ -634,14 +632,12 @@ func BuildFingerprintData(
 	result.Set("dnt", nil)
 	result.Set("math", orderedMath(identity))
 
-	// profile 页面的 timeToSubmit
+	// profile 页面的提交耗时固定为 0，不再模拟停留时间。
 	if pageType == "profile" {
 		if eventType == "PageLoad" || eventType == "first_load" {
 			result.Set("timeToSubmit", 1+rand.Intn(5))
-		} else if timeOnPage > 0 {
-			result.Set("timeToSubmit", timeOnPage)
 		} else {
-			result.Set("timeToSubmit", 2000+rand.Intn(4001))
+			result.Set("timeToSubmit", 0)
 		}
 	}
 

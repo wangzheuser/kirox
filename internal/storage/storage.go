@@ -29,9 +29,6 @@ const (
 	OutlookGraphRegistrationEmailImported = "imported"
 	OutlookGraphRegistrationEmailPrimary  = "primary"
 
-	DefaultPageStayMinMs = 5000
-	DefaultPageStayMaxMs = 8000
-
 	DefaultRegistrationCount         = 1
 	DefaultRegistrationSuccessTarget = 0
 	DefaultRegistrationConcurrency   = 1
@@ -51,8 +48,6 @@ const (
 
 	keyDataDir                      = "data_dir"
 	keyResultOutputDir              = "result_output_dir"
-	keyPageStayMinMs                = "page_stay_min_ms"
-	keyPageStayMaxMs                = "page_stay_max_ms"
 	keyOutlookScope                 = "outlook_scope"
 	keyOutlookGraphRegistrationMode = "outlook_graph_registration_email_mode"
 	keyProxyMode                    = "proxy_mode"
@@ -85,12 +80,6 @@ const (
 	keyKiroRSAPIKey                 = "kiro_rs_api_key"
 	keyKiroRSAutoSync               = "kiro_rs_auto_sync"
 )
-
-// PageStayConfig 保存发送验证码前模拟页面停留的随机区间。
-type PageStayConfig struct {
-	MinMs int `json:"minMs"`
-	MaxMs int `json:"maxMs"`
-}
 
 // RegistrationConfig 保存注册页面的业务配置。
 type RegistrationConfig struct {
@@ -129,8 +118,6 @@ var (
 var configKeyOrder = []string{
 	keyDataDir,
 	keyResultOutputDir,
-	keyPageStayMinMs,
-	keyPageStayMaxMs,
 	keyOutlookScope,
 	keyOutlookGraphRegistrationMode,
 	keyProxyMode,
@@ -174,6 +161,8 @@ var knownConfigKeys = func() map[string]bool {
 
 var deprecatedConfigKeys = map[string]bool{
 	"outlook_register_domain" + "_override": true,
+	"page_stay_min_ms":                      true,
+	"page_stay_max_ms":                      true,
 }
 
 // GetDefaultDataDir 获取默认应用数据目录
@@ -467,52 +456,6 @@ func ResetResultOutputDir() string {
 	_resultOutputOnce = sync.Once{}
 	_resultOutputOnce.Do(func() {})
 	return defaultDir
-}
-
-// GetPageStayConfig 获取模拟页面停留时间配置，默认保持 5-8 秒随机。
-func GetPageStayConfig() PageStayConfig {
-	m := loadConfigMap()
-	cfg := PageStayConfig{
-		MinMs: DefaultPageStayMinMs,
-		MaxMs: DefaultPageStayMaxMs,
-	}
-	if raw := strings.TrimSpace(m[keyPageStayMinMs]); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil {
-			cfg.MinMs = value
-		}
-	}
-	if raw := strings.TrimSpace(m[keyPageStayMaxMs]); raw != "" {
-		if value, err := strconv.Atoi(raw); err == nil {
-			cfg.MaxMs = value
-		}
-	}
-	if err := ValidatePageStayConfig(cfg); err != nil {
-		return PageStayConfig{MinMs: DefaultPageStayMinMs, MaxMs: DefaultPageStayMaxMs}
-	}
-	return cfg
-}
-
-// SetPageStayConfig 保存模拟页面停留时间配置。
-func SetPageStayConfig(cfg PageStayConfig) error {
-	if err := ValidatePageStayConfig(cfg); err != nil {
-		return err
-	}
-	return modifyConfigMap(func(m map[string]string) error {
-		m[keyPageStayMinMs] = strconv.Itoa(cfg.MinMs)
-		m[keyPageStayMaxMs] = strconv.Itoa(cfg.MaxMs)
-		return nil
-	})
-}
-
-// ValidatePageStayConfig 校验模拟页面停留时间配置。
-func ValidatePageStayConfig(cfg PageStayConfig) error {
-	if cfg.MinMs < 0 || cfg.MaxMs < 0 {
-		return fmt.Errorf("页面停留时间不能小于 0")
-	}
-	if cfg.MinMs > cfg.MaxMs {
-		return fmt.Errorf("页面停留最小值不能大于最大值")
-	}
-	return nil
 }
 
 // GetOutlookScope 返回 Outlook 验证码读取方式，默认使用 IMAP 保持兼容。

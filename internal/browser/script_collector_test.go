@@ -14,7 +14,7 @@ func TestFingerprintContextParsesProfileScriptsFromHTML(t *testing.T) {
 		`<script>window.__profileBoot = true;</script>` +
 		`</head></html>`)
 
-	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", 6123, len("user@example.test"), "user@example.test", -8))
+	raw := MarshalOrdered(BuildFingerprintData(identity, "https://profile.aws.amazon.com/", "https://example.test/", 1781600000000, ctx, "profile", "PageSubmit", len("user@example.test"), "user@example.test", -8))
 
 	var decoded map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {

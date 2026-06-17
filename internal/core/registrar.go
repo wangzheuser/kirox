@@ -250,11 +250,6 @@ func (r *Registrar) DoPostRaw(url string, payload interface{}, headers map[strin
 
 // GenFP 生成指纹
 func (r *Registrar) GenFP(pageType, eventType string, emailLen int, emailAddr string) string {
-	return r.GenFPWithTime(pageType, eventType, 0, emailLen, emailAddr)
-}
-
-// GenFPWithTime 生成指纹（指定页面停留时间）
-func (r *Registrar) GenFPWithTime(pageType, eventType string, timeOnPage, emailLen int, emailAddr string) string {
 	did := r.Cfg.DirectoryID
 	var loc, ref string
 
@@ -280,7 +275,7 @@ func (r *Registrar) GenFPWithTime(pageType, eventType string, timeOnPage, emailL
 		ref = r.Cfg.ViewBase + "/"
 	}
 
-	fpJSON := browser.GenerateFingerprintJSON(r.Identity, loc, ref, r.FPCtx, pageType, eventType, timeOnPage, emailLen, emailAddr, r.Cfg.BrowserLocale().TimeZone)
+	fpJSON := browser.GenerateFingerprintJSON(r.Identity, loc, ref, r.FPCtx, pageType, eventType, emailLen, emailAddr, r.Cfg.BrowserLocale().TimeZone)
 	return crypto.EncryptFingerprint(fpJSON)
 }
 

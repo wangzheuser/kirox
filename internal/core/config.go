@@ -30,9 +30,6 @@ type Config struct {
 	Password string
 	FullName string
 
-	PageStayMinMs int
-	PageStayMaxMs int
-
 	Proxy string
 	// FingerprintKey 用于绑定浏览器硬件指纹缓存。为空时沿用 Proxy；Clash 本地代理会填入真实节点名，避免所有出口共用同一指纹。
 	FingerprintKey string
@@ -88,30 +85,12 @@ func NewConfig() *Config {
 		KiroRedirectURI: "https://app.kiro.dev/signin/oauth",
 		Password:        GenPassword(),
 		FullName:        "Test User",
-		PageStayMinMs:   5000,
-		PageStayMaxMs:   8000,
 		OutlookScope:    OutlookScopeIMAP,
 		AcceptLanguage:  DefaultBrowserLocale().AcceptLanguage,
 		I18Next:         DefaultBrowserLocale().I18Next,
 		TimeZone:        DefaultBrowserLocale().TimeZone,
 		TimeZoneSet:     true,
 	}
-}
-
-// RandomPageStayMs 从配置区间内随机生成模拟页面停留时间。
-func (c *Config) RandomPageStayMs() int {
-	minMs := c.PageStayMinMs
-	maxMs := c.PageStayMaxMs
-	if minMs < 0 {
-		minMs = 0
-	}
-	if maxMs < minMs {
-		maxMs = minMs
-	}
-	if minMs == maxMs {
-		return minMs
-	}
-	return minMs + rand.Intn(maxMs-minMs+1)
 }
 
 // UseOutlookGraph 判断当前 Outlook 账号是否使用 Microsoft Graph 读取邮件。

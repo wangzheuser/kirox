@@ -3,7 +3,7 @@ package task
 import "testing"
 
 func TestParseSendOTPDiagnostics(t *testing.T) {
-	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=6400ms]`
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled]`
 	got, ok := parseSendOTPDiagnostics(errText)
 	if !ok {
 		t.Fatalf("expected diagnostics to parse")
@@ -13,8 +13,6 @@ func TestParseSendOTPDiagnostics(t *testing.T) {
 		"domain":     "example.com",
 		"emailProxy": "enabled",
 		"proxy":      "enabled",
-		"pageStay":   "5000-8000ms",
-		"timeOnPage": "6400ms",
 	}
 	for key, expected := range want {
 		if got[key] != expected {

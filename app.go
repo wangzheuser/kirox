@@ -375,19 +375,6 @@ func (a *App) ResetResultOutputDir() map[string]interface{} {
 	return map[string]interface{}{"success": true, "path": path}
 }
 
-// GetPageStayConfig 获取发送验证码前模拟页面停留配置。
-func (a *App) GetPageStayConfig() storage.PageStayConfig {
-	return storage.GetPageStayConfig()
-}
-
-// SetPageStayConfig 保存发送验证码前模拟页面停留配置。
-func (a *App) SetPageStayConfig(config storage.PageStayConfig) map[string]interface{} {
-	if err := storage.SetPageStayConfig(config); err != nil {
-		return map[string]interface{}{"error": err.Error()}
-	}
-	return map[string]interface{}{"success": true, "config": storage.GetPageStayConfig()}
-}
-
 // GetOutlookScope 获取 Outlook 验证码读取方式。
 func (a *App) GetOutlookScope() string {
 	return storage.GetOutlookScope()

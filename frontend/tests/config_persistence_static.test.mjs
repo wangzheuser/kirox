@@ -62,8 +62,6 @@ test('settings cfg controls have backend persistence coverage or explicit non-se
     'cfg-kiro-rs-url',
     'cfg-outlook-graph-registration-email-mode',
     'cfg-outlook-scope',
-    'cfg-page-stay-max-seconds',
-    'cfg-page-stay-min-seconds',
     'cfg-proxy',
     'cfg-proxy-mode-clash',
     'cfg-proxy-mode-none',
@@ -74,6 +72,15 @@ test('settings cfg controls have backend persistence coverage or explicit non-se
     'cfg-verify-models',
   ];
   assert.deepEqual(cfgIds, expected);
+});
+
+
+test('page stay settings and APIs are removed', () => {
+  assert.doesNotMatch(html, new RegExp('cfg-page-' + 'stay'));
+  assert.doesNotMatch(html, new RegExp('模拟页面' + '停留'));
+  assert.doesNotMatch(appJs, new RegExp('Page' + 'Stay|' + 'page' + 'Stay|' + 'cfg-page-' + 'stay'));
+  assert.doesNotMatch(wailsAppJs, new RegExp('Page' + 'Stay'));
+  assert.doesNotMatch(wailsAppDts, new RegExp('Page' + 'Stay'));
 });
 
 test('proxy pool is an independent proxy mode panel', () => {

@@ -114,20 +114,16 @@ export function GetOutlookAccounts() {
   return window['go']['main']['App']['GetOutlookAccounts']();
 }
 
-export function GetOutlookScope() {
-  return window['go']['main']['App']['GetOutlookScope']();
-}
-
 export function GetOutlookGraphRegistrationEmailMode() {
   return window['go']['main']['App']['GetOutlookGraphRegistrationEmailMode']();
 }
 
-export function GetOverview() {
-  return window['go']['main']['App']['GetOverview']();
+export function GetOutlookScope() {
+  return window['go']['main']['App']['GetOutlookScope']();
 }
 
-export function GetPageStayConfig() {
-  return window['go']['main']['App']['GetPageStayConfig']();
+export function GetOverview() {
+  return window['go']['main']['App']['GetOverview']();
 }
 
 export function GetProxy() {
@@ -270,16 +266,12 @@ export function SetLanguage(arg1) {
   return window['go']['main']['App']['SetLanguage'](arg1);
 }
 
-export function SetOutlookScope(arg1) {
-  return window['go']['main']['App']['SetOutlookScope'](arg1);
-}
-
 export function SetOutlookGraphRegistrationEmailMode(arg1) {
   return window['go']['main']['App']['SetOutlookGraphRegistrationEmailMode'](arg1);
 }
 
-export function SetPageStayConfig(arg1) {
-  return window['go']['main']['App']['SetPageStayConfig'](arg1);
+export function SetOutlookScope(arg1) {
+  return window['go']['main']['App']['SetOutlookScope'](arg1);
 }
 
 export function SetProxy(arg1) {
