@@ -42,6 +42,32 @@ type graphMessage struct {
 	} `json:"toRecipients"`
 }
 
+type OutlookGraphProfile struct {
+	PrimaryEmail       string
+	Aliases            []string
+	AliasDataAvailable bool
+}
+
+func (p OutlookGraphProfile) HasAddress(address string) bool {
+	address = strings.ToLower(strings.TrimSpace(address))
+	if address == "" {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(p.PrimaryEmail), address) {
+		return true
+	}
+	for _, alias := range p.Aliases {
+		if strings.EqualFold(strings.TrimSpace(alias), address) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p OutlookGraphProfile) HasAliasData() bool {
+	return p.AliasDataAvailable
+}
+
 // RefreshOutlookGraphTokenWithProxy 用 OutlookRegister 的 Graph scope 刷新 access_token。
 func RefreshOutlookGraphTokenWithProxy(acc OutlookAccount, proxyURL string) (string, error) {
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
@@ -76,39 +102,91 @@ func RefreshOutlookGraphTokenWithProxy(acc OutlookAccount, proxyURL string) (str
 }
 
 func GetOutlookGraphUserPrincipalNameWithProxy(acc OutlookAccount, proxyURL string) (string, error) {
-	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
-	accessToken, err := RefreshOutlookGraphTokenWithProxy(acc, runtimeProxyURL)
+	profile, err := GetOutlookGraphProfileWithProxy(acc, proxyURL)
 	if err != nil {
 		return "", err
 	}
-	endpoint := strings.TrimRight(outlookGraphAPIBase, "/") + "/me?$select=userPrincipalName,mail"
+	if strings.TrimSpace(profile.PrimaryEmail) == "" {
+		return "", fmt.Errorf("Graph /me 响应中无 userPrincipalName")
+	}
+	return profile.PrimaryEmail, nil
+}
+
+func GetOutlookGraphProfileWithProxy(acc OutlookAccount, proxyURL string) (OutlookGraphProfile, error) {
+	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
+	accessToken, err := RefreshOutlookGraphTokenWithProxy(acc, runtimeProxyURL)
+	if err != nil {
+		return OutlookGraphProfile{}, err
+	}
+	endpoint := strings.TrimRight(outlookGraphAPIBase, "/") + "/me?$select=userPrincipalName,mail,proxyAddresses,otherMails"
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
-		return "", err
+		return OutlookGraphProfile{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	resp, err := httpClientWithProxy(runtimeProxyURL, emailRequestTimeout).Do(req)
 	if err != nil {
-		return "", err
+		return OutlookGraphProfile{}, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
-		return "", fmt.Errorf("Graph /me 查询失败 %d: %s", resp.StatusCode, string(body[:min(300, len(body))]))
+		return OutlookGraphProfile{}, fmt.Errorf("Graph /me 查询失败 %d: %s", resp.StatusCode, string(body[:min(300, len(body))]))
 	}
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		return "", fmt.Errorf("解析 Graph /me 响应失败: %w", err)
+		return OutlookGraphProfile{}, fmt.Errorf("解析 Graph /me 响应失败: %w", err)
 	}
-	if mail, _ := data["mail"].(string); strings.TrimSpace(mail) != "" {
-		return strings.TrimSpace(mail), nil
-	}
+	mail, _ := data["mail"].(string)
 	upn, _ := data["userPrincipalName"].(string)
-	upn = strings.TrimSpace(upn)
-	if upn == "" {
-		return "", fmt.Errorf("Graph /me 响应中无 userPrincipalName")
+	primary := strings.TrimSpace(mail)
+	if primary == "" {
+		primary = strings.TrimSpace(upn)
 	}
-	return upn, nil
+	if primary == "" {
+		return OutlookGraphProfile{}, fmt.Errorf("Graph /me 响应中无 userPrincipalName")
+	}
+	aliases, aliasDataAvailable := collectGraphAliases(data, primary, upn)
+	return OutlookGraphProfile{PrimaryEmail: primary, Aliases: aliases, AliasDataAvailable: aliasDataAvailable}, nil
+}
+
+func collectGraphAliases(data map[string]interface{}, values ...string) ([]string, bool) {
+	seen := make(map[string]struct{})
+	aliases := make([]string, 0)
+	add := func(v string) {
+		v = strings.TrimSpace(v)
+		v = strings.TrimPrefix(v, "SMTP:")
+		v = strings.TrimPrefix(v, "smtp:")
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return
+		}
+		key := strings.ToLower(v)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		aliases = append(aliases, v)
+	}
+	for _, v := range values {
+		add(v)
+	}
+	aliasDataAvailable := false
+	for _, field := range []string{"proxyAddresses", "otherMails"} {
+		if raw, exists := data[field]; exists {
+			aliasDataAvailable = true
+			arr, ok := raw.([]interface{})
+			if !ok {
+				continue
+			}
+			for _, raw := range arr {
+				if v, ok := raw.(string); ok {
+					add(v)
+				}
+			}
+		}
+	}
+	return aliases, aliasDataAvailable
 }
 
 // WaitForOTPGraphWithProxy 通过 Microsoft Graph 轮询等待 AWS 验证码。

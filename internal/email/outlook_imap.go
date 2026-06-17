@@ -28,6 +28,7 @@ type OutlookAccount struct {
 	ClientID          string
 	RefreshToken      string
 	RegistrationEmail string
+	GraphPrimaryEmail string
 }
 
 // recipientMatches 判断邮件收件人是否命中当前注册的别名邮箱。

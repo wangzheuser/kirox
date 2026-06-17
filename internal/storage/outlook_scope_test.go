@@ -36,3 +36,19 @@ func TestOutlookScopeStoredInvalidValueFallsBackToIMAP(t *testing.T) {
 		t.Fatalf("非法历史配置应回退到 imap: got %q", got)
 	}
 }
+
+func TestOutlookGraphRegistrationEmailModeDefaultsToAutoAndPersists(t *testing.T) {
+	withTempStorageConfig(t, "")
+	if got := GetOutlookGraphRegistrationEmailMode(); got != OutlookGraphRegistrationEmailAuto {
+		t.Fatalf("default mode=%q, want auto", got)
+	}
+	if err := SetOutlookGraphRegistrationEmailMode(OutlookGraphRegistrationEmailPrimary); err != nil {
+		t.Fatalf("SetOutlookGraphRegistrationEmailMode: %v", err)
+	}
+	if got := GetOutlookGraphRegistrationEmailMode(); got != OutlookGraphRegistrationEmailPrimary {
+		t.Fatalf("persisted mode=%q", got)
+	}
+	if err := SetOutlookGraphRegistrationEmailMode("bad"); err == nil {
+		t.Fatal("invalid graph registration email mode should fail")
+	}
+}

@@ -25,6 +25,10 @@ const (
 	OutlookScopeIMAP  = "imap"
 	OutlookScopeGraph = "graph"
 
+	OutlookGraphRegistrationEmailAuto     = "auto"
+	OutlookGraphRegistrationEmailImported = "imported"
+	OutlookGraphRegistrationEmailPrimary  = "primary"
+
 	DefaultPageStayMinMs = 5000
 	DefaultPageStayMaxMs = 8000
 
@@ -50,6 +54,7 @@ const (
 	keyPageStayMinMs                = "page_stay_min_ms"
 	keyPageStayMaxMs                = "page_stay_max_ms"
 	keyOutlookScope                 = "outlook_scope"
+	keyOutlookGraphRegistrationMode = "outlook_graph_registration_email_mode"
 	keyProxyMode                    = "proxy_mode"
 	keyProxy                        = "proxy"
 	keyLanguage                     = "language"
@@ -127,6 +132,7 @@ var configKeyOrder = []string{
 	keyPageStayMinMs,
 	keyPageStayMaxMs,
 	keyOutlookScope,
+	keyOutlookGraphRegistrationMode,
 	keyProxyMode,
 	keyProxy,
 	keyLanguage,
@@ -533,6 +539,28 @@ func SetOutlookScope(scope string) error {
 	})
 }
 
+// GetOutlookGraphRegistrationEmailMode 返回 Graph 模式下注册邮箱选择策略。
+func GetOutlookGraphRegistrationEmailMode() string {
+	m := loadConfigMap()
+	mode := normalizeOutlookGraphRegistrationEmailMode(m[keyOutlookGraphRegistrationMode])
+	if mode == "" {
+		return OutlookGraphRegistrationEmailAuto
+	}
+	return mode
+}
+
+// SetOutlookGraphRegistrationEmailMode 保存 Graph 模式下注册邮箱选择策略。
+func SetOutlookGraphRegistrationEmailMode(mode string) error {
+	mode = normalizeOutlookGraphRegistrationEmailMode(mode)
+	if mode == "" {
+		return fmt.Errorf("不支持的 Outlook Graph 注册邮箱策略")
+	}
+	return modifyConfigMap(func(m map[string]string) error {
+		m[keyOutlookGraphRegistrationMode] = mode
+		return nil
+	})
+}
+
 // GetProxy 返回当前全局代理 URL（空字符串表示直连）。
 func GetProxy() string {
 	_proxyOnce.Do(func() {
@@ -920,6 +948,19 @@ func normalizeOutlookScope(scope string) string {
 		return OutlookScopeIMAP
 	case OutlookScopeGraph:
 		return OutlookScopeGraph
+	default:
+		return ""
+	}
+}
+
+func normalizeOutlookGraphRegistrationEmailMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case OutlookGraphRegistrationEmailAuto, "":
+		return OutlookGraphRegistrationEmailAuto
+	case OutlookGraphRegistrationEmailImported:
+		return OutlookGraphRegistrationEmailImported
+	case OutlookGraphRegistrationEmailPrimary:
+		return OutlookGraphRegistrationEmailPrimary
 	default:
 		return ""
 	}

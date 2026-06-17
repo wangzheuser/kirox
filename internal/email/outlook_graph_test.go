@@ -3,6 +3,7 @@ package email
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -242,5 +243,79 @@ func TestWaitForOTPGraphFiltersByRegistrationEmailWhenPresent(t *testing.T) {
 	}
 	if code != "777888" {
 		t.Fatalf("should read OTP addressed to RegistrationEmail, got %q", code)
+	}
+}
+
+func TestGetOutlookGraphProfileWithProxyCollectsAliases(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			fmt.Fprint(w, `{"access_token":"token"}`)
+		case "/me":
+			if got := r.URL.Query().Get("$select"); got != "userPrincipalName,mail,proxyAddresses,otherMails" {
+				t.Fatalf("unexpected $select: %q", got)
+			}
+			fmt.Fprint(w, `{"userPrincipalName":"primary@hotmail.com","mail":"primary@hotmail.com","proxyAddresses":["SMTP:primary@hotmail.com","smtp:alias@outlook.jp"],"otherMails":["other@example.com"]}`)
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	oldEndpoint := outlookGraphTokenEndpoint
+	oldAPIBase := outlookGraphAPIBase
+	outlookGraphTokenEndpoint = server.URL + "/token"
+	outlookGraphAPIBase = server.URL
+	t.Cleanup(func() {
+		outlookGraphTokenEndpoint = oldEndpoint
+		outlookGraphAPIBase = oldAPIBase
+	})
+
+	profile, err := GetOutlookGraphProfileWithProxy(OutlookAccount{ClientID: "client-id", RefreshToken: "refresh-token"}, "")
+	if err != nil {
+		t.Fatalf("GetOutlookGraphProfileWithProxy: %v", err)
+	}
+	if profile.PrimaryEmail != "primary@hotmail.com" {
+		t.Fatalf("PrimaryEmail=%q", profile.PrimaryEmail)
+	}
+	if !profile.HasAliasData() {
+		t.Fatalf("expected Graph alias fields to be marked available")
+	}
+	if !profile.HasAddress("alias@outlook.jp") || !profile.HasAddress("other@example.com") || !profile.HasAddress("PRIMARY@hotmail.com") {
+		t.Fatalf("aliases not collected/matched correctly: %#v", profile.Aliases)
+	}
+}
+
+func TestGetOutlookGraphProfileWithProxyDistinguishesMissingAliasFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			fmt.Fprint(w, `{"access_token":"token"}`)
+		case "/me":
+			fmt.Fprint(w, `{"userPrincipalName":"primary@hotmail.com","mail":"primary@hotmail.com"}`)
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	oldEndpoint := outlookGraphTokenEndpoint
+	oldAPIBase := outlookGraphAPIBase
+	outlookGraphTokenEndpoint = server.URL + "/token"
+	outlookGraphAPIBase = server.URL
+	t.Cleanup(func() {
+		outlookGraphTokenEndpoint = oldEndpoint
+		outlookGraphAPIBase = oldAPIBase
+	})
+
+	profile, err := GetOutlookGraphProfileWithProxy(OutlookAccount{ClientID: "client-id", RefreshToken: "refresh-token"}, "")
+	if err != nil {
+		t.Fatalf("GetOutlookGraphProfileWithProxy: %v", err)
+	}
+	if profile.HasAliasData() {
+		t.Fatalf("missing Graph alias fields should not be treated as complete alias data: %#v", profile)
+	}
+	if !profile.HasAddress("primary@hotmail.com") {
+		t.Fatalf("primary address should still be matched: %#v", profile)
 	}
 }

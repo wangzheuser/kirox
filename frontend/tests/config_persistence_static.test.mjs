@@ -35,7 +35,7 @@ test('registration form is persisted through backend APIs instead of long-term l
 });
 
 test('wails wrappers expose persistent config APIs', () => {
-  for (const name of ['GetSoundEnabled', 'SetSoundEnabled', 'GetVerifyModelsEnabled', 'SetVerifyModelsEnabled', 'GetRegistrationConfig', 'SetRegistrationConfig', 'GetKiroRSConfig', 'SetKiroRSConfig', 'TestKiroRSConnection']) {
+  for (const name of ['GetSoundEnabled', 'SetSoundEnabled', 'GetVerifyModelsEnabled', 'SetVerifyModelsEnabled', 'GetRegistrationConfig', 'SetRegistrationConfig', 'GetKiroRSConfig', 'SetKiroRSConfig', 'TestKiroRSConnection', 'GetOutlookGraphRegistrationEmailMode', 'SetOutlookGraphRegistrationEmailMode']) {
     assert.match(wailsAppJs, new RegExp(`export function ${name}\\(`));
     assert.match(wailsAppDts, new RegExp(`export function ${name}\\(`));
   }
@@ -60,6 +60,7 @@ test('settings cfg controls have backend persistence coverage or explicit non-se
     'cfg-kiro-rs-auto-sync',
     'cfg-kiro-rs-key',
     'cfg-kiro-rs-url',
+    'cfg-outlook-graph-registration-email-mode',
     'cfg-outlook-scope',
     'cfg-page-stay-max-seconds',
     'cfg-page-stay-min-seconds',
@@ -91,4 +92,16 @@ test('proxy pool is an independent proxy mode panel', () => {
   assert.ok(clashPanelStart >= 0, 'proxy-clash-panel should exist');
   assert.ok(normalPanelStart < poolPanelStart, 'pool panel should follow normal panel');
   assert.ok(poolPanelStart < clashPanelStart, 'pool panel should be independent before clash panel');
+});
+
+test('Outlook Graph registration email strategy is persisted through backend APIs', () => {
+  assert.match(html, /id="cfg-outlook-graph-registration-email-mode"/);
+  assert.match(appJs, /loadOutlookGraphRegistrationEmailMode/);
+  assert.match(appJs, /saveOutlookGraphRegistrationEmailMode/);
+  assert.match(appJs, /GetOutlookGraphRegistrationEmailMode/);
+  assert.match(appJs, /SetOutlookGraphRegistrationEmailMode/);
+  assert.match(wailsAppJs, /export function GetOutlookGraphRegistrationEmailMode\(\)/);
+  assert.match(wailsAppJs, /export function SetOutlookGraphRegistrationEmailMode\(arg1\)/);
+  assert.match(wailsAppDts, /export function GetOutlookGraphRegistrationEmailMode\(\):Promise<string>/);
+  assert.match(wailsAppDts, /export function SetOutlookGraphRegistrationEmailMode\(arg1:string\):Promise<Record<string, any>>/);
 });

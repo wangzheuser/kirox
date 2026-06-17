@@ -401,6 +401,19 @@ func (a *App) SetOutlookScope(scope string) map[string]interface{} {
 	return map[string]interface{}{"success": true, "scope": storage.GetOutlookScope()}
 }
 
+// GetOutlookGraphRegistrationEmailMode 获取 Graph 模式下注册邮箱选择策略。
+func (a *App) GetOutlookGraphRegistrationEmailMode() string {
+	return storage.GetOutlookGraphRegistrationEmailMode()
+}
+
+// SetOutlookGraphRegistrationEmailMode 保存 Graph 模式下注册邮箱选择策略。
+func (a *App) SetOutlookGraphRegistrationEmailMode(mode string) map[string]interface{} {
+	if err := storage.SetOutlookGraphRegistrationEmailMode(mode); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true, "mode": storage.GetOutlookGraphRegistrationEmailMode()}
+}
+
 // GetProxy 返回当前全局代理（空字符串=直连）
 func (a *App) GetProxy() string {
 	return storage.GetProxy()

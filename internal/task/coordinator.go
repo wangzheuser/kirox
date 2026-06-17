@@ -242,20 +242,74 @@ func shouldDeferOutlookAccountForPreviousFailure(failReason string) bool {
 
 type outlookGraphUPNResolver func(email.OutlookAccount, string) (string, error)
 
+type outlookGraphProfileResolver func(email.OutlookAccount, string) (email.OutlookGraphProfile, error)
+
 func resolveOutlookGraphRegistrationEmail(acc email.OutlookAccount, emailProxy string, resolver outlookGraphUPNResolver) email.OutlookAccount {
-	if strings.TrimSpace(acc.RegistrationEmail) != "" || resolver == nil {
+	profileResolver := func(acc email.OutlookAccount, proxyURL string) (email.OutlookGraphProfile, error) {
+		primary, err := resolver(acc, proxyURL)
+		return email.OutlookGraphProfile{PrimaryEmail: primary}, err
+	}
+	return resolveOutlookGraphRegistrationEmailWithMode(acc, emailProxy, storage.OutlookGraphRegistrationEmailPrimary, profileResolver)
+}
+
+func resolveOutlookGraphRegistrationEmailWithMode(acc email.OutlookAccount, emailProxy, mode string, resolver outlookGraphProfileResolver) email.OutlookAccount {
+	if strings.TrimSpace(acc.RegistrationEmail) != "" {
 		return acc
 	}
-	upn, err := resolver(acc, emailProxy)
+	imported := strings.TrimSpace(acc.Email)
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == storage.OutlookGraphRegistrationEmailImported || resolver == nil {
+		acc.RegistrationEmail = imported
+		return acc
+	}
+	profile, err := resolver(acc, emailProxy)
 	if err != nil {
 		log.Printf("[Kiro] Outlook Graph 地址解析失败: %s: %v", acc.Email, err)
+		acc.RegistrationEmail = imported
 		return acc
 	}
-	if upn != "" && !strings.EqualFold(upn, acc.Email) {
-		log.Printf("[Kiro] Outlook Graph 注册邮箱映射: %s -> %s", acc.Email, upn)
+	primary := strings.TrimSpace(profile.PrimaryEmail)
+	acc.GraphPrimaryEmail = primary
+	switch mode {
+	case storage.OutlookGraphRegistrationEmailPrimary:
+		if primary != "" {
+			acc.RegistrationEmail = primary
+		} else {
+			acc.RegistrationEmail = imported
+		}
+	case storage.OutlookGraphRegistrationEmailAuto, "":
+		if profile.HasAliasData() {
+			if profile.HasAddress(imported) {
+				acc.RegistrationEmail = imported
+			} else if primary != "" {
+				acc.RegistrationEmail = primary
+			} else {
+				acc.RegistrationEmail = imported
+			}
+		} else {
+			acc.RegistrationEmail = imported
+		}
+	default:
+		acc.RegistrationEmail = imported
 	}
-	acc.RegistrationEmail = upn
+	logOutlookGraphRegistrationChoice(imported, acc.GraphPrimaryEmail, acc.RegistrationEmail, mode)
 	return acc
+}
+
+func logOutlookGraphRegistrationChoice(imported, primary, registration, mode string) {
+	if strings.TrimSpace(primary) == "" {
+		log.Printf("[Kiro] Outlook Graph 注册邮箱: %s（策略: %s，未获取到主邮箱）", registration, mode)
+		return
+	}
+	if strings.EqualFold(registration, imported) && !strings.EqualFold(imported, primary) {
+		log.Printf("[Kiro] Outlook Graph 主邮箱: %s，注册邮箱: %s（使用导入别名，策略: %s）", primary, registration, mode)
+		return
+	}
+	if !strings.EqualFold(registration, imported) {
+		log.Printf("[Kiro] Outlook Graph 主邮箱: %s，注册邮箱: %s（导入邮箱: %s，策略: %s）", primary, registration, imported, mode)
+		return
+	}
+	log.Printf("[Kiro] Outlook Graph 主邮箱: %s，注册邮箱: %s（策略: %s）", primary, registration, mode)
 }
 
 func prepareMoeMailStartRequest(req StartTaskRequest, loadSavedConfigs func() []email.MoeMailConfig) StartTaskRequest {
@@ -762,7 +816,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		var currentEmail string
 		setOutlookAccount := func(acc email.OutlookAccount) {
 			if taskCfg.UseOutlookGraph() {
-				acc = resolveOutlookGraphRegistrationEmail(acc, taskCfg.EmailProxy, email.GetOutlookGraphUserPrincipalNameWithProxy)
+				acc = resolveOutlookGraphRegistrationEmailWithMode(acc, taskCfg.EmailProxy, storage.GetOutlookGraphRegistrationEmailMode(), email.GetOutlookGraphProfileWithProxy)
 			}
 			taskCfg.OutlookAccount = &acc
 			accountEmail = acc.Email

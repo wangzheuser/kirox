@@ -63,6 +63,8 @@ export function GetOutlookAccounts():Promise<Array<Record<string, any>>>;
 
 export function GetOutlookScope():Promise<string>;
 
+export function GetOutlookGraphRegistrationEmailMode():Promise<string>;
+
 export function GetOverview():Promise<Record<string, any>>;
 
 export function GetPageStayConfig():Promise<storage.PageStayConfig>;
@@ -138,6 +140,8 @@ export function SetKiroRSConfig(arg1:string,arg2:string,arg3:boolean):Promise<Re
 export function SetLanguage(arg1:string):Promise<Record<string, any>>;
 
 export function SetOutlookScope(arg1:string):Promise<Record<string, any>>;
+
+export function SetOutlookGraphRegistrationEmailMode(arg1:string):Promise<Record<string, any>>;
 
 export function SetPageStayConfig(arg1:storage.PageStayConfig):Promise<Record<string, any>>;
 

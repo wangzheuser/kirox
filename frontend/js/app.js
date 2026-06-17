@@ -303,6 +303,31 @@ async function saveOutlookScope() {
   }
 }
 
+async function loadOutlookGraphRegistrationEmailMode() {
+  try {
+    var mode = await window.go.main.App.GetOutlookGraphRegistrationEmailMode();
+    var el = document.getElementById('cfg-outlook-graph-registration-email-mode');
+    if (el) el.value = mode || 'auto';
+  } catch(e) {}
+}
+
+async function saveOutlookGraphRegistrationEmailMode() {
+  try {
+    var el = document.getElementById('cfg-outlook-graph-registration-email-mode');
+    var mode = (el && el.value) || 'auto';
+    var result = await window.go.main.App.SetOutlookGraphRegistrationEmailMode(mode);
+    if (result.error) {
+      showToast(result.error, 'error');
+      return;
+    }
+    if (el) el.value = result.mode || mode;
+    var label = { auto: '自动识别别名', imported: '始终使用导入邮箱', primary: '始终使用 Graph 主邮箱' }[result.mode || mode] || '自动识别别名';
+    showToast('Graph 注册邮箱策略已保存：' + label);
+  } catch(e) {
+    showToast('保存失败: ' + e.message, 'error');
+  }
+}
+
 function bindSettingsAutosave() {
   ['cfg-page-stay-min-seconds', 'cfg-page-stay-max-seconds'].forEach(function(id) {
     var el = document.getElementById(id);
@@ -314,6 +339,11 @@ function bindSettingsAutosave() {
   var outlookScopeEl = document.getElementById('cfg-outlook-scope');
   if (outlookScopeEl) {
     outlookScopeEl.addEventListener('change', saveOutlookScope);
+  }
+
+  var outlookGraphModeEl = document.getElementById('cfg-outlook-graph-registration-email-mode');
+  if (outlookGraphModeEl) {
+    outlookGraphModeEl.addEventListener('change', saveOutlookGraphRegistrationEmailMode);
   }
 
   // kiro.rs 同步：文本框防抖静默保存，开关即时保存
@@ -1212,6 +1242,7 @@ async function loadConfig() {
   loadResultOutputDir();
   loadPageStayConfig();
   loadOutlookScope();
+  loadOutlookGraphRegistrationEmailMode();
   loadProxyMode();
   loadProxy();
   loadEmailProxy();

@@ -469,6 +469,22 @@
 
             <div class="settings-item">
               <div class="settings-item-main">
+                <div class="settings-item-title">Graph 注册邮箱策略</div>
+                <div class="settings-item-desc">自动识别别名会优先保留导入邮箱；也可强制使用导入邮箱或 Graph 主邮箱。</div>
+              </div>
+              <div class="settings-item-action">
+                <div style="display:flex;align-items:center;gap:8px;width:100%;flex-wrap:wrap;">
+                  <select id="cfg-outlook-graph-registration-email-mode" class="form-input" style="width:260px;height:38px;">
+                    <option value="auto">自动识别别名（推荐）</option>
+                    <option value="imported">始终使用导入邮箱</option>
+                    <option value="primary">始终使用 Graph 主邮箱</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-item">
+              <div class="settings-item-main">
                 <div class="settings-item-title" data-i18n="settings.proxy">代理</div>
                 <div class="settings-item-desc">代理模式互斥：直连、普通代理、多代理池、Clash 代理四选一。普通代理与代理池均支持 http/https/socks5/socks5h、用户名密码与 {uuid} 会话模板（运行时替换为 32 位无短横线 ID）。</div>
               </div>
