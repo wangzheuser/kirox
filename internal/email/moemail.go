@@ -241,25 +241,11 @@ func NewMoeMailProviderWithProxy(config MoeMailConfig, name string, expiryTime i
 	if err != nil {
 		log.Printf("[MoeMail] 警告：无法获取系统配置: %v，尝试直接使用域名", err)
 	} else {
-		// 验证域名是否在可用列表中
-		domainValid := false
-		for _, availableDomain := range sysConfig.Domains {
-			if availableDomain == domain {
-				domainValid = true
-				break
-			}
+		resolvedDomain, err := resolveMoeMailDomain(domain, sysConfig.Domains)
+		if err != nil {
+			return nil, err
 		}
-
-		if !domainValid {
-			// 域名不可用，尝试使用第一个可用域名
-			if len(sysConfig.Domains) > 0 {
-				oldDomain := domain
-				domain = sysConfig.Domains[0]
-				log.Printf("[MoeMail] 域名 %s 不可用，自动切换到 %s", oldDomain, domain)
-			} else {
-				return nil, fmt.Errorf("域名 %s 不在可用列表中，且没有其他可用域名", domain)
-			}
-		}
+		domain = resolvedDomain
 	}
 
 	// 生成临时邮箱
@@ -284,6 +270,19 @@ func NewMoeMailProviderWithProxy(config MoeMailConfig, name string, expiryTime i
 		address:             email.Address,
 		initialMessageCount: initialCount,
 	}, nil
+}
+
+func resolveMoeMailDomain(selectedDomain string, availableDomains []string) (string, error) {
+	selectedDomain = strings.TrimSpace(selectedDomain)
+	if selectedDomain == "" {
+		return "", fmt.Errorf("MoeMail 域名不能为空")
+	}
+	for _, availableDomain := range availableDomains {
+		if strings.EqualFold(strings.TrimSpace(availableDomain), selectedDomain) {
+			return selectedDomain, nil
+		}
+	}
+	return "", fmt.Errorf("MoeMail 域名 %s 不在当前配置的可用域名列表中", selectedDomain)
 }
 
 // GetAddress 返回邮箱地址

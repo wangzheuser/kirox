@@ -16,6 +16,19 @@ func scrubURLs(s string) string {
 	return urlRegex.ReplaceAllString(s, "<endpoint>")
 }
 
+func extractBracketDiagnostics(s string) string {
+	start := strings.LastIndex(s, "[")
+	end := strings.LastIndex(s, "]")
+	if start < 0 || end <= start {
+		return ""
+	}
+	diagnostics := strings.TrimSpace(s[start+1 : end])
+	if strings.Contains(diagnostics, "provider=") || strings.Contains(diagnostics, "domain=") {
+		return diagnostics
+	}
+	return ""
+}
+
 // formatError 将技术错误转换为用户友好的错误信息
 func (r *Registrar) formatError(step string, err error) string {
 	errMsg := scrubURLs(err.Error())
@@ -60,6 +73,11 @@ func (r *Registrar) formatError(step string, err error) string {
 
 	// 注册被拦截
 	if strings.Contains(errMsg, "BLOCKED") || strings.Contains(errMsg, "注册请求被拦截") {
+		if strings.Contains(errMsg, "send-otp 失败") {
+			if diagnostics := extractBracketDiagnostics(errMsg); diagnostics != "" {
+				return "注册被拦截: 请更换IP或稍后重试 [" + diagnostics + "]"
+			}
+		}
 		return "注册被拦截: 请更换IP或稍后重试"
 	}
 

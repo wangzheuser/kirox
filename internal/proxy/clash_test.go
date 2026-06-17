@@ -199,3 +199,78 @@ func TestClashClientReadsLargeProxiesResponse(t *testing.T) {
 		t.Fatalf("large node name not parsed correctly")
 	}
 }
+
+func TestClashClientFiltersSubscriptionMetadataNodes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/version":
+			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.2.3"})
+		case r.URL.Path == "/proxies":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"proxies": map[string]interface{}{
+					"GLOBAL": map[string]interface{}{"type": "Selector", "all": []string{
+						"DIRECT",
+						"剩余流量：53.63 GB",
+						"距离下次重置剩余：25 天",
+						"套餐到期：2026-07-11",
+						"建议：感到卡顿请切换到专线节点",
+						"放丢失官网:https://love.p6m6.com",
+						"🇺🇸【北美洲】美国01原生丨直连【2x】",
+					}, "now": "建议：感到卡顿请切换到专线节点"},
+				},
+			})
+		case r.URL.Path == "/proxies/GLOBAL":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"type": "Selector", "all": []string{
+				"DIRECT",
+				"剩余流量：53.63 GB",
+				"距离下次重置剩余：25 天",
+				"套餐到期：2026-07-11",
+				"建议：感到卡顿请切换到专线节点",
+				"放丢失官网:https://love.p6m6.com",
+				"🇺🇸【北美洲】美国01原生丨直连【2x】",
+			}, "now": "建议：感到卡顿请切换到专线节点"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: server.URL, ProxyGroup: "GLOBAL"})
+	if err := client.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if len(client.nodes) != 1 || client.nodes[0] != "🇺🇸【北美洲】美国01原生丨直连【2x】" {
+		t.Fatalf("metadata nodes should be filtered, got %v", client.nodes)
+	}
+	if client.nodeIndex != -1 {
+		t.Fatalf("current metadata node should not set nodeIndex, got %d", client.nodeIndex)
+	}
+}
+
+func TestClashClientFiltersPolicyGroupPseudoNodes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/version":
+			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.2.3"})
+		case r.URL.Path == "/proxies":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"proxies": map[string]interface{}{
+					"GLOBAL": map[string]interface{}{"type": "Selector", "all": []string{"🚀 节点选择", "☑️ 手动切换", "♻️ 自动选择", "🤖 OpenAi", "🇺🇲 美国节点", "🇺🇸 _洛杉矶-01"}, "now": "🚀 节点选择"},
+				},
+			})
+		case r.URL.Path == "/proxies/GLOBAL":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"type": "Selector", "all": []string{"🚀 节点选择", "☑️ 手动切换", "♻️ 自动选择", "🤖 OpenAi", "🇺🇲 美国节点", "🇺🇸 _洛杉矶-01"}, "now": "🚀 节点选择"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: server.URL, ProxyGroup: "GLOBAL"})
+	if err := client.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if len(client.nodes) != 1 || client.nodes[0] != "🇺🇸 _洛杉矶-01" {
+		t.Fatalf("policy group pseudo nodes should be filtered, got %v", client.nodes)
+	}
+}

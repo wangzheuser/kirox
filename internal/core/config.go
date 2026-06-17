@@ -20,6 +20,7 @@ type Config struct {
 	ProfileBase string
 	ViewBase    string
 	PortalBase  string
+	QBase       string
 	DirectoryID string
 	StartURL    string
 
@@ -33,6 +34,8 @@ type Config struct {
 	PageStayMaxMs int
 
 	Proxy string
+	// FingerprintKey 用于绑定浏览器硬件指纹缓存。为空时沿用 Proxy；Clash 本地代理会填入真实节点名，避免所有出口共用同一指纹。
+	FingerprintKey string
 	// EmailProxy 表示邮箱服务 API 专用代理，空值表示直连。
 	EmailProxy string
 	Debug      bool
@@ -42,6 +45,11 @@ type Config struct {
 	ProxySwitchable bool
 	// VerifyModelsEnabled 表示注册验活时是否额外请求 ListAvailableModels；默认关闭。
 	VerifyModelsEnabled bool
+	// 浏览器地区指纹；Clash 模式会按真实节点名覆盖，避免 IP 地区与语言/时区冲突。
+	AcceptLanguage string
+	I18Next        string
+	TimeZone       int
+	TimeZoneSet    bool
 
 	EmailProvider   string
 	UseOutlook      bool
@@ -73,6 +81,7 @@ func NewConfig() *Config {
 		ProfileBase:     "https://profile.aws.amazon.com",
 		ViewBase:        "https://view.awsapps.com",
 		PortalBase:      "https://portal.sso.us-east-1.amazonaws.com",
+		QBase:           "https://q.us-east-1.amazonaws.com",
 		DirectoryID:     "d-9067642ac7",
 		StartURL:        "https://view.awsapps.com/start",
 		KiroBase:        "https://app.kiro.dev",
@@ -82,6 +91,10 @@ func NewConfig() *Config {
 		PageStayMinMs:   5000,
 		PageStayMaxMs:   8000,
 		OutlookScope:    OutlookScopeIMAP,
+		AcceptLanguage:  DefaultBrowserLocale().AcceptLanguage,
+		I18Next:         DefaultBrowserLocale().I18Next,
+		TimeZone:        DefaultBrowserLocale().TimeZone,
+		TimeZoneSet:     true,
 	}
 }
 

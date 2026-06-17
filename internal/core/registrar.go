@@ -83,7 +83,11 @@ type Registrar struct {
 func NewRegistrar(cfg *Config) *Registrar {
 	// 按代理绑定稳定指纹：同一出口 IP 下短时间内重复使用同一硬件身份，
 	// 只有 lsubid 前缀 / webpackHash 等真实浏览器会话间也会变的字段每次刷新。
-	identity := browser.IdentityForProxy(cfg.Proxy)
+	fingerprintKey := cfg.Proxy
+	if strings.TrimSpace(cfg.FingerprintKey) != "" {
+		fingerprintKey = strings.TrimSpace(cfg.FingerprintKey)
+	}
+	identity := browser.IdentityForProxy(fingerprintKey)
 	log.Printf("[指纹] Chrome: %s | GPU: %s | 内存: %dGB | 核心: %d | 分辨率: %dx%d (%d-bit)",
 		identity.ChromeVer, identity.GPUModel, identity.DeviceMemory, identity.HardwareConcurrency,
 		identity.Screen.Width, identity.Screen.Height, identity.Screen.ColorDepth)
@@ -276,7 +280,7 @@ func (r *Registrar) GenFPWithTime(pageType, eventType string, timeOnPage, emailL
 		ref = r.Cfg.ViewBase + "/"
 	}
 
-	fpJSON := browser.GenerateFingerprintJSON(r.Identity, loc, ref, r.FPCtx, pageType, eventType, timeOnPage, emailLen, emailAddr)
+	fpJSON := browser.GenerateFingerprintJSON(r.Identity, loc, ref, r.FPCtx, pageType, eventType, timeOnPage, emailLen, emailAddr, r.Cfg.BrowserLocale().TimeZone)
 	return crypto.EncryptFingerprint(fpJSON)
 }
 
@@ -324,7 +328,12 @@ func (r *Registrar) Step3Email() error {
 	if r.Cfg.UseOutlook && r.Cfg.OutlookAccount != nil {
 		log.Println("[3] 使用 Outlook 邮箱")
 		r.Email = strings.TrimSpace(r.Cfg.OutlookAccount.Email)
-		log.Printf("email=%s", r.Email)
+		if r.Cfg.UseOutlookGraph() && strings.TrimSpace(r.Cfg.OutlookAccount.RegistrationEmail) != "" {
+			r.Email = strings.TrimSpace(r.Cfg.OutlookAccount.RegistrationEmail)
+			log.Printf("email=%s (Graph verified address for %s)", r.Email, r.Cfg.OutlookAccount.Email)
+		} else {
+			log.Printf("email=%s", r.Email)
+		}
 		return nil
 	}
 	if r.Cfg.UseCloudMail && r.Cfg.CloudMailProvider != nil {
@@ -495,11 +504,11 @@ func (r *Registrar) Step5WorkflowInit() error {
 	h["x-amz-date"] = GmtDate()
 	h["priority"] = "u=1, i"
 
-	body, _, respH, err := r.DoPostRaw(api, map[string]interface{}{
-		"stepId": "", "workflowStateHandle": r.WorkflowHandle,
-		"inputs":    []interface{}{map[string]string{"input_type": "FingerPrintRequestInput", "fingerPrint": fp}},
-		"requestId": rid,
-	}, h)
+	body, _, respH, err := r.DoPostRaw(api, orderedExecutePayload(
+		"", r.WorkflowHandle, "",
+		[]interface{}{orderedFingerPrintRequestInput(fp)},
+		"", rid,
+	), h)
 	if err != nil {
 		return err
 	}
@@ -519,11 +528,11 @@ func (r *Registrar) Step5WorkflowInit() error {
 		h["x-amz-date"] = GmtDate()
 		h["priority"] = "u=1, i"
 
-		body, _, respH, err = r.DoPostRaw(api, map[string]interface{}{
-			"stepId": "start", "workflowStateHandle": r.WorkflowHandle,
-			"inputs":    []interface{}{map[string]string{"input_type": "FingerPrintRequestInput", "fingerPrint": fp}},
-			"requestId": rid,
-		}, h)
+		body, _, respH, err = r.DoPostRaw(api, orderedExecutePayload(
+			"start", r.WorkflowHandle, "",
+			[]interface{}{orderedFingerPrintRequestInput(fp)},
+			"", rid,
+		), h)
 		if err != nil {
 			return err
 		}

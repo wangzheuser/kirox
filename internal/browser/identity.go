@@ -1,8 +1,6 @@
 package browser
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -17,11 +15,8 @@ type chromeVersion struct {
 
 // genChromeVersion 动态生成 Chrome 版本信息
 func genChromeVersion() chromeVersion {
-	versions := []string{
-		"120", "121", "122", "123", "124", "125", "126", "127", "128", "129",
-		"130", "131", "132", "133", "134", "135", "136", "137", "138", "139",
-		"140", "141", "142", "143", "144",
-	}
+	// 只选择 tls-client 当前内置桌面 Chrome profile 支持的主版本，避免 UA/sec-ch-ua 与 TLS/HTTP2 指纹错配。
+	versions := []string{"120", "124", "131", "133", "144"}
 	v := versions[rand.Intn(len(versions))]
 
 	greaseBrands := []string{"Not_A Brand", "Not(A:Brand", "Not-A.Brand", "Not)A;Brand", "Not/A)Brand", "Not A;Brand", "Not?A_Brand"}
@@ -215,124 +210,61 @@ func genScreen() ScreenInfo {
 //   家族B: "-0.5765775004286854"   末位 53~55
 
 func genMath() (tan, sin, cos string) {
-	tanEnd := 3 + rand.Intn(100) // 放大截断随机差
-	sinEnd := 3 + rand.Intn(100)
-	tan = fmt.Sprintf("-1.42144882387472%03d", tanEnd)
-	sin = fmt.Sprintf("0.81788191211590%03d", sinEnd)
-
+	tan = []string{
+		"-1.4214488238747245",
+		"-1.4214488238747243",
+		"-1.4214488238747247",
+	}[rand.Intn(3)]
+	sin = []string{
+		"0.8178819121159085",
+		"0.8178819121159083",
+		"0.8178819121159087",
+	}[rand.Intn(3)]
 	// cos 有两个家族, 家族A 更常见 (~70%)
 	if rand.Intn(10) < 7 {
-		cosEnd := 89 + rand.Intn(15) // 更大范围
-		cos = fmt.Sprintf("-0.5753861119575%03d", cosEnd)
+		cos = []string{
+			"-0.5753861119575491",
+			"-0.5753861119575489",
+			"-0.5753861119575493",
+		}[rand.Intn(3)]
 	} else {
-		cosEnd := 53 + rand.Intn(10)
-		cos = fmt.Sprintf("-0.5765775004286%03d", cosEnd)
+		cos = []string{
+			"-0.5765775004286854",
+			"-0.5765775004286853",
+			"-0.5765775004286855",
+		}[rand.Intn(3)]
 	}
 	return
 }
 
 // ──────────────────── 算法: Canvas Histogram 模拟 ────────────────────
-// 分析 collect_histogram.html 的渲染逻辑 (150×60 canvas, 36000 RGBA 样本):
+// 真实 FWCIM 使用 150×60 canvas 绘制固定图形、字体和混合模式后，
+// 对 getImageData(...).data 做 256 桶直方图。这个分布主要由 Chrome/Windows
+// 2D canvas 渲染决定，同一桌面 Chrome 家族非常稳定；TES 会校验它是否像真实画布。
 //
-// 1. 大量透明背景 → bins[0] 极大 (R=0,G=0,B=0,A=0 → 每个透明像素贡献 4 个 0)
-// 2. 绘制区域 alpha=255 → bins[255] 极大
-// 3. #f60 = RGB(255,102,0) 矩形 → bins[102] 出现 spike (~500-700)
-// 4. multiply/difference 混合模式 + 圆形 → 产生 ~153 附近的 spike (~400-700)
-// 5. 文字抗锯齿 + 渐变 + 曲线 → 中间 bins 分散在 4-120
+// 下方基线来自本地 Chromium 运行真实 profile FWCIM collector 的明文捕获。
+
+var chrome2DCanvasHistogramBase = [256]int{
+	12839, 66, 58, 54, 46, 73, 29, 41, 36, 24, 94, 46, 32, 37, 23, 80,
+	53, 29, 62, 123, 29, 29, 31, 50, 30, 28, 36, 24, 33, 30, 36, 39,
+	39, 51, 23, 22, 43, 142, 25, 40, 29, 37, 26, 30, 36, 31, 20, 38,
+	37, 38, 43, 35, 32, 122, 18, 40, 25, 30, 19, 17, 59, 41, 15, 17,
+	23, 19, 42, 20, 26, 44, 14, 21, 29, 15, 43, 77, 17, 14, 50, 47,
+	32, 24, 22, 23, 33, 21, 17, 31, 33, 62, 30, 27, 23, 28, 125, 20,
+	38, 13, 28, 90, 84, 26, 515, 37, 13, 45, 91, 25, 13, 16, 21, 46,
+	47, 12, 18, 15, 21, 95, 24, 22, 29, 40, 21, 67, 44, 37, 29, 128,
+	190, 47, 24, 54, 37, 14, 24, 26, 22, 41, 135, 18, 23, 15, 20, 29,
+	21, 19, 30, 21, 11, 67, 55, 20, 20, 86, 15, 56, 24, 21, 13, 28,
+	16, 70, 11, 9, 27, 35, 9, 15, 18, 25, 22, 30, 24, 41, 19, 36,
+	57, 82, 15, 25, 69, 54, 12, 28, 12, 8, 19, 11, 18, 52, 16, 29,
+	14, 5, 31, 17, 18, 29, 59, 15, 29, 40, 107, 41, 56, 75, 100, 12,
+	39, 20, 24, 14, 21, 42, 43, 24, 25, 21, 70, 36, 35, 26, 69, 83,
+	22, 59, 31, 43, 64, 44, 25, 37, 22, 41, 28, 46, 108, 36, 30, 74,
+	62, 41, 62, 34, 83, 107, 39, 81, 45, 32, 89, 60, 50, 55, 89, 12719,
+}
 
 func generateCanvasData() (int32, [256]int) {
-	var bins [256]int
-	const totalSamples = 36000 // 150×60×4(RGBA)
-
-	// ── 主峰: 背景透明区 + Alpha 通道 ──
-	bins[0] = 5000 + rand.Intn(10001)   // 5000~15000
-	bins[255] = 6000 + rand.Intn(10001) // 6000~16000
-
-	// ── 次要 spike: 来自特定颜色值 ──
-	// #f60 矩形的 G 通道 = 102
-	spike1Pos := 100 + rand.Intn(6) // 100~105, 围绕 102
-	bins[spike1Pos] = 500 + rand.Intn(200)
-
-	// multiply 混合产生的值, 围绕 153
-	spike2Pos := 150 + rand.Intn(8) // 150~157, 围绕 153
-	bins[spike2Pos] = 400 + rand.Intn(300)
-
-	// ── 计算已分配的样本数 ──
-	assigned := bins[0] + bins[255] + bins[spike1Pos] + bins[spike2Pos]
-	remaining := totalSamples - assigned
-
-	// ── 特征颜色区 (中等值, 来自绘图操作) ──
-	// 这些是 circle/gradient/text 渲染常产生的值范围
-	featureBins := []struct {
-		lo, hi   int // bin 范围
-		avgCount int // 每个 bin 平均计数
-	}{
-		{1, 30, 30},    // 深色区 (暗部抗锯齿)
-		{31, 70, 20},   // 中暗区 (曲线/渐变)
-		{71, 99, 25},   // 中间区 (混合色)
-		{106, 149, 15}, // 中高区 (文字/渐变过渡)
-		{158, 200, 18}, // 高亮区 (圆形着色)
-		{201, 254, 25}, // 亮区 (接近白色)
-	}
-
-	for _, fb := range featureBins {
-		for i := fb.lo; i <= fb.hi; i++ {
-			if remaining <= 0 {
-				break
-			}
-			// 正态分布风格: 中心值多，两侧少
-			center := (fb.lo + fb.hi) / 2
-			dist := abs(i - center)
-			maxDist := (fb.hi - fb.lo) / 2
-			if maxDist == 0 {
-				maxDist = 1
-			}
-			// 衰减因子
-			scale := float64(maxDist-dist) / float64(maxDist)
-			if scale < 0.2 {
-				scale = 0.2
-			}
-			base := int(float64(fb.avgCount) * scale)
-			v := max(2, base+rand.Intn(max(1, base/2+1))-base/4)
-			if v > remaining {
-				v = remaining
-			}
-			bins[i] = v
-			remaining -= v
-		}
-	}
-
-	// ── 未分配的 bins 补充少量噪声 ──
-	for i := 1; i < 255; i++ {
-		if bins[i] == 0 && remaining > 0 {
-			v := 2 + rand.Intn(8) // 2-9 的微小噪声
-			if v > remaining {
-				v = remaining
-			}
-			bins[i] = v
-			remaining -= v
-		}
-	}
-
-	// ── 余量归入 bins[0] (最大的 bin 微调不影响分布形状) ──
-	if remaining > 0 {
-		bins[0] += remaining
-	} else if remaining < 0 {
-		// 如果超出了, 从 bins[0] 扣除
-		bins[0] += remaining // remaining is negative
-		if bins[0] < 10000 {
-			bins[0] = 10000
-		}
-	}
-
-	// ── 计算 hash: SHA256(bins 的 LE 字节序列) 截取前 4 字节 → int32 ──
-	raw := make([]byte, 256*4)
-	for i, v := range bins {
-		binary.LittleEndian.PutUint32(raw[i*4:], uint32(v))
-	}
-	digest := sha256.Sum256(raw)
-	hash := int32(binary.LittleEndian.Uint32(digest[:4]))
-	return hash, bins
+	return -2120415875, chrome2DCanvasHistogramBase
 }
 
 // abs 整数绝对值

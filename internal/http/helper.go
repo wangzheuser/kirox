@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -73,10 +74,47 @@ func PKCE() (verifier, challenge string) {
 	return
 }
 
-// NewTLSClient 创建带 TLS 指纹伪装的 HTTP 客户端
-// chromeVer 可选，忽略（始终使用 Chrome_144 profile）
+func chromeProfileVersion(chromeVer ...string) string {
+	if len(chromeVer) == 0 {
+		return ""
+	}
+	return chromeVer[0]
+}
+
+func chromeProfileKeyFromVersion(version string) string {
+	version = strings.TrimSpace(version)
+	major := version
+	if dot := strings.IndexByte(major, '.'); dot >= 0 {
+		major = major[:dot]
+	}
+	switch major {
+	case "120", "124", "131", "133", "144":
+		return "chrome_" + major
+	default:
+		return "chrome_144"
+	}
+}
+
+func chromeClientProfile(version string) profiles.ClientProfile {
+	switch chromeProfileKeyFromVersion(version) {
+	case "chrome_120":
+		return profiles.Chrome_120
+	case "chrome_124":
+		return profiles.Chrome_124
+	case "chrome_131":
+		return profiles.Chrome_131
+	case "chrome_133":
+		return profiles.Chrome_133
+	default:
+		return profiles.Chrome_144
+	}
+}
+
+var newTLSClientWithTimeout = NewTLSClientWithTimeout
+
+// NewTLSClient 创建带 TLS 指纹伪装的 HTTP 客户端。
 func NewTLSClient(proxy string, followRedirect bool, chromeVer ...string) tls_client.HttpClient {
-	client, err := NewTLSClientWithTimeout(proxy, followRedirect, 60, chromeVer...)
+	client, err := newTLSClientWithTimeout(proxy, followRedirect, 60, chromeVer...)
 	if err != nil {
 		panic(fmt.Sprintf("创建 TLS 客户端失败: %v", err))
 	}
@@ -96,9 +134,10 @@ func NewTLSClientWithTimeout(proxy string, followRedirect bool, timeoutSeconds i
 		}
 		effectiveProxy = bridgeURL
 	}
+	profile := chromeClientProfile(chromeProfileVersion(chromeVer...))
 	opts := []tls_client.HttpClientOption{
 		tls_client.WithTimeoutSeconds(timeoutSeconds),
-		tls_client.WithClientProfile(profiles.Chrome_144),
+		tls_client.WithClientProfile(profile),
 		tls_client.WithInsecureSkipVerify(),
 	}
 	if !followRedirect {
@@ -118,7 +157,7 @@ func NewTLSClientWithTimeout(proxy string, followRedirect bool, timeoutSeconds i
 
 // NewNoRedirectTLSClient 创建不跟随重定向的 TLS 客户端
 func NewNoRedirectTLSClient(proxy string, chromeVer ...string) tls_client.HttpClient {
-	return NewTLSClient(proxy, false)
+	return NewTLSClient(proxy, false, chromeVer...)
 }
 
 // ExtractParam 从 URL 中提取查询参数
@@ -174,13 +213,55 @@ func GetNestedStringMap(data map[string]interface{}, key string) map[string]stri
 	return result
 }
 
-// SetHeaders 设置请求头 (保持顺序)
+// SetHeaders 设置请求头，并使用稳定的 Chrome 风格顺序。
 func SetHeaders(req *fhttp.Request, headers map[string]string) {
-	var order []string
 	for k, v := range headers {
 		req.Header.Set(k, v)
-		order = append(order, strings.ToLower(k))
 	}
+
+	preferred := []string{
+		"sec-ch-ua",
+		"sec-ch-ua-mobile",
+		"sec-ch-ua-platform",
+		"upgrade-insecure-requests",
+		"user-agent",
+		"accept",
+		"content-type",
+		"origin",
+		"sec-fetch-site",
+		"sec-fetch-mode",
+		"sec-fetch-user",
+		"sec-fetch-dest",
+		"referer",
+		"accept-encoding",
+		"accept-language",
+		"cookie",
+		"x-amzn-requestid",
+		"x-amz-date",
+		"x-amz-sso_bearer_token",
+		"x-amz-sso-bearer-token",
+		"priority",
+	}
+	present := make(map[string]bool, len(headers))
+	for k := range headers {
+		present[strings.ToLower(k)] = true
+	}
+	order := make([]string, 0, len(headers))
+	seen := make(map[string]bool, len(headers))
+	for _, key := range preferred {
+		if present[key] {
+			order = append(order, key)
+			seen[key] = true
+		}
+	}
+	var rest []string
+	for key := range present {
+		if !seen[key] {
+			rest = append(rest, key)
+		}
+	}
+	sort.Strings(rest)
+	order = append(order, rest...)
 	req.Header[fhttp.HeaderOrderKey] = order
 }
 

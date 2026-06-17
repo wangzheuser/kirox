@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"reg_go/internal/browser"
 	"reg_go/internal/email"
 	httputil "reg_go/internal/http"
 )
@@ -34,29 +35,16 @@ func (r *Registrar) Step6SubmitEmail() (string, error) {
 	h["x-amz-date"] = GmtDate()
 	h["priority"] = "u=1, i"
 
-	body, status, respH, err := r.DoPostRaw(api, map[string]interface{}{
-		"stepId":              "get-identity-user",
-		"workflowStateHandle": r.WorkflowHandle,
-		"actionId":            "SUBMIT",
-		"inputs": []interface{}{
-			map[string]string{"input_type": "UserRequestInput", "username": r.Email},
-			map[string]string{"input_type": "ApplicationTypeRequestInput", "applicationType": "SSO_INDIVIDUAL_ID"},
-			map[string]interface{}{
-				"input_type":  "UserEventRequestInput",
-				"directoryId": r.Cfg.DirectoryID,
-				"userName":    r.Email,
-				"userEvents": []map[string]interface{}{{
-					"input_type":      "UserEvent",
-					"eventType":       "PAGE_SUBMIT",
-					"pageName":        "IDENTIFICATION",
-					"timeSpentOnPage": 5000,
-				}},
-			},
-			map[string]string{"input_type": "FingerPrintRequestInput", "fingerPrint": fp},
+	body, status, respH, err := r.DoPostRaw(api, orderedExecutePayload(
+		"get-identity-user", r.WorkflowHandle, "SUBMIT",
+		[]interface{}{
+			orderedUserRequestInput(r.Email),
+			orderedApplicationTypeRequestInput("SSO_INDIVIDUAL_ID"),
+			orderedUserEventRequestInput(r.Cfg.DirectoryID, r.Email, "PAGE_SUBMIT", "IDENTIFICATION", 5000),
+			orderedFingerPrintRequestInput(fp),
 		},
-		"visitorId": r.VisitorID,
-		"requestId": rid,
-	}, h)
+		r.VisitorID, rid,
+	), h)
 	if err != nil {
 		return "", err
 	}
@@ -69,11 +57,25 @@ func (r *Registrar) Step6SubmitEmail() (string, error) {
 	}
 
 	if status == 400 {
+		if isTESBlockedResponse(body) {
+			return "", fmt.Errorf("提交邮箱失败: %d - %s", status, shortResponseBody(body, 500))
+		}
 		return "signup", nil
 	} else if status == 200 {
 		return "login", nil
 	}
 	return "", fmt.Errorf("提交邮箱失败: %d - %s", status, string(body)[:min(200, len(body))])
+}
+
+func isTESBlockedResponse(body []byte) bool {
+	lower := strings.ToLower(strings.TrimSpace(string(body)))
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, `"errorcode":"blocked"`) ||
+		strings.Contains(lower, `"errorcode": "blocked"`) ||
+		strings.Contains(lower, "request was blocked by tes") ||
+		strings.Contains(lower, "注册请求被拦截")
 }
 
 // Step7Signup 注册
@@ -90,17 +92,14 @@ func (r *Registrar) Step7Signup() error {
 	h["x-amz-date"] = GmtDate()
 	h["priority"] = "u=1, i"
 
-	body, _, respH, err := r.DoPostRaw(api, map[string]interface{}{
-		"stepId":              "get-identity-user",
-		"workflowStateHandle": r.WorkflowHandle,
-		"actionId":            "SIGNUP",
-		"inputs": []interface{}{
-			map[string]string{"input_type": "UserRequestInput", "username": r.Email},
-			map[string]string{"input_type": "FingerPrintRequestInput", "fingerPrint": fp},
+	body, _, respH, err := r.DoPostRaw(api, orderedExecutePayload(
+		"get-identity-user", r.WorkflowHandle, "SIGNUP",
+		[]interface{}{
+			orderedUserRequestInput(r.Email),
+			orderedFingerPrintRequestInput(fp),
 		},
-		"visitorId": r.VisitorID,
-		"requestId": rid,
-	}, h)
+		r.VisitorID, rid,
+	), h)
 	if err != nil {
 		return err
 	}
@@ -130,14 +129,14 @@ func (r *Registrar) Step7_5SignupInit() error {
 	h["x-amz-date"] = GmtDate()
 	h["priority"] = "u=1, i"
 
-	body, _, respH, err := r.DoPostRaw(api, map[string]interface{}{
-		"stepId": "", "workflowStateHandle": r.WorkflowHandle,
-		"inputs": []interface{}{
-			map[string]string{"input_type": "UserRequestInput", "username": r.Email},
-			map[string]string{"input_type": "FingerPrintRequestInput", "fingerPrint": fp},
+	body, _, respH, err := r.DoPostRaw(api, orderedExecutePayload(
+		"", r.WorkflowHandle, "",
+		[]interface{}{
+			orderedUserRequestInput(r.Email),
+			orderedFingerPrintRequestInput(fp),
 		},
-		"visitorId": r.VisitorID, "requestId": rid,
-	}, h)
+		r.VisitorID, rid,
+	), h)
 	if err != nil {
 		return err
 	}
@@ -160,14 +159,14 @@ func (r *Registrar) Step7_5SignupInit() error {
 	h["x-amz-date"] = GmtDate()
 	h["priority"] = "u=1, i"
 
-	body, _, respH, err = r.DoPostRaw(api, map[string]interface{}{
-		"stepId": "start", "workflowStateHandle": r.WorkflowHandle,
-		"inputs": []interface{}{
-			map[string]string{"input_type": "UserRequestInput", "username": r.Email},
-			map[string]string{"input_type": "FingerPrintRequestInput", "fingerPrint": fp},
+	body, _, respH, err = r.DoPostRaw(api, orderedExecutePayload(
+		"start", r.WorkflowHandle, "",
+		[]interface{}{
+			orderedUserRequestInput(r.Email),
+			orderedFingerPrintRequestInput(fp),
 		},
-		"visitorId": r.VisitorID, "requestId": rid,
-	}, h)
+		r.VisitorID, rid,
+	), h)
 	if err != nil {
 		return err
 	}
@@ -197,20 +196,18 @@ func (r *Registrar) Step7_8ProfileInit() error {
 	log.Println("[7.8] Profile 页面初始化")
 	r.Ubid = httputil.UbidGen()
 	r.Cookies["aws-user-profile-ubid"] = r.Ubid
-	r.Cookies["i18next"] = "zh-CN"
+	r.Cookies["i18next"] = r.Cfg.BrowserLocale().I18Next
 	if _, ok := r.Cookies["awsccc"]; !ok {
 		r.Cookies["awsccc"] = httputil.Awsccc()
 	}
 
 	url := fmt.Sprintf("%s/?workflowID=%s", r.Cfg.ProfileBase, r.WorkflowID)
-	_, _, respH, err := r.DoGet(url, map[string]string{
-		"Accept":         "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-		"User-Agent":     r.Identity.UA,
-		"sec-fetch-dest": "document",
-		"sec-fetch-mode": "navigate",
-	})
+	body, _, respH, err := r.DoGet(url, r.BuildDocumentHeaders())
 	if err != nil {
 		return err
+	}
+	if r.FPCtx != nil {
+		r.FPCtx.SetProfileHTML(string(body))
 	}
 	httputil.SaveCookies(r.Cookies, respH)
 	r.FPCtx.ResetPerfTiming()
@@ -223,20 +220,23 @@ func (r *Registrar) Step8ProfileStart() error {
 	ref := fmt.Sprintf("%s/?workflowID=%s", r.Cfg.ProfileBase, r.WorkflowID)
 	fp := r.GenFP("profile", "PageLoad", 0, "")
 
-	body, _, _, err := r.DoPostRaw(r.Cfg.ProfileBase+"/api/start", map[string]interface{}{
-		"workflowID": r.WorkflowID,
-		"browserData": map[string]interface{}{
-			"attributes": map[string]interface{}{
-				"fingerprint":     fp,
-				"eventTimestamp":  time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-				"timeSpentOnPage": "38",
-				"eventType":       "PageLoad",
-				"ubid":            r.Ubid,
-				"visitorId":       r.VisitorID,
-			},
-			"cookies": map[string]interface{}{},
-		},
-	}, r.BuildProfileHeaders(ref))
+	attrs := browser.NewOrderedMap()
+	attrs.Set("fingerprint", fp)
+	attrs.Set("eventTimestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	attrs.Set("timeSpentOnPage", "38")
+	attrs.Set("eventType", "PageLoad")
+	attrs.Set("ubid", r.Ubid)
+	attrs.Set("visitorId", r.VisitorID)
+
+	browserData := browser.NewOrderedMap()
+	browserData.Set("attributes", attrs)
+	browserData.Set("cookies", browser.NewOrderedMap())
+
+	reqPayload := browser.NewOrderedMap()
+	reqPayload.Set("workflowID", r.WorkflowID)
+	reqPayload.Set("browserData", browserData)
+
+	body, _, _, err := r.DoPostRaw(r.Cfg.ProfileBase+"/api/start", reqPayload, r.BuildProfileHeaders(ref))
 	if err != nil {
 		return err
 	}
@@ -290,22 +290,23 @@ func (r *Registrar) Step9SendOTP() error {
 	fp := r.GenFPWithTime("profile", "PageSubmit", timeOnPage, len(r.Email), r.Email)
 	tsp := fmt.Sprintf("%d", timeOnPage)
 
-	reqPayload := map[string]interface{}{
-		"workflowState": r.WorkflowState,
-		"email":         r.Email,
-		"browserData": map[string]interface{}{
-			"attributes": map[string]interface{}{
-				"fingerprint":     fp,
-				"eventTimestamp":  time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-				"timeSpentOnPage": tsp,
-				"pageName":        "EMAIL_COLLECTION",
-				"eventType":       "PageSubmit",
-				"ubid":            r.Ubid,
-				"visitorId":       r.VisitorID,
-			},
-			"cookies": map[string]interface{}{},
-		},
-	}
+	attrs := browser.NewOrderedMap()
+	attrs.Set("fingerprint", fp)
+	attrs.Set("eventTimestamp", time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
+	attrs.Set("timeSpentOnPage", tsp)
+	attrs.Set("pageName", "EMAIL_COLLECTION")
+	attrs.Set("eventType", "PageSubmit")
+	attrs.Set("ubid", r.Ubid)
+	attrs.Set("visitorId", r.VisitorID)
+
+	browserData := browser.NewOrderedMap()
+	browserData.Set("attributes", attrs)
+	browserData.Set("cookies", browser.NewOrderedMap())
+
+	reqPayload := browser.NewOrderedMap()
+	reqPayload.Set("workflowState", r.WorkflowState)
+	reqPayload.Set("email", r.Email)
+	reqPayload.Set("browserData", browserData)
 
 	respBody, status, _, err := r.DoPostRaw(r.Cfg.ProfileBase+"/api/send-otp", reqPayload, r.BuildProfileHeaders(ref))
 	if err != nil {
@@ -313,14 +314,71 @@ func (r *Registrar) Step9SendOTP() error {
 	}
 	if status != 200 {
 		bodyText := shortResponseBody(respBody, 500)
-		log.Printf("[send-otp] 失败: status=%d, body=%s, fp_len=%d", status, bodyText, len(fp))
+		diagnostics := sendOTPFailureContext(r.Cfg, r.Email, timeOnPage)
+		log.Printf("[send-otp] 失败: status=%d, body=%s, fp_len=%d, %s", status, bodyText, len(fp), diagnostics)
 		if bodyText != "" {
-			return fmt.Errorf("send-otp 失败 (%d): %s", status, bodyText)
+			return fmt.Errorf("send-otp 失败 (%d): %s [%s]", status, bodyText, diagnostics)
 		}
-		return fmt.Errorf("send-otp 失败 (%d)", status)
+		return fmt.Errorf("send-otp 失败 (%d) [%s]", status, diagnostics)
 	}
 	log.Println("验证码已发送")
 	return nil
+}
+
+func sendOTPFailureContext(cfg *Config, emailAddr string, timeOnPage int) string {
+	provider := "<unknown>"
+	pageStayMin := 0
+	pageStayMax := 0
+	emailProxyState := "direct"
+	proxyState := "direct"
+	locale := DefaultBrowserLocale()
+	if cfg != nil {
+		if strings.TrimSpace(cfg.EmailProvider) != "" {
+			provider = strings.TrimSpace(cfg.EmailProvider)
+		}
+		pageStayMin = cfg.PageStayMinMs
+		pageStayMax = cfg.PageStayMaxMs
+		if pageStayMin < 0 {
+			pageStayMin = 0
+		}
+		if pageStayMax < pageStayMin {
+			pageStayMax = pageStayMin
+		}
+		if strings.TrimSpace(cfg.EmailProxy) != "" {
+			emailProxyState = "enabled"
+		}
+		if strings.TrimSpace(cfg.Proxy) != "" {
+			proxyState = "enabled"
+		}
+		locale = cfg.BrowserLocale()
+	}
+	domain := "<unknown>"
+	if at := strings.LastIndex(strings.TrimSpace(emailAddr), "@"); at >= 0 && at+1 < len(strings.TrimSpace(emailAddr)) {
+		domain = strings.ToLower(strings.TrimSpace(emailAddr)[at+1:])
+	}
+	if timeOnPage < 0 {
+		timeOnPage = 0
+	}
+	return fmt.Sprintf("provider=%s, domain=%s, emailProxy=%s, proxy=%s, pageStay=%d-%dms, timeOnPage=%dms, acceptLanguage=%s, i18next=%s, timeZone=%d",
+		provider, domain, emailProxyState, proxyState, pageStayMin, pageStayMax, timeOnPage, primaryLanguageTag(locale.AcceptLanguage), locale.I18Next, locale.TimeZone)
+}
+
+func primaryLanguageTag(acceptLanguage string) string {
+	acceptLanguage = strings.TrimSpace(acceptLanguage)
+	if acceptLanguage == "" {
+		return "<unknown>"
+	}
+	if comma := strings.IndexByte(acceptLanguage, ','); comma >= 0 {
+		acceptLanguage = acceptLanguage[:comma]
+	}
+	if semi := strings.IndexByte(acceptLanguage, ';'); semi >= 0 {
+		acceptLanguage = acceptLanguage[:semi]
+	}
+	acceptLanguage = strings.TrimSpace(acceptLanguage)
+	if acceptLanguage == "" {
+		return "<unknown>"
+	}
+	return acceptLanguage
 }
 
 // Step10GetOTP 等待验证码 (临时邮箱或 Outlook)

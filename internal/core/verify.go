@@ -45,7 +45,7 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 		"refreshToken": refreshToken,
 		"grantType":    "refresh_token",
 	})
-	req, _ := fhttp.NewRequest("POST", "https://oidc.us-east-1.amazonaws.com/token",
+	req, _ := fhttp.NewRequest("POST", verifyOIDCTokenURL(r.Cfg),
 		bytes.NewReader(tokenBody))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
@@ -67,7 +67,7 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 	expiresIn, _ := tok["expiresIn"].(float64)
 	log.Printf("Token 刷新成功, expiresIn=%ds", int(expiresIn))
 
-	usageURL := "https://q.us-east-1.amazonaws.com/getUsageLimits?origin=AI_EDITOR&resourceType=AGENTIC_REQUEST&isEmailRequired=true"
+	usageURL := verifyQEndpointURL(r.Cfg, "/getUsageLimits?origin=AI_EDITOR&resourceType=AGENTIC_REQUEST&isEmailRequired=true")
 	usageRes := queryGetEndpoint(client, access, usageURL)
 	if usageRes.suspended {
 		return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
@@ -77,7 +77,7 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 	}
 
 	if shouldVerifyModels(r.Cfg) {
-		modelRes := queryGetEndpoint(client, access, "https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR")
+		modelRes := queryGetEndpoint(client, access, verifyQEndpointURL(r.Cfg, "/ListAvailableModels?origin=AI_EDITOR"))
 		if modelRes.suspended {
 			return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
 		}
@@ -87,6 +87,25 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 	}
 
 	return r.parseUsage(usageRes.body)
+}
+
+func verifyOIDCTokenURL(cfg *Config) string {
+	base := "https://oidc.us-east-1.amazonaws.com"
+	if cfg != nil && strings.TrimSpace(cfg.OIDCBase) != "" {
+		base = strings.TrimSpace(cfg.OIDCBase)
+	}
+	return strings.TrimRight(base, "/") + "/token"
+}
+
+func verifyQEndpointURL(cfg *Config, path string) string {
+	base := "https://q.us-east-1.amazonaws.com"
+	if cfg != nil && strings.TrimSpace(cfg.QBase) != "" {
+		base = strings.TrimSpace(cfg.QBase)
+	}
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return strings.TrimRight(base, "/") + path
 }
 
 func shouldVerifyModels(cfg *Config) bool {

@@ -157,3 +157,30 @@ func TestStep3EmailCreatesMailGWService(t *testing.T) {
 		t.Fatalf("mail.gw service should create mailbox once, createCalls=%d", service.createCalls)
 	}
 }
+
+func TestRegistrarUsesFingerprintKeyInsteadOfLocalClashProxy(t *testing.T) {
+	cfgA := &Config{Proxy: "http://127.0.0.1:7890", FingerprintKey: "clash:node-a"}
+	cfgB := &Config{Proxy: "http://127.0.0.1:7890", FingerprintKey: "clash:node-b"}
+
+	regA := NewRegistrar(cfgA)
+	regB := NewRegistrar(cfgB)
+
+	if regA.Identity == nil || regB.Identity == nil {
+		t.Fatalf("registrars should have identities")
+	}
+	if regA.Identity.CanvasHash == regB.Identity.CanvasHash && regA.Identity.GPUModel == regB.Identity.GPUModel && regA.Identity.Screen.Width == regB.Identity.Screen.Width && regA.Identity.Screen.Height == regB.Identity.Screen.Height {
+		t.Fatalf("different fingerprint keys should not reuse the same hardware identity")
+	}
+}
+
+func TestStep3EmailUsesGraphRegistrationEmailWhenPresent(t *testing.T) {
+	acc := &email.OutlookAccount{Email: "alias@outlook.jp", RegistrationEmail: "actual@hotmail.com"}
+	r := &Registrar{Cfg: &Config{UseOutlook: true, OutlookScope: OutlookScopeGraph, OutlookAccount: acc}}
+
+	if err := r.Step3Email(); err != nil {
+		t.Fatalf("Step3Email returned error: %v", err)
+	}
+	if r.Email != "actual@hotmail.com" {
+		t.Fatalf("Graph mode should register with verified Graph address, got %q", r.Email)
+	}
+}

@@ -131,3 +131,39 @@ func TestVerifyAliveReturnsFailureWhenModels403(t *testing.T) {
 		t.Fatalf("unexpected models failure error: %#v", res)
 	}
 }
+
+func TestVerifyAliveUsesConfiguredOIDCAndQBase(t *testing.T) {
+	orig := newVerifyHTTPClient
+	defer func() { newVerifyHTTPClient = orig }()
+
+	var seen []string
+	newVerifyHTTPClient = func(cfg *Config, chromeVer string) verifyHTTPClient {
+		return verifyRoundTrip(func(req *fhttp.Request) (*fhttp.Response, error) {
+			seen = append(seen, req.URL.String())
+			switch {
+			case strings.Contains(req.URL.String(), "/token"):
+				return verifyHTTPResponse(200, `{"accessToken":"access-token","expiresIn":3600}`), nil
+			case strings.Contains(req.URL.String(), "getUsageLimits"):
+				return verifyHTTPResponse(200, `{"userInfo":{"email":"user@example.com"},"subscriptionInfo":{"subscriptionTitle":"Free"},"usageBreakdownList":[]}`), nil
+			default:
+				t.Fatalf("unexpected request URL: %s", req.URL.String())
+				return nil, nil
+			}
+		})
+	}
+
+	cfg := &Config{OIDCBase: "http://127.0.0.1:18080/oidc", QBase: "http://127.0.0.1:18080/q"}
+	res := (&Registrar{Cfg: cfg, ClientID: "client", ClientSecret: "secret"}).VerifyAlive(map[string]interface{}{"refreshToken": "refresh"})
+	if alive, _ := res["alive"].(bool); !alive {
+		t.Fatalf("expected local verification to pass: %#v", res)
+	}
+	if len(seen) < 2 {
+		t.Fatalf("expected token and usage requests, got %v", seen)
+	}
+	if !strings.HasPrefix(seen[0], "http://127.0.0.1:18080/oidc/token") {
+		t.Fatalf("token request did not use configured OIDCBase: %v", seen)
+	}
+	if !strings.HasPrefix(seen[1], "http://127.0.0.1:18080/q/getUsageLimits") {
+		t.Fatalf("usage request did not use configured QBase: %v", seen)
+	}
+}

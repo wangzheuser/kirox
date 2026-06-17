@@ -285,11 +285,59 @@ func (c *ClashClient) getAvailableNodes(ctx context.Context, group string) ([]st
 	special := map[string]bool{"DIRECT": true, "REJECT": true, "PASS": true, "COMPATIBLE": true}
 	nodes := make([]string, 0, len(info.All))
 	for _, node := range info.All {
-		if !special[node] {
-			nodes = append(nodes, node)
+		if special[node] || isClashMetadataNode(node) {
+			continue
 		}
+		nodes = append(nodes, node)
 	}
 	return nodes, nil
+}
+
+func isClashMetadataNode(node string) bool {
+	name := strings.TrimSpace(node)
+	if name == "" {
+		return true
+	}
+	lower := strings.ToLower(name)
+	metadataPrefixes := []string{
+		"剩余流量",
+		"距离下次重置剩余",
+		"套餐到期",
+		"建议：",
+		"建议:",
+		"官网:",
+		"官网：",
+		"放丢失官网:",
+		"防丢失官网:",
+		"流量:",
+		"流量：",
+		"到期:",
+		"到期：",
+		"🚀 节点选择",
+		"☑️ 手动切换",
+		"♻️ 自动选择",
+		"🤖 openai",
+		"openai",
+	}
+	for _, prefix := range metadataPrefixes {
+		if strings.HasPrefix(name, prefix) || strings.HasPrefix(lower, strings.ToLower(prefix)) {
+			return true
+		}
+	}
+	policyGroupNames := []string{
+		"节点选择", "手动切换", "自动选择", "故障转移", "负载均衡", "漏网之鱼",
+		"美国节点", "香港节点", "日本节点", "新加坡节点", "台湾节点", "韩国节点",
+		"us nodes", "hk nodes", "jp nodes", "sg nodes", "tw nodes", "kr nodes",
+	}
+	trimmedEmoji := strings.TrimLeft(name, " 🚀☑️♻️🤖🇺🇸🇺🇲🇭🇰🇯🇵🇸🇬🇹🇼🇰🇷")
+	lowerTrimmedEmoji := strings.ToLower(strings.TrimSpace(trimmedEmoji))
+	for _, groupName := range policyGroupNames {
+		groupLower := strings.ToLower(groupName)
+		if lower == groupLower || lowerTrimmedEmoji == groupLower {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *ClashClient) getCurrentNode(ctx context.Context, group string) (string, error) {

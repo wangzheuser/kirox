@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"reg_go/internal/core"
+	"reg_go/internal/email"
 	"reg_go/internal/kirorsync"
+	"reg_go/internal/storage"
 )
 
 type taskFakeTempEmailService struct {
@@ -273,6 +275,58 @@ func TestMailGWDoesNotRequireOutlookAccounts(t *testing.T) {
 	StopTask(true)
 }
 
+func TestPrepareMoeMailStartRequestBackfillsMissingConfigsFromSavedList(t *testing.T) {
+	req := StartTaskRequest{
+		EmailProvider:  "moemail",
+		MoeMailDomains: []string{"wqpnode.filegear-sg.me"},
+	}
+	calls := 0
+
+	got := prepareMoeMailStartRequest(req, func() []email.MoeMailConfig {
+		calls++
+		return []email.MoeMailConfig{{
+			Name:   "saved",
+			URL:    "https://moemail.example",
+			APIKey: "key",
+		}}
+	})
+
+	if calls != 1 {
+		t.Fatalf("expected saved MoeMail configs to be loaded once, got %d calls", calls)
+	}
+	configs := got.MoeMailConfigs["wqpnode.filegear-sg.me"]
+	if len(configs) != 1 || configs[0].Name != "saved" {
+		t.Fatalf("expected selected domain to be backed by saved config, got %#v", got.MoeMailConfigs)
+	}
+}
+
+func TestValidateMoeMailDeliverabilityRejectsDomainWithoutMX(t *testing.T) {
+	err := validateMoeMailDeliverability(StartTaskRequest{
+		EmailProvider:  "moemail",
+		MoeMailDomains: []string{"wqpnode.filegear-sg.me"},
+	}, func(domain string) (bool, error) {
+		if domain != "wqpnode.filegear-sg.me" {
+			t.Fatalf("unexpected MX lookup domain %q", domain)
+		}
+		return false, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "缺少 MX") {
+		t.Fatalf("domain without MX should be rejected with clear diagnostic, got %v", err)
+	}
+}
+
+func TestValidateMoeMailDeliverabilityAllowsDomainWithMX(t *testing.T) {
+	err := validateMoeMailDeliverability(StartTaskRequest{
+		EmailProvider:  "moemail",
+		MoeMailDomains: []string{"codeai.de5.net"},
+	}, func(domain string) (bool, error) {
+		return true, nil
+	})
+	if err != nil {
+		t.Fatalf("domain with MX should be allowed: %v", err)
+	}
+}
+
 func TestReusableEmailSupportsMailGWProvider(t *testing.T) {
 	pool := reusableEmailPool{}
 	service := &taskFakeTempEmailService{address: "reuse@oakon.com"}
@@ -298,5 +352,175 @@ func TestMailGWSendOTP400DoesNotTriggerKillSwitch(t *testing.T) {
 	}
 	if !isKillSwitchError("注册请求被拦截 BLOCKED", "mailgw") {
 		t.Fatalf("mailgw BLOCKED/IP risk should still trigger kill switch")
+	}
+}
+
+func TestTemporaryEmailSendOTP400BlockedTriggersKillSwitch(t *testing.T) {
+	cases := []string{
+		`send-otp 失败 (400): {"errorCode":"BLOCKED","message":"Request was blocked by TES."}`,
+		`send-otp 失败 (400): Request was blocked by TES.`,
+	}
+	for _, errText := range cases {
+		if !isKillSwitchError(errText, "tempmail_lol") {
+			t.Fatalf("temporary email send-otp BLOCKED/TES should trigger kill switch: %s", errText)
+		}
+	}
+}
+
+func TestClassifySendOTP400DomainRejected(t *testing.T) {
+	got := classifyError("send-otp 失败 (400): domain rejected")
+	if got != "验证码发送失败" {
+		t.Fatalf("plain send-otp 400 should be classified as OTP send failure, got %q", got)
+	}
+}
+
+func TestPlainSendOTP400IsNotReusableEmailError(t *testing.T) {
+	if isReusableEmailError("send-otp 失败 (400): domain rejected") {
+		t.Fatalf("plain send-otp 400 should not reuse the same temporary mailbox")
+	}
+}
+
+func TestShouldForceStopTaskIgnoresKillSwitchForTESBlocked(t *testing.T) {
+	errText := `send-otp 失败 (400): {"errorCode":"BLOCKED","message":"Request was blocked by TES."}`
+	if !shouldForceStopTask(errText, "outlook", false) {
+		t.Fatalf("outlook TES/BLOCKED should force-stop even when kill switch setting is disabled")
+	}
+}
+
+func TestEffectiveSendOTPPageStayUsesSafeDefaultWhenDisabled(t *testing.T) {
+	cfg := effectiveSendOTPPageStayConfig(0, 0)
+	if cfg.MinMs != 5000 || cfg.MaxMs != 8000 {
+		t.Fatalf("disabled page stay should use safe send-otp default, got %+v", cfg)
+	}
+}
+
+func TestEffectiveSendOTPPageStayRaisesTooShortRangeToSafeDefault(t *testing.T) {
+	cfg := effectiveSendOTPPageStayConfig(0, 1000)
+	if cfg.MinMs != storage.DefaultPageStayMinMs || cfg.MaxMs != storage.DefaultPageStayMaxMs {
+		t.Fatalf("too-short send-otp page stay should use safe default, got %+v", cfg)
+	}
+}
+
+func TestSendOTPBlockedFriendlyErrorForcesStopForOutlookEvenWhenKillSwitchDisabled(t *testing.T) {
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=outlook, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=0-0ms, timeOnPage=0ms]`
+	if !shouldForceStopTask(errText, "outlook", false) {
+		t.Fatalf("formatted send-otp blocked error should force-stop for outlook even when kill switch setting is disabled")
+	}
+}
+
+func TestSendOTPBlockedFriendlyErrorIsNotProxyNetworkError(t *testing.T) {
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=0-0ms, timeOnPage=0ms]`
+	if isProxyNetworkError(errText) {
+		t.Fatalf("send-otp blocked diagnostics include proxy=enabled but should not be treated as proxy network error")
+	}
+}
+
+func TestShouldForceStopTaskRespectsKillSwitchForPlainSendOTP400(t *testing.T) {
+	if shouldForceStopTask("send-otp 失败 (400): domain rejected", "tempmail_lol", false) {
+		t.Fatalf("plain temporary-email send-otp 400 should not force-stop")
+	}
+	if shouldForceStopTask("send-otp 失败 (400): domain rejected", "outlook", false) {
+		t.Fatalf("plain send-otp 400 should not force-stop when kill switch setting is disabled")
+	}
+	if !shouldForceStopTask("send-otp 失败 (400): domain rejected", "outlook", true) {
+		t.Fatalf("outlook send-otp 400 should still honor enabled kill switch")
+	}
+}
+
+func TestTemporaryEmailSendOTPBlockedDoesNotForceStopWholeBatch(t *testing.T) {
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=5592ms]`
+	if shouldForceStopTask(errText, "tempmail_lol", false) {
+		t.Fatalf("temporary-email TES/BLOCKED should fail the current mailbox but not force-stop the whole batch")
+	}
+}
+
+func TestOutlookSendOTPBlockedStillForceStopsWholeBatch(t *testing.T) {
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=outlook, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=5592ms]`
+	if !shouldForceStopTask(errText, "outlook", false) {
+		t.Fatalf("outlook TES/BLOCKED should still force-stop because accounts are not throwaway domains")
+	}
+}
+
+func TestTemporaryEmailSendOTPBlockedDoesNotRetrySameMailbox(t *testing.T) {
+	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=5592ms]`
+	if shouldRetrySameMailboxAfterFailure(errText, "tempmail_lol") {
+		t.Fatalf("temporary-email TES/BLOCKED should move to next mailbox instead of retrying same rejected domain")
+	}
+}
+
+func TestPlainTemporaryEmailErrorCanRetrySameMailbox(t *testing.T) {
+	if !shouldRetrySameMailboxAfterFailure("验证码接收超时，请检查邮箱服务或稍后重试", "tempmail_lol") {
+		t.Fatalf("non-send-otp-blocked temporary email errors should keep existing retry behavior")
+	}
+}
+
+func TestTemporaryEmailSendOTPBlockedDoesNotRecycleReusableMailbox(t *testing.T) {
+	pool := &reusableEmailPool{}
+	cfg := &core.Config{TempEmailService: &taskFakeTempEmailService{address: "blocked@example.test"}}
+	result := map[string]interface{}{
+		"status": "failed",
+		"error":  `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.test, emailProxy=enabled, proxy=enabled, pageStay=5000-8000ms, timeOnPage=5592ms]`,
+	}
+
+	if _, ok := recycleReusableFailedEmail(StartTaskRequest{ReuseFailedEmail: true}, pool, "tempmail_lol", cfg, result, false); ok {
+		t.Fatalf("temporary-email TES/BLOCKED should not recycle the same rejected mailbox")
+	}
+	if _, ok := pool.take("tempmail_lol"); ok {
+		t.Fatalf("temporary-email TES/BLOCKED mailbox should not be present in reusable pool")
+	}
+}
+
+func TestClassifyOutlookGraphInvalidGrantAsAbnormalMailbox(t *testing.T) {
+	errText := `刷新 Outlook Graph Token 失败: 刷新失败 400: {"error":"invalid_grant","error_description":"AADSTS70000: User account is found to be in service abuse mode."}`
+	if got := classifyError(errText); got != "异常邮箱" {
+		t.Fatalf("Outlook Graph invalid_grant should classify as abnormal mailbox, got %q", got)
+	}
+}
+
+func TestShouldRotateOutlookAccountAfterGraphInvalidGrant(t *testing.T) {
+	errText := `刷新 Outlook Graph Token 失败: 刷新失败 400: {"error":"invalid_grant","error_description":"AADSTS70000: User account is found to be in service abuse mode."}`
+	if !shouldRotateOutlookAccountAfterFailure(errText) {
+		t.Fatalf("Outlook Graph invalid_grant/service abuse should rotate to the next Outlook account")
+	}
+}
+
+func TestOutlookAccountRotationResetsProxySwitchBudget(t *testing.T) {
+	attempt, proxySwitches := resetOutlookRetryBudgetAfterAccountRotation(2, 3)
+	if attempt != -1 {
+		t.Fatalf("account rotation should restart retry attempts from zero on next loop, got attempt=%d", attempt)
+	}
+	if proxySwitches != 0 {
+		t.Fatalf("account rotation should reset proxy switch budget for the new mailbox, got %d", proxySwitches)
+	}
+}
+
+func TestBuildAvailableOutlookAccountsDefersPreviousSendOTPBlockedAccounts(t *testing.T) {
+	stored := []map[string]interface{}{
+		{"email": "blocked@outlook.de", "password": "p1", "clientId": "c1", "refreshToken": "r1", "registered": false, "failReason": "IP/指纹风控"},
+		{"email": "timeout@outlook.jp", "password": "p0", "clientId": "c0", "refreshToken": "r0", "registered": false, "failReason": "验证码超时"},
+		{"email": "clean@outlook.jp", "password": "p2", "clientId": "c2", "refreshToken": "r2", "registered": false},
+		{"email": "registered@outlook.jp", "password": "p3", "clientId": "c3", "refreshToken": "r3", "registered": true},
+	}
+
+	got := buildAvailableOutlookAccounts(stored)
+	if len(got) != 3 {
+		t.Fatalf("expected 3 unregistered Outlook accounts, got %#v", got)
+	}
+	if got[0].Email != "clean@outlook.jp" || got[1].Email != "blocked@outlook.de" || got[2].Email != "timeout@outlook.jp" {
+		t.Fatalf("previous send-otp/OTP-problem accounts should be deferred after clean accounts, got %#v", got)
+	}
+}
+
+func TestBuildAvailableOutlookAccountsPreservesRegistrationEmail(t *testing.T) {
+	stored := []map[string]interface{}{
+		{"email": "alias@outlook.jp", "password": "p", "clientId": "c", "refreshToken": "r", "registered": false, "registrationEmail": "actual@hotmail.com"},
+	}
+
+	got := buildAvailableOutlookAccounts(stored)
+	if len(got) != 1 {
+		t.Fatalf("expected one account, got %#v", got)
+	}
+	if got[0].RegistrationEmail != "actual@hotmail.com" {
+		t.Fatalf("RegistrationEmail should be preserved from storage, got %#v", got[0])
 	}
 }

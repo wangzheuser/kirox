@@ -110,3 +110,137 @@ func testGraphMessage(subject, receivedAt, bodyPreview string) graphMessage {
 	msg.Body.Content = bodyPreview
 	return msg
 }
+
+func TestWaitForOTPGraphRetriesTransientTokenRefreshEOF(t *testing.T) {
+	after := time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC)
+	tokenAttempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/token":
+			tokenAttempts++
+			if tokenAttempts == 1 {
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					t.Fatalf("test server does not support hijacking")
+				}
+				conn, _, err := hj.Hijack()
+				if err != nil {
+					t.Fatalf("hijack failed: %v", err)
+				}
+				_ = conn.Close()
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "graph-access-token"})
+		case strings.Contains(r.URL.Path, "/me/mailFolders/inbox/messages"):
+			_ = json.NewEncoder(w).Encode(graphMessagesResponse{Value: []graphMessage{
+				testGraphMessage("AWS 验证码", "2026-05-20T10:00:01Z", "你的验证码是 123456"),
+			}})
+		case strings.Contains(r.URL.Path, "/me/mailFolders/junkemail/messages"):
+			_ = json.NewEncoder(w).Encode(graphMessagesResponse{})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	oldEndpoint := outlookGraphTokenEndpoint
+	oldAPIBase := outlookGraphAPIBase
+	outlookGraphTokenEndpoint = server.URL + "/token"
+	outlookGraphAPIBase = server.URL
+	t.Cleanup(func() {
+		outlookGraphTokenEndpoint = oldEndpoint
+		outlookGraphAPIBase = oldAPIBase
+	})
+
+	code, err := WaitForOTPGraphWithProxy(context.Background(), OutlookAccount{
+		Email:        "user@outlook.com",
+		ClientID:     "client-id",
+		RefreshToken: "refresh-token",
+	}, after, 1, 1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != "123456" {
+		t.Fatalf("应在 token transient EOF 后重试并获取验证码，got %q", code)
+	}
+	if tokenAttempts != 2 {
+		t.Fatalf("expected exactly 2 token refresh attempts, got %d", tokenAttempts)
+	}
+}
+
+func TestGetOutlookGraphUserPrincipalNameWithProxy(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "graph-access-token"})
+		case "/me":
+			_ = json.NewEncoder(w).Encode(map[string]string{"userPrincipalName": "actual@hotmail.com"})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	oldEndpoint := outlookGraphTokenEndpoint
+	oldAPIBase := outlookGraphAPIBase
+	outlookGraphTokenEndpoint = server.URL + "/token"
+	outlookGraphAPIBase = server.URL
+	t.Cleanup(func() {
+		outlookGraphTokenEndpoint = oldEndpoint
+		outlookGraphAPIBase = oldAPIBase
+	})
+
+	upn, err := GetOutlookGraphUserPrincipalNameWithProxy(OutlookAccount{ClientID: "client-id", RefreshToken: "refresh-token"}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upn != "actual@hotmail.com" {
+		t.Fatalf("userPrincipalName = %q, want actual@hotmail.com", upn)
+	}
+}
+
+func TestWaitForOTPGraphFiltersByRegistrationEmailWhenPresent(t *testing.T) {
+	after := time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/token":
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "graph-access-token"})
+		case strings.Contains(r.URL.Path, "/me/mailFolders/inbox/messages"):
+			msg := testGraphMessage("AWS 验证码", "2026-05-20T10:00:01Z", "你的验证码是 777888")
+			msg.ToRecipients = append(msg.ToRecipients, struct {
+				EmailAddress struct {
+					Address string `json:"address"`
+				} `json:"emailAddress"`
+			}{})
+			msg.ToRecipients[0].EmailAddress.Address = "actual@hotmail.com"
+			_ = json.NewEncoder(w).Encode(graphMessagesResponse{Value: []graphMessage{msg}})
+		case strings.Contains(r.URL.Path, "/me/mailFolders/junkemail/messages"):
+			_ = json.NewEncoder(w).Encode(graphMessagesResponse{})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	oldEndpoint := outlookGraphTokenEndpoint
+	oldAPIBase := outlookGraphAPIBase
+	outlookGraphTokenEndpoint = server.URL + "/token"
+	outlookGraphAPIBase = server.URL
+	t.Cleanup(func() {
+		outlookGraphTokenEndpoint = oldEndpoint
+		outlookGraphAPIBase = oldAPIBase
+	})
+
+	code, err := WaitForOTPGraphWithProxy(context.Background(), OutlookAccount{
+		Email:             "alias@outlook.jp",
+		RegistrationEmail: "actual@hotmail.com",
+		ClientID:          "client-id",
+		RefreshToken:      "refresh-token",
+	}, after, 1, 1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != "777888" {
+		t.Fatalf("should read OTP addressed to RegistrationEmail, got %q", code)
+	}
+}

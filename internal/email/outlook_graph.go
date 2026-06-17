@@ -3,9 +3,11 @@ package email
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -73,6 +75,42 @@ func RefreshOutlookGraphTokenWithProxy(acc OutlookAccount, proxyURL string) (str
 	return token, nil
 }
 
+func GetOutlookGraphUserPrincipalNameWithProxy(acc OutlookAccount, proxyURL string) (string, error) {
+	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
+	accessToken, err := RefreshOutlookGraphTokenWithProxy(acc, runtimeProxyURL)
+	if err != nil {
+		return "", err
+	}
+	endpoint := strings.TrimRight(outlookGraphAPIBase, "/") + "/me?$select=userPrincipalName,mail"
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := httpClientWithProxy(runtimeProxyURL, emailRequestTimeout).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("Graph /me 查询失败 %d: %s", resp.StatusCode, string(body[:min(300, len(body))]))
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return "", fmt.Errorf("解析 Graph /me 响应失败: %w", err)
+	}
+	if mail, _ := data["mail"].(string); strings.TrimSpace(mail) != "" {
+		return strings.TrimSpace(mail), nil
+	}
+	upn, _ := data["userPrincipalName"].(string)
+	upn = strings.TrimSpace(upn)
+	if upn == "" {
+		return "", fmt.Errorf("Graph /me 响应中无 userPrincipalName")
+	}
+	return upn, nil
+}
+
 // WaitForOTPGraphWithProxy 通过 Microsoft Graph 轮询等待 AWS 验证码。
 // 支持 context 取消，任务停止时立即中断轮询。
 func WaitForOTPGraphWithProxy(ctx context.Context, acc OutlookAccount, after time.Time, timeout, interval int, proxyURL string) (string, error) {
@@ -88,9 +126,13 @@ func WaitForOTPGraphWithProxy(ctx context.Context, acc OutlookAccount, after tim
 	}
 
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
-	log.Printf("[Outlook Graph] 等待验证码, 邮箱=%s, 起始时间=%s", acc.Email, after.Format(time.RFC3339))
+	targetEmail := strings.TrimSpace(acc.Email)
+	if strings.TrimSpace(acc.RegistrationEmail) != "" {
+		targetEmail = strings.TrimSpace(acc.RegistrationEmail)
+	}
+	log.Printf("[Outlook Graph] 等待验证码, 邮箱=%s, 起始时间=%s", targetEmail, after.Format(time.RFC3339))
 
-	accessToken, err := RefreshOutlookGraphTokenWithProxy(acc, runtimeProxyURL)
+	accessToken, err := refreshOutlookGraphTokenWithTransientRetry(ctx, acc, runtimeProxyURL)
 	if err != nil {
 		return "", fmt.Errorf("刷新 Outlook Graph Token 失败: %v", err)
 	}
@@ -107,7 +149,7 @@ func WaitForOTPGraphWithProxy(ctx context.Context, acc OutlookAccount, after tim
 			return "", ctx.Err()
 		default:
 		}
-		code, err := findGraphOTP(accessToken, acc.Email, after, codeRegex, runtimeProxyURL)
+		code, err := findGraphOTP(accessToken, targetEmail, after, codeRegex, runtimeProxyURL)
 		if err != nil && attempt%5 == 0 {
 			log.Printf("[Outlook Graph] 查询失败: %v, 重试中...", err)
 		}
@@ -128,6 +170,60 @@ func WaitForOTPGraphWithProxy(ctx context.Context, acc OutlookAccount, after tim
 	return "", fmt.Errorf("等待验证码超时 (%ds)", timeout)
 }
 
+func refreshOutlookGraphTokenWithTransientRetry(ctx context.Context, acc OutlookAccount, proxyURL string) (string, error) {
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+		token, err := RefreshOutlookGraphTokenWithProxy(acc, proxyURL)
+		if err == nil {
+			return token, nil
+		}
+		lastErr = err
+		if !isTransientOutlookGraphTokenError(err) || attempt == maxAttempts {
+			return "", err
+		}
+		wait := time.Duration(attempt) * time.Second
+		log.Printf("[Outlook Graph] 刷新 Token 网络错误: %v；等待 %s 后重试 (%d/%d)", err, wait, attempt, maxAttempts)
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(wait):
+		}
+	}
+	return "", lastErr
+}
+
+func isTransientOutlookGraphTokenError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	transientMarkers := []string{
+		"eof",
+		"connection reset",
+		"connection refused",
+		"connection aborted",
+		"tls handshake timeout",
+		"timeout",
+		"temporary failure",
+		"server misbehaving",
+	}
+	for _, marker := range transientMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
 func findGraphOTP(accessToken, targetEmail string, after time.Time, codeRegex *regexp.Regexp, proxyURL string) (string, error) {
 	var lastErr error
 	for _, folder := range []string{"inbox", "junkemail"} {
