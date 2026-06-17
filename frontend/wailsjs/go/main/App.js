@@ -210,6 +210,10 @@ export function ResetOutlookAccountStatuses() {
   return window['go']['main']['App']['ResetOutlookAccountStatuses']();
 }
 
+export function ResetOutlookAccountStatusesByEmails(arg1) {
+  return window['go']['main']['App']['ResetOutlookAccountStatusesByEmails'](arg1);
+}
+
 export function ResetProxy() {
   return window['go']['main']['App']['ResetProxy']();
 }

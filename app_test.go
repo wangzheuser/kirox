@@ -2,9 +2,13 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"reg_go/internal/data"
+	"reg_go/internal/kirorsync"
 )
 
 func TestAddGoroutineLabelInsertsLabelAfterTimestamp(t *testing.T) {
@@ -85,5 +89,53 @@ func TestRegistrationConcurrencyInputAllowsMaximum100(t *testing.T) {
 		if !strings.Contains(string(content), `id="cfg-concurrency" value="1" min="1" max="100"`) {
 			t.Fatalf("%s should set cfg-concurrency max to 100", path)
 		}
+	}
+}
+
+func TestApplyKiroRSSyncResultMarksSuccessAndDeletesRejected(t *testing.T) {
+	dir := t.TempDir()
+	accountsJSON := `[
+	  {"email":"ok@example.com","refreshToken":"ok-refresh","kiroRsSynced":false},
+	  {"email":"bad@example.com","refreshToken":"bad-refresh","kiroRsSynced":false},
+	  {"email":"keep@example.com","refreshToken":"keep-refresh","kiroRsSynced":false}
+	]`
+	if err := os.WriteFile(filepath.Join(dir, "accounts.json"), []byte(accountsJSON), 0o600); err != nil {
+		t.Fatalf("write accounts.json: %v", err)
+	}
+
+	result := kirorsync.SyncResult{Details: []kirorsync.SyncDetail{
+		{Email: "ok@example.com", Success: true},
+		{Email: "bad@example.com", Success: false, Rejected: true, RejectReason: "凭证已被封禁或禁用"},
+	}}
+	updated, removed, rejectedEmails, err := applyKiroRSSyncResult(dir, result)
+	if err != nil {
+		t.Fatalf("applyKiroRSSyncResult: %v", err)
+	}
+	if updated != 1 || removed != 1 {
+		t.Fatalf("updated=%d removed=%d, want 1/1", updated, removed)
+	}
+	if len(rejectedEmails) != 1 || rejectedEmails[0] != "bad@example.com" {
+		t.Fatalf("unexpected rejected emails: %#v", rejectedEmails)
+	}
+
+	accounts, err := data.LoadAccounts(dir)
+	if err != nil {
+		t.Fatalf("LoadAccounts: %v", err)
+	}
+	if len(accounts) != 2 {
+		t.Fatalf("expected rejected account removed, got %#v", accounts)
+	}
+	var okSynced bool
+	for _, acc := range accounts {
+		email, _ := acc["email"].(string)
+		if email == "bad@example.com" {
+			t.Fatalf("rejected account should be deleted: %#v", accounts)
+		}
+		if email == "ok@example.com" {
+			okSynced, _ = acc["kiroRsSynced"].(bool)
+		}
+	}
+	if !okSynced {
+		t.Fatalf("successful account should be marked kiroRsSynced: %#v", accounts)
 	}
 }

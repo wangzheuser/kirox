@@ -4,6 +4,7 @@ var outlookCurrentPage = 1;
 var outlookPageSize = 10;
 var outlookAllAccounts = [];
 var outlookStatusFilter = 'all';
+var outlookSearchKeyword = '';
 // 当前筛选条件下的全部结果（非分页），供全选/反选/批量删除使用
 var outlookFilteredAccounts = [];
 // 选中账号集合：以 email 为键当 Set 用，独立于渲染，避免 3 秒自动刷新重渲染时丢失选中
@@ -165,6 +166,12 @@ function setOutlookStatusFilter(status) {
   renderOutlookPage();
 }
 
+function setOutlookSearchKeyword(keyword) {
+  outlookSearchKeyword = (keyword || '').trim().toLowerCase();
+  outlookCurrentPage = 1;
+  renderOutlookPage();
+}
+
 function renderOutlookPage() {
   var accounts = outlookAllAccounts;
 
@@ -179,8 +186,18 @@ function renderOutlookPage() {
     accounts = accounts.filter(function(a) { return a.failReason === outlookStatusFilter; });
   }
 
-  // 暂存筛选后的全部结果（非分页），供全选/反选/批量删除使用
-  outlookFilteredAccounts = accounts;
+  var keyword = outlookSearchKeyword;
+  var filtered = accounts;
+  if (keyword) {
+    filtered = filtered.filter(function(a) {
+      var email = (a.email || '').toLowerCase();
+      return email.toLowerCase().includes(keyword);
+    });
+  }
+
+  // 暂存筛选后的全部结果（非分页），供全选/反选/批量删除/批量重置使用
+  outlookFilteredAccounts = filtered;
+  accounts = filtered;
 
   // 清理选中集合中已不存在的 email（账号被删/清空后防止脏数据），范围为全量账号
   var existingEmails = {};
@@ -297,6 +314,9 @@ function refreshOutlookSelectionUI() {
   var btn = document.getElementById('outlook-batch-delete-btn');
   if (btn) btn.disabled = selectedCount === 0;
 
+  var resetBtn = document.getElementById('outlook-batch-reset-btn');
+  if (resetBtn) resetBtn.disabled = selectedCount === 0;
+
   // 按「筛选结果中被选中的数量」决定全选框状态
   var selectAll = document.getElementById('outlook-select-all');
   if (selectAll) {
@@ -315,6 +335,29 @@ function refreshOutlookSelectionUI() {
       selectAll.indeterminate = true;
     }
   }
+}
+
+// 批量重置选中账号状态
+function batchResetOutlookAccountStatuses() {
+  var emails = Object.keys(outlookSelectedEmails);
+  if (emails.length === 0) {
+    showToast('请先选择要重置状态的账号');
+    return;
+  }
+  showConfirmModal('批量重置状态', '确认将选中的 ' + emails.length + ' 个账号状态重置为未注册？账号数据不会删除。', '确认重置', async function() {
+    try {
+      var result = await window.go.main.App.ResetOutlookAccountStatusesByEmails(emails);
+      if (result.error) {
+        showToast(result.error, 'error');
+        return;
+      }
+      outlookSelectedEmails = {};
+      await loadOutlookAccountsList();
+      showToast('已重置 ' + (result.reset || 0) + ' 个账号状态');
+    } catch(e) {
+      showToast('批量重置失败: ' + e.message, 'error');
+    }
+  });
 }
 
 // 批量删除选中账号

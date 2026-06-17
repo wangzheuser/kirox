@@ -2,6 +2,7 @@ package email
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"reg_go/internal/storage"
@@ -215,16 +216,52 @@ func ResetOutlookAccountStatuses() map[string]interface{} {
 			if accounts[i] == nil {
 				continue
 			}
-			// 只重置状态字段，保留账号、密码、ClientID 与 RefreshToken。
-			accounts[i]["registered"] = false
-			accounts[i]["success"] = false
-			delete(accounts[i], "registeredAt")
-			delete(accounts[i], "failReason")
+			resetOutlookStatusFields(accounts[i])
 			reset++
 		}
 		return accounts
 	})
 	return map[string]interface{}{"status": "reset", "reset": reset, "total": reset}
+}
+
+// ResetOutlookAccountStatusesByEmails 将指定 Outlook 账号恢复为未注册状态。
+// 只重置注册状态相关字段，保留邮箱、密码、ClientID 与 RefreshToken 等凭据字段。
+func ResetOutlookAccountStatusesByEmails(emails []string) map[string]interface{} {
+	target := make(map[string]struct{}, len(emails))
+	for _, email := range emails {
+		email = strings.ToLower(strings.TrimSpace(email))
+		if email != "" {
+			target[email] = struct{}{}
+		}
+	}
+	if len(target) == 0 {
+		return map[string]interface{}{"status": "reset", "reset": 0}
+	}
+
+	reset := 0
+	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
+		for i := range accounts {
+			if accounts[i] == nil {
+				continue
+			}
+			email, _ := accounts[i]["email"].(string)
+			if _, ok := target[strings.ToLower(strings.TrimSpace(email))]; !ok {
+				continue
+			}
+			resetOutlookStatusFields(accounts[i])
+			reset++
+		}
+		return accounts
+	})
+	return map[string]interface{}{"status": "reset", "reset": reset}
+}
+
+func resetOutlookStatusFields(account map[string]interface{}) {
+	// 只重置状态字段，保留账号、密码、ClientID 与 RefreshToken。
+	account["registered"] = false
+	account["success"] = false
+	delete(account, "registeredAt")
+	delete(account, "failReason")
 }
 
 // ImportOutlookFile 导入 Outlook 账号文件

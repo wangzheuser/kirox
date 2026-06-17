@@ -181,6 +181,7 @@ async function syncAccountPoolToKiroRS(mode) {
       return;
     }
     var msg = 'kiro.rs 同步完成：成功 ' + result.syncSuccess + ' / 失败 ' + result.syncFailed;
+    if ((result.removedRejected || 0) > 0) msg += '，已删除本地失效账号 ' + result.removedRejected + ' 个';
     if (result.message) msg += '（' + result.message + '）';
     showToast(msg, result.syncFailed > 0 ? 'error' : 'success');
     await loadAccountPool();

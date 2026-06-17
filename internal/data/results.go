@@ -139,30 +139,50 @@ func MarkKiroRSSynced(outDir string, emails []string) (int, error) {
 
 // DeleteAccount 从 outDir/accounts.json 中移除指定邮箱的账号；返回是否实际删除。
 func DeleteAccount(outDir, email string) (bool, error) {
+	removed, err := DeleteAccounts(outDir, []string{email})
+	return removed > 0, err
+}
+
+// DeleteAccounts 从 outDir/accounts.json 中批量移除指定邮箱账号；邮箱大小写不敏感。
+func DeleteAccounts(outDir string, emails []string) (int, error) {
+	if len(emails) == 0 {
+		return 0, nil
+	}
+	wanted := make(map[string]struct{}, len(emails))
+	for _, email := range emails {
+		if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
+			wanted[email] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return 0, nil
+	}
+
 	path := filepath.Join(outDir, "accounts.json")
 	accountsJSONMu.Lock()
 	defer accountsJSONMu.Unlock()
 
 	existing, err := loadJSONArray(path)
 	if err != nil || len(existing) == 0 {
-		return false, err
+		return 0, err
 	}
 	out := make([]map[string]interface{}, 0, len(existing))
-	removed := false
+	removed := 0
 	for _, e := range existing {
-		if em, _ := e["email"].(string); em == email {
-			removed = true
+		em, _ := e["email"].(string)
+		if _, ok := wanted[strings.ToLower(strings.TrimSpace(em))]; ok {
+			removed++
 			continue
 		}
 		out = append(out, e)
 	}
-	if !removed {
-		return false, nil
+	if removed == 0 {
+		return 0, nil
 	}
 	if err := writeJSONArrayAtomic(path, out); err != nil {
-		return false, err
+		return 0, err
 	}
-	return true, nil
+	return removed, nil
 }
 
 func loadJSONArray(path string) ([]map[string]interface{}, error) {

@@ -2,23 +2,25 @@ package main
 
 import (
 	"context"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"fmt"
 	"log"
 	"os"
+	"regexp"
+	goruntime "runtime"
+	"strings"
+	"time"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
+
 	"reg_go/internal/browser"
 	"reg_go/internal/data"
 	"reg_go/internal/email"
 	"reg_go/internal/kirorsync"
 	"reg_go/internal/proxy"
-	"reg_go/internal/subscription"
-	"regexp"
-
 	"reg_go/internal/storage"
+	"reg_go/internal/subscription"
 	"reg_go/internal/task"
 	"reg_go/internal/updater"
-	goruntime "runtime"
-	"strings"
-	"time"
 )
 
 type App struct {
@@ -282,6 +284,11 @@ func (a *App) ClearRegisteredOutlookAccounts() map[string]interface{} {
 // ResetOutlookAccountStatuses 重置所有 Outlook 账号状态但不删除账号。
 func (a *App) ResetOutlookAccountStatuses() map[string]interface{} {
 	return email.ResetOutlookAccountStatuses()
+}
+
+// ResetOutlookAccountStatusesByEmails 重置指定 Outlook 账号状态但不删除账号。
+func (a *App) ResetOutlookAccountStatusesByEmails(emails []string) map[string]interface{} {
+	return email.ResetOutlookAccountStatusesByEmails(emails)
 }
 
 func (a *App) ImportOutlookFile(filePath string) map[string]interface{} {
@@ -766,18 +773,25 @@ func (a *App) SyncAccountPoolToKiroRS(mode string) map[string]interface{} {
 		log.Printf("[Kiro] 手动同步未执行: %s", result.Error)
 		return map[string]interface{}{"error": result.Error}
 	}
-	if updated, err := data.MarkKiroRSSynced(storage.GetResultOutputDir(), successfulSyncEmails(result)); err != nil {
-		log.Printf("[Kiro] 手动同步状态更新失败: %v", err)
-	} else if updated > 0 {
+	updated, removedRejected, rejectedEmails, applyErr := applyKiroRSSyncResult(storage.GetResultOutputDir(), result)
+	if applyErr != nil {
+		log.Printf("[Kiro] 手动同步本地结果处理失败: %v", applyErr)
+	}
+	if updated > 0 {
 		log.Printf("[Kiro] 手动同步状态已更新: %d 个账号标记为已同步", updated)
 	}
-	log.Printf("[Kiro] 手动同步完成: 成功 %d / 失败 %d", result.Success, result.Failed)
+	if removedRejected > 0 {
+		log.Printf("[Kiro] 手动同步已删除本地永久失效账号: %d 个", removedRejected)
+	}
+	log.Printf("[Kiro] 手动同步完成: 成功 %d / 失败 %d / 本地删除 %d", result.Success, result.Failed, removedRejected)
 	return map[string]interface{}{
-		"success":     true,
-		"mode":        mode,
-		"total":       result.Total,
-		"syncSuccess": result.Success,
-		"syncFailed":  result.Failed,
+		"success":         true,
+		"mode":            mode,
+		"total":           result.Total,
+		"syncSuccess":     result.Success,
+		"syncFailed":      result.Failed,
+		"removedRejected": removedRejected,
+		"rejectedEmails":  rejectedEmails,
 	}
 }
 
@@ -802,10 +816,37 @@ func selectKiroRSAccountsForMode(accounts []map[string]interface{}, mode string)
 	}
 }
 
+func applyKiroRSSyncResult(outDir string, result kirorsync.SyncResult) (int, int, []string, error) {
+	updated, err := data.MarkKiroRSSynced(outDir, successfulSyncEmails(result))
+	if err != nil {
+		return updated, 0, nil, fmt.Errorf("更新同步状态失败: %w", err)
+	}
+
+	rejectedEmails := rejectedSyncEmails(result)
+	removed := 0
+	if len(rejectedEmails) > 0 {
+		removed, err = data.DeleteAccounts(outDir, rejectedEmails)
+		if err != nil {
+			return updated, removed, rejectedEmails, fmt.Errorf("删除本地失效账号失败: %w", err)
+		}
+	}
+	return updated, removed, rejectedEmails, nil
+}
+
 func successfulSyncEmails(result kirorsync.SyncResult) []string {
 	emails := make([]string, 0, result.Success)
 	for _, detail := range result.Details {
 		if detail.Success && strings.TrimSpace(detail.Email) != "" {
+			emails = append(emails, detail.Email)
+		}
+	}
+	return emails
+}
+
+func rejectedSyncEmails(result kirorsync.SyncResult) []string {
+	emails := make([]string, 0)
+	for _, detail := range result.Details {
+		if detail.Rejected && strings.TrimSpace(detail.Email) != "" {
 			emails = append(emails, detail.Email)
 		}
 	}

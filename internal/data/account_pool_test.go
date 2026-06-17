@@ -275,3 +275,52 @@ func TestImportAccountPoolJSONPreservesExplicitPriority(t *testing.T) {
 		t.Fatalf("explicit priority should be preserved: %#v", got)
 	}
 }
+
+func TestDeleteAccountsRemovesEmailsCaseInsensitive(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAccounts(t, dir, []map[string]interface{}{
+		{"email": "First@example.com"},
+		{"email": "second@example.com"},
+		{"email": "keep@example.com"},
+	})
+
+	removed, err := DeleteAccounts(dir, []string{"first@EXAMPLE.com", "SECOND@example.com"})
+	if err != nil {
+		t.Fatalf("DeleteAccounts: %v", err)
+	}
+	if removed != 2 {
+		t.Fatalf("removed=%d, want 2", removed)
+	}
+
+	accounts, err := LoadAccounts(dir)
+	if err != nil {
+		t.Fatalf("LoadAccounts: %v", err)
+	}
+	if len(accounts) != 1 || accounts[0]["email"] != "keep@example.com" {
+		t.Fatalf("unexpected remaining accounts: %#v", accounts)
+	}
+}
+
+func TestDeleteAccountsMissingEmailsDoNotAffectOtherRecords(t *testing.T) {
+	dir := t.TempDir()
+	writeTestAccounts(t, dir, []map[string]interface{}{
+		{"email": "first@example.com"},
+		{"email": "second@example.com"},
+	})
+
+	removed, err := DeleteAccounts(dir, []string{"missing@example.com"})
+	if err != nil {
+		t.Fatalf("DeleteAccounts: %v", err)
+	}
+	if removed != 0 {
+		t.Fatalf("removed=%d, want 0", removed)
+	}
+
+	accounts, err := LoadAccounts(dir)
+	if err != nil {
+		t.Fatalf("LoadAccounts: %v", err)
+	}
+	if len(accounts) != 2 {
+		t.Fatalf("missing delete should not change accounts: %#v", accounts)
+	}
+}

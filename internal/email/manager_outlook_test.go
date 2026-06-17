@@ -161,3 +161,60 @@ func TestAbnormalOutlookAccountMatchesRegisteredExclusionState(t *testing.T) {
 		t.Fatalf("异常邮箱必须使用 registered=true 才能被注册筛选排除: %+v", acc)
 	}
 }
+
+func TestResetOutlookAccountStatusesByEmailsOnlyResetsTargetsAndKeepsCredentials(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	storage.SetAccountsCached([]map[string]interface{}{
+		{
+			"email":        "target@outlook.jp",
+			"password":     "Password!",
+			"clientId":     "client-id",
+			"refreshToken": "refresh-token",
+			"registered":   true,
+			"success":      true,
+			"registeredAt": "2026-05-20 10:11:52",
+			"failReason":   "邮箱已注册",
+		},
+		{
+			"email":        "keep@outlook.com",
+			"password":     "KeepPassword!",
+			"clientId":     "keep-client",
+			"refreshToken": "keep-refresh",
+			"registered":   true,
+			"success":      true,
+			"registeredAt": "2026-05-20 10:12:52",
+			"failReason":   "邮箱已注册",
+		},
+	})
+
+	result := ResetOutlookAccountStatusesByEmails([]string{"TARGET@outlook.jp", "missing@outlook.jp"})
+	if result["reset"] != 1 {
+		t.Fatalf("重置数量错误: %+v", result)
+	}
+
+	accounts := storage.GetAccountsCached()
+	target := accounts[0]
+	if registered, _ := target["registered"].(bool); registered {
+		t.Fatalf("目标账号 registered 应被重置: %+v", target)
+	}
+	if success, _ := target["success"].(bool); success {
+		t.Fatalf("目标账号 success 应被重置: %+v", target)
+	}
+	if _, ok := target["registeredAt"]; ok {
+		t.Fatalf("目标账号 registeredAt 应被删除: %+v", target)
+	}
+	if _, ok := target["failReason"]; ok {
+		t.Fatalf("目标账号 failReason 应被删除: %+v", target)
+	}
+	if target["password"] != "Password!" || target["clientId"] != "client-id" || target["refreshToken"] != "refresh-token" {
+		t.Fatalf("目标账号凭据字段不应被清空: %+v", target)
+	}
+
+	keep := accounts[1]
+	if registered, _ := keep["registered"].(bool); !registered {
+		t.Fatalf("非目标账号不应被重置: %+v", keep)
+	}
+	if keep["password"] != "KeepPassword!" || keep["clientId"] != "keep-client" || keep["refreshToken"] != "keep-refresh" {
+		t.Fatalf("非目标账号凭据字段不应被改变: %+v", keep)
+	}
+}

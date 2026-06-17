@@ -109,6 +109,8 @@ export function ResetFingerprintCache():Promise<Record<string, any>>;
 
 export function ResetOutlookAccountStatuses():Promise<Record<string, any>>;
 
+export function ResetOutlookAccountStatusesByEmails(arg1:Array<string>):Promise<Record<string, any>>;
+
 export function ResetProxy():Promise<Record<string, any>>;
 
 export function ResetResultOutputDir():Promise<Record<string, any>>;

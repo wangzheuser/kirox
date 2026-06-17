@@ -1074,10 +1074,11 @@
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     <span data-i18n="accounts.testConnection">测试连接</span>
                   </button>
-                  <button onclick="inlineAddMoeMail()" class="btn btn-dark btn-sm">
+                  <button id="moemail-inline-save-btn" onclick="inlineSaveMoeMailConfig()" class="btn btn-dark btn-sm">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                     <span data-i18n="accounts.addConfigBtn">添加配置</span>
                   </button>
+                  <button id="moemail-inline-cancel-edit-btn" onclick="cancelMoeMailEdit()" class="btn btn-secondary btn-sm" style="display:none;">取消编辑</button>
                   <span id="moemail-inline-status" class="moemail-status-text"></span>
                 </div>
               </div>
@@ -1161,21 +1162,25 @@
             </div>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;">
-            <!-- 状态筛选下拉，复用通用 .custom-dropdown 组件 -->
-            <div class="custom-dropdown" id="outlook-filter-dropdown" style="width:130px;">
-              <div class="dropdown-selected" onclick="toggleDropdown('outlook-filter-dropdown')">
-                <span id="outlook-filter-label">全部</span><span class="dropdown-arrow"></span>
+            <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+              <!-- 状态筛选下拉，复用通用 .custom-dropdown 组件 -->
+              <div class="custom-dropdown" id="outlook-filter-dropdown" style="width:130px;">
+                <div class="dropdown-selected" onclick="toggleDropdown('outlook-filter-dropdown')">
+                  <span id="outlook-filter-label">全部</span><span class="dropdown-arrow"></span>
+                </div>
+                <div class="dropdown-options">
+                  <!-- 选项由 rebuildOutlookFilterOptions() 动态生成：固定项(全部/成功/未注册) + 失败原因细分 -->
+                  <div class="dropdown-option selected" onclick="setOutlookStatusFilter('all')">全部</div>
+                  <div class="dropdown-option" onclick="setOutlookStatusFilter('success')">成功</div>
+                  <div class="dropdown-option" onclick="setOutlookStatusFilter('unregistered')">未注册</div>
+                </div>
               </div>
-              <div class="dropdown-options">
-                <!-- 选项由 rebuildOutlookFilterOptions() 动态生成：固定项(全部/成功/未注册) + 失败原因细分 -->
-                <div class="dropdown-option selected" onclick="setOutlookStatusFilter('all')">全部</div>
-                <div class="dropdown-option" onclick="setOutlookStatusFilter('success')">成功</div>
-                <div class="dropdown-option" onclick="setOutlookStatusFilter('unregistered')">未注册</div>
-              </div>
+              <input id="outlook-search-input" class="form-input" type="text" placeholder="搜索邮箱关键词，如 .jp" oninput="setOutlookSearchKeyword(this.value)" style="width:190px;height:34px;font-size:12px;">
             </div>
             <!-- 批量操作区 -->
             <div style="display:flex;align-items:center;gap:8px;">
               <button class="btn btn-secondary btn-sm" onclick="invertOutlookSelection()">反选</button>
+              <button id="outlook-batch-reset-btn" class="btn btn-secondary btn-sm" onclick="batchResetOutlookAccountStatuses()" disabled>批量重置状态</button>
               <button id="outlook-batch-delete-btn" class="btn btn-danger btn-sm" onclick="batchDeleteOutlookAccounts()" disabled>批量删除 (<span id="outlook-selected-count">0</span>)</button>
             </div>
           </div>
@@ -1279,6 +1284,7 @@
         <div style="display:flex;gap:8px;">
           <button onclick="testMoeMailConnection()" class="btn btn-secondary btn-sm" data-i18n="accounts.testConnection">测试连接</button>
           <button onclick="addMoeMailConfig()" class="btn btn-dark btn-sm" data-i18n="accounts.addConfigBtn">添加配置</button>
+          <button onclick="cancelMoeMailEdit()" class="btn btn-secondary btn-sm">取消编辑</button>
         </div>
         <div id="moemail-test-result" style="margin-top:12px;font-size:12px;display:none;"></div>
       </div>
@@ -1296,7 +1302,7 @@
               <th data-i18n="accounts.thName">名称</th>
               <th data-i18n="accounts.thUrl">URL</th>
               <th style="width:60px;" data-i18n="accounts.thStatus">状态</th>
-              <th style="width:100px;text-align:right;" data-i18n="accounts.thActions">操作</th>
+              <th style="width:150px;text-align:right;" data-i18n="accounts.thActions">操作</th>
             </tr></thead>
             <tbody id="moemail-config-body"></tbody>
           </table>

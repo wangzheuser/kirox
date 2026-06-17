@@ -2,6 +2,7 @@
 
 let moemailConfigs = [];
 let moemailConfigStatus = {}; // 存储每个配置的测试状态
+let moemailEditingIndex = -1;
 
 function _mmT(key, varsOrFallback, fallbackMaybe) {
   var vars = null, fallback = null;
@@ -91,6 +92,7 @@ function updateMoeMailUI() {
 
   // 更新配置列表
   renderMoeMailConfigList();
+  updateMoeMailEditControls();
 }
 
 // 渲染配置列表（模态框 + 设置页内联）
@@ -118,6 +120,7 @@ function renderMoeMailConfigList() {
           <td>${statusHtml}</td>
           <td style="text-align:right;white-space:nowrap;">
             <a href="javascript:void(0)" onclick="testMoeMailConfigByIndex(${idx})" style="color:var(--primary);margin-right:12px;font-size:12px;">${_mmT('common.test', '测试')}</a>
+            <a href="javascript:void(0)" onclick="beginEditMoeMailConfig(${idx})" style="color:var(--accent);margin-right:12px;font-size:12px;">${_mmT('common.edit', '编辑')}</a>
             <a href="javascript:void(0)" onclick="deleteMoeMailConfig(${idx})" style="color:var(--danger);font-size:12px;">${_mmT('common.delete', '删除')}</a>
           </td>
         </tr>`;
@@ -183,6 +186,13 @@ function renderMoeMailConfigList() {
                 </svg>
                 ${_mmT('common.test', '测试')}
               </button>
+              <button onclick="beginEditMoeMailConfig(${idx})" class="btn btn-secondary btn-sm" style="color:var(--accent);">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4Z"/>
+                </svg>
+                ${_mmT('common.edit', '编辑')}
+              </button>
               <button onclick="deleteMoeMailConfig(${idx})" class="btn btn-secondary btn-sm" style="color:var(--danger);">
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="3 6 5 6 21 6"/>
@@ -196,6 +206,148 @@ function renderMoeMailConfigList() {
       }).join('');
     }
   }
+}
+
+function updateMoeMailEditControls() {
+  if (moemailEditingIndex >= moemailConfigs.length) moemailEditingIndex = -1;
+  var editing = moemailEditingIndex >= 0 && moemailEditingIndex < moemailConfigs.length;
+  var saveBtn = document.getElementById('moemail-inline-save-btn');
+  if (saveBtn) {
+    var label = saveBtn.querySelector('span') || saveBtn;
+    label.textContent = editing ? _mmT('common.save', '保存') : _mmT('accounts.addConfigBtn', '添加配置');
+  }
+  var cancelBtn = document.getElementById('moemail-inline-cancel-edit-btn');
+  if (cancelBtn) cancelBtn.style.display = editing ? 'inline-flex' : 'none';
+  var statusEl = document.getElementById('moemail-inline-status');
+  if (statusEl && editing) {
+    statusEl.style.color = 'var(--accent)';
+    statusEl.textContent = _mmT('moemail.editingHint', '正在编辑配置，保存前会先测试连接');
+  }
+}
+
+function beginEditMoeMailConfig(index) {
+  if (index < 0 || index >= moemailConfigs.length) return;
+  var cfg = moemailConfigs[index];
+  moemailEditingIndex = index;
+
+  var inlineName = document.getElementById('moemail-inline-name');
+  var inlineURL = document.getElementById('moemail-inline-url');
+  var inlineKey = document.getElementById('moemail-inline-apikey');
+  if (inlineName) inlineName.value = cfg.name || '';
+  if (inlineURL) inlineURL.value = cfg.url || '';
+  if (inlineKey) inlineKey.value = cfg.apiKey || '';
+
+  var modalName = document.getElementById('moemail-name');
+  var modalURL = document.getElementById('moemail-url');
+  var modalKey = document.getElementById('moemail-apikey');
+  if (modalName) modalName.value = cfg.name || '';
+  if (modalURL) modalURL.value = cfg.url || '';
+  if (modalKey) modalKey.value = cfg.apiKey || '';
+
+  updateMoeMailEditControls();
+  showToast(_mmT('moemail.editingNamed', { name: cfg.name }, '正在编辑: {name}'));
+}
+
+function clearInlineMoeMailInputs() {
+  var nameEl = document.getElementById('moemail-inline-name');
+  var urlEl = document.getElementById('moemail-inline-url');
+  var keyEl = document.getElementById('moemail-inline-apikey');
+  if (nameEl) nameEl.value = '';
+  if (urlEl) urlEl.value = '';
+  if (keyEl) keyEl.value = '';
+}
+
+function cancelMoeMailEdit() {
+  moemailEditingIndex = -1;
+  clearInlineMoeMailInputs();
+  var modalName = document.getElementById('moemail-name');
+  var modalURL = document.getElementById('moemail-url');
+  var modalKey = document.getElementById('moemail-apikey');
+  if (modalName) modalName.value = '';
+  if (modalURL) modalURL.value = 'https://moemail.app';
+  if (modalKey) modalKey.value = '';
+  var resultDiv = document.getElementById('moemail-test-result');
+  if (resultDiv) resultDiv.style.display = 'none';
+  var statusEl = document.getElementById('moemail-inline-status');
+  if (statusEl) { statusEl.style.color = ''; statusEl.textContent = ''; }
+  updateMoeMailEditControls();
+}
+
+async function inlineSaveMoeMailConfig() {
+  if (moemailEditingIndex >= 0) {
+    await saveEditedMoeMailConfig();
+    return;
+  }
+  await inlineAddMoeMail();
+}
+
+async function saveEditedMoeMailConfig() {
+  var index = moemailEditingIndex;
+  if (index < 0 || index >= moemailConfigs.length) {
+    moemailEditingIndex = -1;
+    updateMoeMailEditControls();
+    return;
+  }
+
+  var oldConfig = moemailConfigs[index];
+  var oldName = oldConfig.name;
+  var name = document.getElementById('moemail-inline-name').value.trim() || oldName;
+  var url = document.getElementById('moemail-inline-url').value.trim();
+  var apikey = document.getElementById('moemail-inline-apikey').value.trim();
+  var statusEl = document.getElementById('moemail-inline-status');
+
+  if (!url || !apikey) {
+    showToast(_mmT('moemail.requiredUrlKey', '请填写 API URL 和 API Key'), 'error');
+    return;
+  }
+  if (moemailConfigs.some(function(c, idx) { return idx !== index && c.name === name; })) {
+    showToast(_mmT('moemail.nameExists', '配置名称已存在'), 'error');
+    return;
+  }
+
+  var btn = document.getElementById('moemail-inline-test-btn');
+  var btnOriginalHTML = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.textContent = _mmT('moemail.testing', '测试中...'); }
+  if (statusEl) { statusEl.style.color = ''; statusEl.textContent = ''; }
+
+  var testResult;
+  try {
+    testResult = await window.go.main.App.TestMoeMailConnection(JSON.stringify({ name: name, url: url, apiKey: apikey }));
+  } catch (e) {
+    testResult = { error: String(e) };
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = btnOriginalHTML; }
+  }
+
+  if (!testResult || testResult.error) {
+    var errMsg = (testResult && testResult.error) || _mmT('moemail.testFailedShort', '测试失败');
+    if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = errMsg; }
+    showToast(_mmT('moemail.cannotSaveUntilOk', '连接测试未通过，未保存配置：') + errMsg, 'error');
+    return;
+  }
+
+  var nextConfigs = moemailConfigs.slice();
+  nextConfigs[index] = { name: name, url: url, apiKey: apikey };
+  const saveResult = await window.go.main.App.SaveMoeMailConfigs(JSON.stringify(nextConfigs));
+  if (saveResult.error) {
+    showToast(_mmT('toast.operationFailed', '保存失败') + ': ' + saveResult.error, 'error');
+    return;
+  }
+
+  moemailConfigs = nextConfigs;
+  if (oldName !== name && moemailConfigStatus[oldName]) {
+    moemailConfigStatus[name] = moemailConfigStatus[oldName];
+    delete moemailConfigStatus[oldName];
+  }
+  const domains = testResult.domains || [];
+  moemailConfigStatus[name] = { tested: true, success: true, domains: domains, domainCount: domains.length };
+  saveMoeMailConfigStatus();
+
+  moemailEditingIndex = -1;
+  clearInlineMoeMailInputs();
+  if (statusEl) { statusEl.style.color = 'var(--success)'; statusEl.textContent = ''; }
+  showToast(_mmT('moemail.savedNamed', { name: name }, '已保存: {name}'), 'success');
+  updateMoeMailUI();
 }
 
 // 自动生成配置名称
@@ -262,9 +414,7 @@ async function inlineAddMoeMail() {
   moemailConfigStatus[name] = { tested: true, success: true, domains: testResult.domains || [] };
   saveMoeMailConfigStatus();
 
-  document.getElementById('moemail-inline-name').value = '';
-  document.getElementById('moemail-inline-url').value = '';
-  document.getElementById('moemail-inline-apikey').value = '';
+  clearInlineMoeMailInputs();
   if (statusEl) { statusEl.style.color = 'var(--success)'; statusEl.textContent = ''; }
   showToast(_mmT('moemail.addedNamed', { name: name }, '已添加: {name}'));
   updateMoeMailUI();
@@ -301,6 +451,7 @@ async function inlineTestMoeMail() {
 
 // 打开 MoeMail 模态框
 function openMoeMailModal() {
+  cancelMoeMailEdit();
   loadMoeMailConfigs();
   document.getElementById('moemail-modal').classList.add('show');
   // 清空输入框
@@ -367,6 +518,16 @@ async function testMoeMailConnection() {
 
 // 添加配置
 async function addMoeMailConfig() {
+  if (moemailEditingIndex >= 0) {
+    var inlineName = document.getElementById('moemail-inline-name');
+    var inlineURL = document.getElementById('moemail-inline-url');
+    var inlineKey = document.getElementById('moemail-inline-apikey');
+    if (inlineName) inlineName.value = document.getElementById('moemail-name').value.trim();
+    if (inlineURL) inlineURL.value = document.getElementById('moemail-url').value.trim();
+    if (inlineKey) inlineKey.value = document.getElementById('moemail-apikey').value.trim();
+    await saveEditedMoeMailConfig();
+    return;
+  }
   const name = document.getElementById('moemail-name').value.trim();
   const url = document.getElementById('moemail-url').value.trim();
   const apiKey = document.getElementById('moemail-apikey').value.trim();
@@ -513,6 +674,7 @@ async function testMoeMailConfigByIndex(index) {
 // 删除配置
 async function deleteMoeMailConfig(index) {
   if (index < 0 || index >= moemailConfigs.length) return;
+  if (moemailEditingIndex === index) cancelMoeMailEdit();
 
   const configName = moemailConfigs[index].name;
   showConfirmModal(

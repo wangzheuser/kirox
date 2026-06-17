@@ -59,3 +59,8 @@ test('wails wrappers expose account pool APIs', () => {
     assert.match(wailsAppDts, new RegExp(`export function ${name}\\(`));
   }
 });
+
+test('kiro.rs sync toast reports locally removed rejected accounts', () => {
+  assert.match(accountPoolJs, /removedRejected/);
+  assert.match(accountPoolJs, /已删除本地失效账号/);
+});

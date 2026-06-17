@@ -33,6 +33,9 @@ func TestSyncAccountsTreatsExistingCredentialAsSuccess(t *testing.T) {
 	if len(result.Details) != 1 || !result.Details[0].Success {
 		t.Fatalf("detail should be success for existing credential: %#v", result.Details)
 	}
+	if result.Details[0].Rejected {
+		t.Fatalf("existing credential must not be rejected for local deletion: %#v", result.Details[0])
+	}
 	if !strings.Contains(result.Details[0].Error, "已存在") {
 		t.Fatalf("detail should retain existing-credential hint: %#v", result.Details[0])
 	}
@@ -63,7 +66,7 @@ func TestSyncAccountsCountsOrdinarySuccess(t *testing.T) {
 		if body.Email != "ok@example.com" {
 			t.Fatalf("expected request email ok@example.com, got %q", body.Email)
 		}
-		fmt.Fprint(w, `{"success":true,"credentialId":123,"email":"ok@example.com"}`)
+		fmt.Fprint(w, `{"success":true,"credentialId":123,"email":"ok@example.com","balance":{"balance":1}}`)
 	}))
 	defer server.Close()
 
@@ -91,7 +94,7 @@ func TestSyncAccountsRetriesNetworkErrorOnceAndCountsSuccess(t *testing.T) {
 			conn.Close()
 			return
 		}
-		fmt.Fprint(w, `{"success":true,"credentialId":456,"email":"retry@example.com"}`)
+		fmt.Fprint(w, `{"success":true,"credentialId":456,"email":"retry@example.com","balance":{"balance":1}}`)
 	}))
 	defer server.Close()
 
@@ -125,7 +128,7 @@ func TestSyncAccountsRetriesRetryableErrorImmediatelyBeforeNextAccount(t *testin
 			fmt.Fprint(w, `temporary server error`)
 			return
 		}
-		fmt.Fprintf(w, `{"success":true,"credentialId":%d}`, len(seen))
+		fmt.Fprintf(w, `{"success":true,"credentialId":%d,"balance":{"balance":1}}`, len(seen))
 	}))
 	defer server.Close()
 
@@ -156,7 +159,7 @@ func TestSyncAccountsTrimsEmailInCredentialRequest(t *testing.T) {
 		if body.Email != "trim@example.com" {
 			t.Fatalf("expected trimmed request email trim@example.com, got %q", body.Email)
 		}
-		fmt.Fprint(w, `{"success":true,"credentialId":789,"email":"trim@example.com"}`)
+		fmt.Fprint(w, `{"success":true,"credentialId":789,"email":"trim@example.com","balance":{"balance":1}}`)
 	}))
 	defer server.Close()
 
@@ -215,5 +218,143 @@ func TestSyncAccountsDoesNotRetryNonRetryableBadRequest(t *testing.T) {
 	}
 	if result.Total != 1 || result.Success != 0 || result.Failed != 1 {
 		t.Fatalf("bad request should remain failure, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+}
+
+func TestSyncAccountsRejectsExpiredTokenFromAddCredential(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"type":"invalid_request","message":"凭据无效: OAuth/IdC 凭证已过期或无效，需要重新认证: ExpiredToken"}}`)
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+		{"email": "expired@example.com", "refreshToken": "expired", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if result.Total != 1 || result.Success != 0 || result.Failed != 1 {
+		t.Fatalf("expired token should fail, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+	if len(result.Details) != 1 || !result.Details[0].Rejected || result.Details[0].RejectReason == "" {
+		t.Fatalf("expired token should be rejected for local deletion: %#v", result.Details)
+	}
+}
+
+func TestSyncAccountsRejectsBannedCredentialFromForcedBalance(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/admin/credentials":
+			fmt.Fprint(w, `{"success":true,"credentialId":42,"email":"banned@example.com"}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/admin/credentials/42/balance":
+			if r.URL.Query().Get("force_refresh") != "true" {
+				t.Fatalf("force_refresh should be true, got query %s", r.URL.RawQuery)
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, `{"error":{"type":"invalid_request","message":"获取余额失败: 凭证已被封禁或禁用: TEMPORARILY_SUSPENDED"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+		{"email": "banned@example.com", "refreshToken": "refresh", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if result.Total != 1 || result.Success != 0 || result.Failed != 1 {
+		t.Fatalf("banned balance should fail, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+	if len(result.Details) != 1 || !result.Details[0].Rejected || !strings.Contains(result.Details[0].RejectReason, "封禁") {
+		t.Fatalf("banned balance should mark rejected: %#v", result.Details)
+	}
+}
+
+func TestSyncAccountsKeepsCredentialWhenForcedBalanceIsTransient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/admin/credentials":
+			fmt.Fprint(w, `{"success":true,"credentialId":77,"email":"slow@example.com"}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/admin/credentials/77/balance":
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, `{"error":{"type":"api_error","message":"rate limited"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+		{"email": "slow@example.com", "refreshToken": "refresh", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if result.Total != 1 || result.Success != 1 || result.Failed != 0 {
+		t.Fatalf("transient balance error should keep sync success, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+	if len(result.Details) != 1 || result.Details[0].Rejected || result.Details[0].Verified || result.Details[0].VerificationError == "" {
+		t.Fatalf("transient balance error should be unverified but not rejected: %#v", result.Details)
+	}
+}
+
+func TestSyncAccountsKeepsCredentialWhenForcedBalanceReturnsServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/admin/credentials":
+			fmt.Fprint(w, `{"success":true,"credentialId":78,"email":"server-error@example.com"}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/admin/credentials/78/balance":
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, `{"error":{"type":"api_error","message":"upstream unavailable"}}`)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+		{"email": "server-error@example.com", "refreshToken": "refresh", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if result.Total != 1 || result.Success != 1 || result.Failed != 0 {
+		t.Fatalf("5xx balance error should keep sync success, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+	if len(result.Details) != 1 || result.Details[0].Rejected || result.Details[0].Verified || result.Details[0].VerificationError == "" {
+		t.Fatalf("5xx balance error should be unverified but not rejected: %#v", result.Details)
+	}
+}
+
+func TestSyncAccountsDoesNotRejectAdminAPIKeyError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":{"type":"authentication_error","message":"Invalid or missing admin API key"}}`)
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "bad-admin-key", []map[string]interface{}{
+		{"email": "admin-error@example.com", "refreshToken": "refresh", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if result.Total != 1 || result.Success != 0 || result.Failed != 1 {
+		t.Fatalf("admin key error should fail without deletion, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+	if len(result.Details) != 1 || result.Details[0].Rejected {
+		t.Fatalf("admin key error must not reject local account: %#v", result.Details)
+	}
+}
+
+func TestSyncAccountsDoesNotRejectDisabledManagementState(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"type":"invalid_request","message":"凭据 disabled=true disabledReason=Manual"}}`)
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+		{"email": "disabled@example.com", "refreshToken": "refresh", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if result.Total != 1 || result.Success != 0 || result.Failed != 1 {
+		t.Fatalf("disabled management state should fail without deletion, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+	if len(result.Details) != 1 || result.Details[0].Rejected {
+		t.Fatalf("disabled management state must not reject local account: %#v", result.Details)
 	}
 }
