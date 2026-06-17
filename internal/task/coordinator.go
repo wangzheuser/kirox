@@ -253,11 +253,14 @@ func resolveOutlookGraphRegistrationEmail(acc email.OutlookAccount, emailProxy s
 }
 
 func resolveOutlookGraphRegistrationEmailWithMode(acc email.OutlookAccount, emailProxy, mode string, resolver outlookGraphProfileResolver) email.OutlookAccount {
-	if strings.TrimSpace(acc.RegistrationEmail) != "" {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = storage.OutlookGraphRegistrationEmailAuto
+	}
+	if mode == storage.OutlookGraphRegistrationEmailAuto && strings.TrimSpace(acc.RegistrationEmail) != "" {
 		return acc
 	}
 	imported := strings.TrimSpace(acc.Email)
-	mode = strings.ToLower(strings.TrimSpace(mode))
 	if mode == storage.OutlookGraphRegistrationEmailImported || resolver == nil {
 		acc.RegistrationEmail = imported
 		return acc

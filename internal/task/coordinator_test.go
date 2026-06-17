@@ -552,19 +552,19 @@ func TestResolveOutlookGraphRegistrationEmailMapsOnlyClaimedAccount(t *testing.T
 	}
 }
 
-func TestResolveOutlookGraphRegistrationEmailKeepsExistingMappingWithoutLookup(t *testing.T) {
+func TestResolveOutlookGraphRegistrationEmailAutoKeepsExistingMappingWithoutLookup(t *testing.T) {
 	acc := email.OutlookAccount{Email: "alias@outlook.jp", RegistrationEmail: "actual@hotmail.com"}
 	calls := 0
-	resolved := resolveOutlookGraphRegistrationEmail(acc, "", func(email.OutlookAccount, string) (string, error) {
+	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		calls++
-		return "unexpected@hotmail.com", nil
+		return email.OutlookGraphProfile{PrimaryEmail: "unexpected@hotmail.com"}, nil
 	})
 
 	if calls != 0 {
-		t.Fatalf("existing RegistrationEmail should not trigger Graph /me lookup, got %d calls", calls)
+		t.Fatalf("auto mode should reuse existing RegistrationEmail without Graph /me lookup, got %d calls", calls)
 	}
 	if resolved.RegistrationEmail != "actual@hotmail.com" {
-		t.Fatalf("existing mapping should be kept: %#v", resolved)
+		t.Fatalf("auto mode should keep existing mapping: %#v", resolved)
 	}
 }
 
@@ -607,6 +607,38 @@ func TestResolveOutlookGraphRegistrationEmailAutoKeepsImportedWhenAliasesUnavail
 
 	if resolved.RegistrationEmail != "alias@outlook.jp" {
 		t.Fatalf("auto mode should keep imported address when aliases are unavailable: %#v", resolved)
+	}
+}
+
+func TestResolveOutlookGraphRegistrationEmailPrimaryModeOverridesExistingMapping(t *testing.T) {
+	acc := email.OutlookAccount{Email: "alias@outlook.jp", RegistrationEmail: "old-alias@hotmail.com"}
+	calls := 0
+	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailPrimary, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+		calls++
+		return email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com", Aliases: []string{"alias@outlook.jp"}, AliasDataAvailable: true}, nil
+	})
+
+	if calls != 1 {
+		t.Fatalf("primary mode should refresh Graph /me even when RegistrationEmail exists, got %d calls", calls)
+	}
+	if resolved.RegistrationEmail != "primary@hotmail.com" {
+		t.Fatalf("primary mode should override existing mapping with Graph primary: %#v", resolved)
+	}
+}
+
+func TestResolveOutlookGraphRegistrationEmailImportedModeOverridesExistingMapping(t *testing.T) {
+	acc := email.OutlookAccount{Email: "alias@outlook.jp", RegistrationEmail: "old-primary@hotmail.com"}
+	calls := 0
+	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailImported, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+		calls++
+		return email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com"}, nil
+	})
+
+	if calls != 0 {
+		t.Fatalf("imported mode should not call Graph /me, got %d calls", calls)
+	}
+	if resolved.RegistrationEmail != "alias@outlook.jp" {
+		t.Fatalf("imported mode should override existing mapping with imported email: %#v", resolved)
 	}
 }
 
