@@ -245,6 +245,8 @@ func WaitForOTPGraphWithProxy(ctx context.Context, acc OutlookAccount, after tim
 		case <-time.After(time.Duration(interval) * time.Second):
 		}
 	}
+	diag := diagnoseGraphOTPWithProxy(ctx, accessToken, targetEmail, after, runtimeProxyURL)
+	log.Printf("[Outlook Graph] 验证码超时诊断: %s", diag.Summary())
 	return "", fmt.Errorf("等待验证码超时 (%ds)", timeout)
 }
 
@@ -302,6 +304,90 @@ func isTransientOutlookGraphTokenError(err error) bool {
 	}
 	return false
 }
+
+type OutlookGraphOTPDiagnostic struct {
+	TotalMessages      int
+	RelevantMessages   int
+	TargetMessages     int
+	OtherAliasMessages int
+	TargetWithoutCode  int
+	Classification     string
+}
+
+func (d OutlookGraphOTPDiagnostic) Summary() string {
+	return fmt.Sprintf("classification=%s, total=%d, relevant=%d, target=%d, otherAlias=%d, targetWithoutCode=%d",
+		d.Classification, d.TotalMessages, d.RelevantMessages, d.TargetMessages, d.OtherAliasMessages, d.TargetWithoutCode)
+}
+
+func diagnoseGraphOTPMessages(messages []graphMessage, targetEmail string, after time.Time) OutlookGraphOTPDiagnostic {
+	diag := OutlookGraphOTPDiagnostic{TotalMessages: len(messages), Classification: "no_relevant_messages"}
+	codeRegex := regexp.MustCompile(`\b(\d{6})\b`)
+	for _, message := range messages {
+		receivedAt, err := time.Parse(time.RFC3339, message.ReceivedDateTime)
+		if err != nil || receivedAt.Before(after) {
+			continue
+		}
+		text := strings.Join([]string{message.Subject, message.BodyPreview, message.Body.Content}, " ")
+		if !looksLikeOTPMessage(text) {
+			continue
+		}
+		diag.RelevantMessages++
+		toAddrs := make([]string, 0, len(message.ToRecipients))
+		for _, r := range message.ToRecipients {
+			toAddrs = append(toAddrs, r.EmailAddress.Address)
+		}
+		toField := strings.Join(toAddrs, ",")
+		matchesTarget := toField == "" || recipientMatches(toField, targetEmail)
+		if matchesTarget {
+			diag.TargetMessages++
+			if extractCodeFromText(text, codeRegex) == "" {
+				diag.TargetWithoutCode++
+			}
+		} else {
+			diag.OtherAliasMessages++
+		}
+	}
+	switch {
+	case diag.RelevantMessages == 0:
+		diag.Classification = "no_relevant_messages"
+	case diag.TargetMessages == 0 && diag.OtherAliasMessages > 0:
+		diag.Classification = "other_alias_only"
+	case diag.TargetWithoutCode > 0:
+		diag.Classification = "target_without_code"
+	default:
+		diag.Classification = "target_related"
+	}
+	return diag
+}
+
+func looksLikeOTPMessage(text string) bool {
+	lower := strings.ToLower(text)
+	markers := []string{"aws", "kiro", "verification", "verify", "验证码", "code", "one-time", "otp"}
+	for _, marker := range markers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func diagnoseGraphOTPWithProxy(ctx context.Context, accessToken, targetEmail string, after time.Time, proxyURL string) OutlookGraphOTPDiagnostic {
+	var all []graphMessage
+	for _, folder := range []string{"inbox", "junkemail"} {
+		select {
+		case <-ctx.Done():
+			return OutlookGraphOTPDiagnostic{Classification: "context_cancelled"}
+		default:
+		}
+		messages, err := fetchGraphMessagesWithTop(accessToken, folder, proxyURL, 50)
+		if err != nil {
+			log.Printf("[Outlook Graph] 超时诊断查询失败 folder=%s: %v", folder, err)
+			continue
+		}
+		all = append(all, messages...)
+	}
+	return diagnoseGraphOTPMessages(all, targetEmail, after)
+}
 func findGraphOTP(accessToken, targetEmail string, after time.Time, codeRegex *regexp.Regexp, proxyURL string) (string, error) {
 	var lastErr error
 	for _, folder := range []string{"inbox", "junkemail"} {
@@ -341,8 +427,15 @@ func findGraphOTP(accessToken, targetEmail string, after time.Time, codeRegex *r
 }
 
 func fetchGraphMessages(accessToken, folder, proxyURL string) ([]graphMessage, error) {
+	return fetchGraphMessagesWithTop(accessToken, folder, proxyURL, 10)
+}
+
+func fetchGraphMessagesWithTop(accessToken, folder, proxyURL string, top int) ([]graphMessage, error) {
+	if top <= 0 {
+		top = 10
+	}
 	params := url.Values{}
-	params.Set("$top", "10")
+	params.Set("$top", fmt.Sprintf("%d", top))
 	params.Set("$orderby", "receivedDateTime desc")
 	params.Set("$select", "subject,bodyPreview,body,receivedDateTime,toRecipients")
 	endpoint := strings.TrimRight(outlookGraphAPIBase, "/") +

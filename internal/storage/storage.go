@@ -916,7 +916,7 @@ func defaultRegistrationConfig() RegistrationConfig {
 		Concurrency:       DefaultRegistrationConcurrency,
 		Delay:             DefaultRegistrationDelay,
 		RetryCount:        1,
-		OTPTimeout:        120,
+		OTPTimeout:        60,
 		EmailProvider:     RegistrationEmailProviderOutlook,
 		MoeMailDomainMode: MoeMailDomainModeRandom,
 		MoeMailDomains:    []string{},

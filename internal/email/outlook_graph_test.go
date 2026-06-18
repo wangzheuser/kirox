@@ -319,3 +319,44 @@ func TestGetOutlookGraphProfileWithProxyDistinguishesMissingAliasFields(t *testi
 		t.Fatalf("primary address should still be matched: %#v", profile)
 	}
 }
+
+func TestWaitForOTPGraphTimeoutDiagnosticNoRelevantMessages(t *testing.T) {
+	after := time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC)
+	messages := []graphMessage{
+		testGraphMessage("普通邮件", "2026-05-20T10:00:01Z", "hello"),
+	}
+	diag := diagnoseGraphOTPMessages(messages, "alias@outlook.jp", after)
+	if diag.RelevantMessages != 0 || diag.Classification != "no_relevant_messages" {
+		t.Fatalf("unexpected diag: %+v", diag)
+	}
+}
+
+func TestWaitForOTPGraphTimeoutDiagnosticOtherAliasOnly(t *testing.T) {
+	after := time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC)
+	msg := testGraphMessage("AWS 验证码", "2026-05-20T10:00:01Z", "你的验证码是 123456")
+	msg.ToRecipients = append(msg.ToRecipients, struct {
+		EmailAddress struct {
+			Address string `json:"address"`
+		} `json:"emailAddress"`
+	}{})
+	msg.ToRecipients[0].EmailAddress.Address = "other@outlook.jp"
+	diag := diagnoseGraphOTPMessages([]graphMessage{msg}, "alias@outlook.jp", after)
+	if diag.RelevantMessages != 1 || diag.OtherAliasMessages != 1 || diag.Classification != "other_alias_only" {
+		t.Fatalf("unexpected diag: %+v", diag)
+	}
+}
+
+func TestWaitForOTPGraphTimeoutDiagnosticTargetWithoutCode(t *testing.T) {
+	after := time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC)
+	msg := testGraphMessage("AWS Verify", "2026-05-20T10:00:01Z", "验证码邮件但暂无数字")
+	msg.ToRecipients = append(msg.ToRecipients, struct {
+		EmailAddress struct {
+			Address string `json:"address"`
+		} `json:"emailAddress"`
+	}{})
+	msg.ToRecipients[0].EmailAddress.Address = "alias@outlook.jp"
+	diag := diagnoseGraphOTPMessages([]graphMessage{msg}, "alias@outlook.jp", after)
+	if diag.TargetMessages != 1 || diag.TargetWithoutCode != 1 || diag.Classification != "target_without_code" {
+		t.Fatalf("unexpected diag: %+v", diag)
+	}
+}

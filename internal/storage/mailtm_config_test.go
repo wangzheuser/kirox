@@ -21,3 +21,26 @@ func TestRegistrationConfigAcceptsMailTMProvider(t *testing.T) {
 		t.Fatalf("EmailProvider=%q, want mailtm", got.EmailProvider)
 	}
 }
+
+func TestDefaultRegistrationConfigUsesSixtySecondOTPTimeout(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	cfg := GetRegistrationConfig()
+	if cfg.OTPTimeout != 60 {
+		t.Fatalf("default OTPTimeout=%d, want 60", cfg.OTPTimeout)
+	}
+}
+
+func TestRegistrationConfigPreservesCustomOTPTimeout(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	cfg := defaultRegistrationConfig()
+	cfg.OTPTimeout = 90
+	if err := SetRegistrationConfig(cfg); err != nil {
+		t.Fatalf("SetRegistrationConfig: %v", err)
+	}
+	got := GetRegistrationConfig()
+	if got.OTPTimeout != 90 {
+		t.Fatalf("custom OTPTimeout=%d, want 90", got.OTPTimeout)
+	}
+}

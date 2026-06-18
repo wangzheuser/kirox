@@ -132,6 +132,50 @@ func MarkAccountFailReason(email string, failReason string) map[string]interface
 	return map[string]interface{}{"status": "updated"}
 }
 
+// SaveOutlookGraphResolution 持久化单个 Outlook 账号的 Graph 地址解析结果。
+// 仅保存映射相关字段，大小写不敏感匹配导入邮箱，不修改注册状态或凭据。
+func SaveOutlookGraphResolution(importedEmail string, resolved OutlookAccount) map[string]interface{} {
+	key := strings.ToLower(strings.TrimSpace(importedEmail))
+	if key == "" {
+		key = strings.ToLower(strings.TrimSpace(resolved.Email))
+	}
+	if key == "" {
+		return map[string]interface{}{"error": "邮箱为空"}
+	}
+	found := false
+	now := time.Now().Format("2006-01-02 15:04:05")
+	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
+		for i := range accounts {
+			if accounts[i] == nil {
+				continue
+			}
+			emailValue, _ := accounts[i]["email"].(string)
+			if strings.ToLower(strings.TrimSpace(emailValue)) != key {
+				continue
+			}
+			if strings.TrimSpace(resolved.RegistrationEmail) != "" {
+				accounts[i]["registrationEmail"] = strings.TrimSpace(resolved.RegistrationEmail)
+			}
+			if strings.TrimSpace(resolved.GraphPrimaryEmail) != "" {
+				accounts[i]["graphPrimaryEmail"] = strings.TrimSpace(resolved.GraphPrimaryEmail)
+			}
+			accounts[i]["graphAliasVerified"] = resolved.GraphAliasVerified
+			if strings.TrimSpace(resolved.GraphResolvedAt) != "" {
+				accounts[i]["graphResolvedAt"] = strings.TrimSpace(resolved.GraphResolvedAt)
+			} else {
+				accounts[i]["graphResolvedAt"] = now
+			}
+			found = true
+			break
+		}
+		return accounts
+	})
+	if !found {
+		return map[string]interface{}{"error": "账号不存在"}
+	}
+	return map[string]interface{}{"status": "updated"}
+}
+
 // DeleteOutlookAccount 删除单个 Outlook 账号（纯内存操作，异步刷盘）
 func DeleteOutlookAccount(email string) map[string]interface{} {
 	found := false

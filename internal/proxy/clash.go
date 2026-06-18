@@ -20,6 +20,8 @@ const (
 	defaultClashTestTimeout = 10 * time.Second
 	clashSwitchWait         = 500 * time.Millisecond
 	maxClashAPIResponseSize = 8 * 1024 * 1024
+	clashQuarantineFailures = 3
+	clashQuarantineDuration = 30 * time.Minute
 )
 
 var clashPriorityGroups = []string{"GLOBAL", "Proxy", "节点选择", "代理", "手动选择", "Select", "🚀 节点选择"}
@@ -51,14 +53,16 @@ type ClashSelection struct {
 
 // ClashClient 通过 Clash RESTful API 管理代理组节点。
 type ClashClient struct {
-	config      ClashConfig
-	httpClient  *http.Client
-	version     string
-	proxyGroup  string
-	nodeIndex   int
-	nodes       []string
-	failedNodes map[string]bool
-	initialized bool
+	config           ClashConfig
+	httpClient       *http.Client
+	version          string
+	proxyGroup       string
+	nodeIndex        int
+	nodes            []string
+	failedNodes      map[string]bool
+	networkFailures  map[string]int
+	quarantinedUntil map[string]time.Time
+	initialized      bool
 }
 
 type clashProxyGroup struct {
@@ -96,10 +100,12 @@ func newClashClient(config ClashConfig, client *http.Client) *ClashClient {
 		client = http.DefaultClient
 	}
 	return &ClashClient{
-		config:      config,
-		httpClient:  client,
-		nodeIndex:   -1,
-		failedNodes: make(map[string]bool),
+		config:           config,
+		httpClient:       client,
+		nodeIndex:        -1,
+		failedNodes:      make(map[string]bool),
+		networkFailures:  make(map[string]int),
+		quarantinedUntil: make(map[string]time.Time),
 	}
 }
 
@@ -164,6 +170,9 @@ func (c *ClashClient) SwitchToNextAvailable(ctx context.Context) (ClashSelection
 
 	if c.availableNodeCount() == 0 {
 		c.failedNodes = make(map[string]bool)
+		if c.availableNodeCount() == 0 {
+			return c.selection("", 0, 0, start, false, nil), fmt.Errorf("Clash 没有可用节点")
+		}
 	}
 
 	var errs []string
@@ -174,7 +183,7 @@ func (c *ClashClient) SwitchToNextAvailable(ctx context.Context) (ClashSelection
 
 		c.nodeIndex = (c.nodeIndex + 1) % len(c.nodes)
 		node := c.nodes[c.nodeIndex]
-		if c.failedNodes[node] {
+		if c.failedNodes[node] || c.isNodeQuarantined(node, time.Now()) {
 			continue
 		}
 
@@ -197,12 +206,18 @@ func (c *ClashClient) SwitchToNextAvailable(ctx context.Context) (ClashSelection
 }
 
 func (c *ClashClient) switchToNext(ctx context.Context, start time.Time) (ClashSelection, error) {
-	c.nodeIndex = (c.nodeIndex + 1) % len(c.nodes)
-	node := c.nodes[c.nodeIndex]
-	if err := c.switchNode(ctx, node); err != nil {
-		return c.selection(node, 1, 0, start, true, nil), err
+	for tried := 0; tried < len(c.nodes); tried++ {
+		c.nodeIndex = (c.nodeIndex + 1) % len(c.nodes)
+		node := c.nodes[c.nodeIndex]
+		if c.isNodeQuarantined(node, time.Now()) {
+			continue
+		}
+		if err := c.switchNode(ctx, node); err != nil {
+			return c.selection(node, tried+1, 0, start, true, nil), err
+		}
+		return c.selection(node, tried+1, 0, start, true, nil), nil
 	}
-	return c.selection(node, 1, 0, start, true, nil), nil
+	return c.selection("", len(c.nodes), 0, start, true, nil), fmt.Errorf("Clash 没有可用节点")
 }
 
 func (c *ClashClient) selection(node string, attempts, delay int, start time.Time, skipped bool, errs []string) ClashSelection {
@@ -430,12 +445,68 @@ func (c *ClashClient) apiRequest(ctx context.Context, method, endpoint string, p
 
 func (c *ClashClient) availableNodeCount() int {
 	count := 0
+	now := time.Now()
 	for _, node := range c.nodes {
-		if !c.failedNodes[node] {
+		if !c.failedNodes[node] && !c.isNodeQuarantined(node, now) {
 			count++
 		}
 	}
 	return count
+}
+
+// RecordNodeNetworkFailure 记录当前注册链路在指定 Clash 节点上的网络失败。
+// 连续失败达到阈值后节点会被临时隔离，仅保存在当前进程内。
+func (c *ClashClient) RecordNodeNetworkFailure(node string) {
+	node = strings.TrimSpace(node)
+	if node == "" {
+		return
+	}
+	if c.networkFailures == nil {
+		c.networkFailures = make(map[string]int)
+	}
+	if c.quarantinedUntil == nil {
+		c.quarantinedUntil = make(map[string]time.Time)
+	}
+	c.networkFailures[node]++
+	if c.networkFailures[node] >= clashQuarantineFailures {
+		c.quarantinedUntil[node] = time.Now().Add(clashQuarantineDuration)
+		c.failedNodes[node] = true
+	}
+}
+
+// RecordNodeSuccess 清除指定节点的注册链路网络失败计数。
+func (c *ClashClient) RecordNodeSuccess(node string) {
+	node = strings.TrimSpace(node)
+	if node == "" {
+		return
+	}
+	delete(c.networkFailures, node)
+	delete(c.quarantinedUntil, node)
+	delete(c.failedNodes, node)
+}
+
+func (c *ClashClient) QuarantinedNodeCount() int {
+	now := time.Now()
+	count := 0
+	for node := range c.quarantinedUntil {
+		if c.isNodeQuarantined(node, now) {
+			count++
+		}
+	}
+	return count
+}
+
+func (c *ClashClient) isNodeQuarantined(node string, now time.Time) bool {
+	until, ok := c.quarantinedUntil[node]
+	if !ok {
+		return false
+	}
+	if now.Before(until) {
+		return true
+	}
+	delete(c.quarantinedUntil, node)
+	delete(c.failedNodes, node)
+	return false
 }
 
 func (c *ClashClient) sanitizeError(msg string) string {

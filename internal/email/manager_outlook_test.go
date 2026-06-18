@@ -218,3 +218,27 @@ func TestResetOutlookAccountStatusesByEmailsOnlyResetsTargetsAndKeepsCredentials
 		t.Fatalf("非目标账号凭据字段不应被改变: %+v", keep)
 	}
 }
+
+func TestSaveOutlookGraphResolutionPersistsByEmailCaseInsensitive(t *testing.T) {
+	storage.SetAccountsCached([]map[string]interface{}{
+		{"email": "Alias@outlook.jp", "password": "p", "clientId": "c", "refreshToken": "r", "registered": false},
+	})
+
+	result := SaveOutlookGraphResolution("alias@OUTLOOK.jp", OutlookAccount{
+		Email:              "Alias@outlook.jp",
+		RegistrationEmail:  "Alias@outlook.jp",
+		GraphPrimaryEmail:  "primary@hotmail.com",
+		GraphAliasVerified: true,
+	})
+	if result["status"] != "updated" {
+		t.Fatalf("SaveOutlookGraphResolution result=%v", result)
+	}
+	accounts := GetOutlookAccounts()
+	acc := accounts[0]
+	if acc["registrationEmail"] != "Alias@outlook.jp" || acc["graphPrimaryEmail"] != "primary@hotmail.com" || acc["graphAliasVerified"] != true {
+		t.Fatalf("graph fields not persisted: %+v", acc)
+	}
+	if _, ok := acc["graphResolvedAt"].(string); !ok {
+		t.Fatalf("graphResolvedAt should be persisted: %+v", acc)
+	}
+}

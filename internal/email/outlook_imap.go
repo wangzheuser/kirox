@@ -23,12 +23,14 @@ import (
 
 // OutlookAccount Outlook 邮箱账号
 type OutlookAccount struct {
-	Email             string
-	Password          string
-	ClientID          string
-	RefreshToken      string
-	RegistrationEmail string
-	GraphPrimaryEmail string
+	Email              string
+	Password           string
+	ClientID           string
+	RefreshToken       string
+	RegistrationEmail  string
+	GraphPrimaryEmail  string
+	GraphAliasVerified bool
+	GraphResolvedAt    string
 }
 
 // recipientMatches 判断邮件收件人是否命中当前注册的别名邮箱。

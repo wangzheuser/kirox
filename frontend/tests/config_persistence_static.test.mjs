@@ -112,3 +112,10 @@ test('Outlook Graph registration email strategy is persisted through backend API
   assert.match(wailsAppDts, /export function GetOutlookGraphRegistrationEmailMode\(\):Promise<string>/);
   assert.match(wailsAppDts, /export function SetOutlookGraphRegistrationEmailMode\(arg1:string\):Promise<Record<string, any>>/);
 });
+
+test('registration OTP timeout defaults to sixty seconds in UI config', () => {
+  assert.match(html, /id="cfg-otp-timeout" value="60"/);
+  assert.match(appJs, /otpTimeout:\s*readIntegerInput\(['"]cfg-otp-timeout['"],\s*60,\s*30\)/);
+  assert.match(appJs, /writeIntegerInput\(['"]cfg-otp-timeout['"],\s*cfg\.otpTimeout,\s*60\)/);
+  assert.match(appJs, /otpTimeout:\s*60/);
+});

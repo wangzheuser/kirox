@@ -1,6 +1,7 @@
 package task
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -427,6 +428,68 @@ func TestOutlookSendOTPBlockedStillForceStopsWholeBatch(t *testing.T) {
 	}
 }
 
+func TestSuccessTargetModeDoesNotForceStopOnPerAttemptRiskErrors(t *testing.T) {
+	cases := []struct {
+		name       string
+		errorMsg   string
+		provider   string
+		killSwitch bool
+	}{
+		{
+			name:     "outlook formatted blocked",
+			errorMsg: `注册被拦截: 请更换IP或稍后重试 [provider=outlook, domain=example.com, emailProxy=enabled, proxy=enabled]`,
+			provider: "outlook",
+		},
+		{
+			name:     "outlook TES blocked",
+			errorMsg: `send-otp 失败 (400): {"errorCode":"BLOCKED","message":"Request was blocked by TES."}`,
+			provider: "outlook",
+		},
+		{
+			name:       "plain send otp 400 with kill switch",
+			errorMsg:   `send-otp 失败 (400): domain rejected`,
+			provider:   "outlook",
+			killSwitch: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if shouldForceStopTaskForMode(tc.errorMsg, tc.provider, tc.killSwitch, true) {
+				t.Fatalf("success target mode should continue after per-attempt risk error: %s", tc.errorMsg)
+			}
+			if !shouldForceStopTaskForMode(tc.errorMsg, tc.provider, tc.killSwitch, false) {
+				t.Fatalf("non-success-target mode should keep existing force-stop behavior: %s", tc.errorMsg)
+			}
+		})
+	}
+}
+
+func TestSuccessTargetModeDoesNotStopOnOutlookOTPTimeoutStreak(t *testing.T) {
+	var streak outlookOTPTimeoutStreak
+	for i := 0; i < 5; i++ {
+		if shouldStopForOutlookOTPTimeout(true, false, "验证码超时", true, &streak) {
+			t.Fatalf("success target mode should not stop on OTP timeout streak at attempt %d", i+1)
+		}
+	}
+
+	if streak.count != 5 {
+		t.Fatalf("success target mode should still record timeout streak for diagnostics, got %d", streak.count)
+	}
+}
+
+func TestNormalModeStopsOnOutlookOTPTimeoutStreak(t *testing.T) {
+	var streak outlookOTPTimeoutStreak
+	for i := 0; i < 4; i++ {
+		if shouldStopForOutlookOTPTimeout(true, false, "验证码超时", false, &streak) {
+			t.Fatalf("normal mode should not stop before fifth timeout, stopped at %d", i+1)
+		}
+	}
+	if !shouldStopForOutlookOTPTimeout(true, false, "验证码超时", false, &streak) {
+		t.Fatalf("normal mode should stop on fifth consecutive OTP timeout")
+	}
+}
+
 func TestTemporaryEmailSendOTPBlockedDoesNotRetrySameMailbox(t *testing.T) {
 	errText := `注册被拦截: 请更换IP或稍后重试 [provider=tempmail_lol, domain=example.com, emailProxy=enabled, proxy=enabled]`
 	if shouldRetrySameMailboxAfterFailure(errText, "tempmail_lol") {
@@ -654,5 +717,74 @@ func TestResolveOutlookGraphRegistrationEmailImportedModeSkipsGraphLookup(t *tes
 	}
 	if resolved.RegistrationEmail != "alias@outlook.jp" {
 		t.Fatalf("imported mode should use imported email: %#v", resolved)
+	}
+}
+
+func TestBuildAvailableOutlookAccountsPreservesGraphCacheFields(t *testing.T) {
+	stored := []map[string]interface{}{
+		{"email": "alias@outlook.jp", "password": "p", "clientId": "c", "refreshToken": "r", "registered": false, "registrationEmail": "alias@outlook.jp", "graphPrimaryEmail": "primary@hotmail.com", "graphAliasVerified": true, "graphResolvedAt": "2026-06-18 10:00:00"},
+	}
+
+	got := buildAvailableOutlookAccounts(stored)
+	if len(got) != 1 {
+		t.Fatalf("expected one account, got %#v", got)
+	}
+	if got[0].GraphPrimaryEmail != "primary@hotmail.com" || !got[0].GraphAliasVerified || got[0].GraphResolvedAt == "" {
+		t.Fatalf("Graph cache fields should be preserved from storage, got %#v", got[0])
+	}
+}
+
+func TestCachedOutlookGraphProfileResolverReusesProfileByCredential(t *testing.T) {
+	calls := 0
+	resolver := newCachedOutlookGraphProfileResolver(func(acc email.OutlookAccount, proxyURL string) (email.OutlookGraphProfile, error) {
+		calls++
+		return email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com", Aliases: []string{"alias1@outlook.jp", "alias2@outlook.jp"}, AliasDataAvailable: true}, nil
+	})
+
+	for _, addr := range []string{"alias1@outlook.jp", "alias2@outlook.jp"} {
+		if _, err := resolver(email.OutlookAccount{Email: addr, ClientID: "client", RefreshToken: "refresh"}, ""); err != nil {
+			t.Fatalf("resolver(%s): %v", addr, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("same credential should use one Graph lookup, got %d", calls)
+	}
+}
+
+func TestOutlookOTPTimeoutStreakTripsAtFiveAndResets(t *testing.T) {
+	var streak outlookOTPTimeoutStreak
+	for i := 0; i < 4; i++ {
+		if streak.Record("验证码超时") {
+			t.Fatalf("should not trip before fifth timeout")
+		}
+	}
+	streak.Record("网络/代理问题")
+	for i := 0; i < 4; i++ {
+		if streak.Record("验证码超时") {
+			t.Fatalf("non-timeout should reset streak")
+		}
+	}
+	if !streak.Record("验证码超时") {
+		t.Fatalf("fifth consecutive timeout should trip")
+	}
+}
+
+func TestCachedOutlookGraphProfileResolverDoesNotCacheErrors(t *testing.T) {
+	calls := 0
+	resolver := newCachedOutlookGraphProfileResolver(func(acc email.OutlookAccount, proxyURL string) (email.OutlookGraphProfile, error) {
+		calls++
+		if calls == 1 {
+			return email.OutlookGraphProfile{}, fmt.Errorf("temporary EOF")
+		}
+		return email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com"}, nil
+	})
+
+	_, firstErr := resolver(email.OutlookAccount{Email: "alias1@outlook.jp", ClientID: "client", RefreshToken: "refresh"}, "")
+	profile, secondErr := resolver(email.OutlookAccount{Email: "alias2@outlook.jp", ClientID: "client", RefreshToken: "refresh"}, "")
+	if firstErr == nil || secondErr != nil {
+		t.Fatalf("first call should fail and second should retry successfully, first=%v second=%v", firstErr, secondErr)
+	}
+	if calls != 2 || profile.PrimaryEmail != "primary@hotmail.com" {
+		t.Fatalf("resolver should not cache errors, calls=%d profile=%+v", calls, profile)
 	}
 }

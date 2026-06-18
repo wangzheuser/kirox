@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClashClientSwitchesToSecondNodeAfterFirstDelayFails(t *testing.T) {
@@ -272,5 +273,82 @@ func TestClashClientFiltersPolicyGroupPseudoNodes(t *testing.T) {
 	}
 	if len(client.nodes) != 1 || client.nodes[0] != "🇺🇸 _洛杉矶-01" {
 		t.Fatalf("policy group pseudo nodes should be filtered, got %v", client.nodes)
+	}
+}
+
+func TestClashClientQuarantinesNodeAfterThreeNetworkFailures(t *testing.T) {
+	var switched []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/version":
+			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.2.3"})
+		case r.URL.Path == "/proxies":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"proxies": map[string]interface{}{
+				"Proxy": map[string]interface{}{"type": "Selector", "all": []string{"bad", "good"}, "now": "bad"},
+			}})
+		case r.URL.Path == "/proxies/Proxy" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"type": "Selector", "all": []string{"bad", "good"}, "now": "bad"})
+		case r.URL.Path == "/proxies/Proxy" && r.Method == http.MethodPut:
+			var body struct {
+				Name string `json:"name"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			switched = append(switched, body.Name)
+			w.WriteHeader(http.StatusNoContent)
+		case strings.HasSuffix(r.URL.Path, "/delay"):
+			_ = json.NewEncoder(w).Encode(map[string]int{"delay": 10})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: server.URL, TestTimeout: 1})
+	client.RecordNodeNetworkFailure("bad")
+	client.RecordNodeNetworkFailure("bad")
+	if client.QuarantinedNodeCount() != 0 {
+		t.Fatalf("node should not be quarantined before third failure")
+	}
+	client.RecordNodeNetworkFailure("bad")
+	if client.QuarantinedNodeCount() != 1 {
+		t.Fatalf("node should be quarantined after third failure")
+	}
+	selection, err := client.SwitchToNextAvailable(context.Background())
+	if err != nil {
+		t.Fatalf("SwitchToNextAvailable: %v", err)
+	}
+	if selection.Node != "good" {
+		t.Fatalf("quarantined bad node should be skipped, got %q", selection.Node)
+	}
+	if strings.Contains(strings.Join(switched, ","), "bad") {
+		t.Fatalf("should not switch to quarantined node, switches=%v", switched)
+	}
+}
+
+func TestClashClientSuccessClearsNetworkFailures(t *testing.T) {
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: "http://127.0.0.1:9"})
+	client.RecordNodeNetworkFailure("node-a")
+	client.RecordNodeNetworkFailure("node-a")
+	client.RecordNodeSuccess("node-a")
+	client.RecordNodeNetworkFailure("node-a")
+	if client.QuarantinedNodeCount() != 0 {
+		t.Fatalf("success should reset failure count before quarantine")
+	}
+}
+
+func TestClashClientQuarantineExpires(t *testing.T) {
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: "http://127.0.0.1:9"})
+	client.RecordNodeNetworkFailure("node-a")
+	client.RecordNodeNetworkFailure("node-a")
+	client.RecordNodeNetworkFailure("node-a")
+	if client.QuarantinedNodeCount() != 1 {
+		t.Fatalf("node should be quarantined")
+	}
+	client.quarantinedUntil["node-a"] = time.Now().Add(-time.Second)
+	if client.QuarantinedNodeCount() != 0 {
+		t.Fatalf("expired quarantine should not count")
+	}
+	if client.failedNodes["node-a"] {
+		t.Fatalf("expired quarantine should clear failed node marker")
 	}
 }

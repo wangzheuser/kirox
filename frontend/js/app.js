@@ -852,7 +852,7 @@ function getRegistrationConfigPayload() {
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
-    otpTimeout: readIntegerInput('cfg-otp-timeout', 120, 30),
+    otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
     emailProvider: selectedEmailProvider || 'outlook',
     moemailDomainMode: selection.moemailDomainMode,
@@ -877,7 +877,7 @@ function applyRegistrationConfig(cfg) {
   writeIntegerInput('cfg-concurrency', cfg.concurrency, 1);
   writeIntegerInput('cfg-delay', cfg.delay, 1);
   writeIntegerInput('cfg-retry-count', cfg.retryCount, 1);
-  writeIntegerInput('cfg-otp-timeout', cfg.otpTimeout, 120);
+  writeIntegerInput('cfg-otp-timeout', cfg.otpTimeout, 60);
   writeCheckboxInput('cfg-reuse-failed-email', cfg.reuseFailedEmail);
   selectedMoeMailDomains = moeMailSelectionFromConfig(cfg);
   if (typeof selectEmailProvider === 'function') {
@@ -897,7 +897,7 @@ function getFormConfig() {
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
-    otpTimeout: readIntegerInput('cfg-otp-timeout', 120, 30),
+    otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
     emailProvider: selectedEmailProvider || 'outlook'
   };
@@ -1043,7 +1043,7 @@ async function loadRegistrationConfig() {
       concurrency: 1,
       delay: 1,
       retryCount: 1,
-      otpTimeout: 120,
+      otpTimeout: 60,
       reuseFailedEmail: false,
       emailProvider: 'outlook',
       moemailDomainMode: 'random',

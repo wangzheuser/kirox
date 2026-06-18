@@ -28,6 +28,23 @@ const (
 
 var emailProviderRateLimitBackoffs = []time.Duration{60 * time.Second, 120 * time.Second, 300 * time.Second}
 
+type outlookOTPTimeoutStreak struct {
+	count int
+	limit int
+}
+
+func (s *outlookOTPTimeoutStreak) Record(failReason string) bool {
+	if s.limit <= 0 {
+		s.limit = 5
+	}
+	if strings.TrimSpace(failReason) != "验证码超时" {
+		s.count = 0
+		return false
+	}
+	s.count++
+	return s.count >= s.limit
+}
+
 func concurrentStartStagger(idx int, concurrency int) time.Duration {
 	if concurrency <= 1 {
 		return 0
@@ -214,12 +231,18 @@ func buildAvailableOutlookAccounts(storedAccounts []map[string]interface{}) []em
 		clientID, _ := acc["clientId"].(string)
 		refreshToken, _ := acc["refreshToken"].(string)
 		registrationEmail, _ := acc["registrationEmail"].(string)
+		graphPrimaryEmail, _ := acc["graphPrimaryEmail"].(string)
+		graphAliasVerified, _ := acc["graphAliasVerified"].(bool)
+		graphResolvedAt, _ := acc["graphResolvedAt"].(string)
 		outlookAccount := email.OutlookAccount{
-			Email:             emailAddr,
-			Password:          password,
-			ClientID:          clientID,
-			RefreshToken:      refreshToken,
-			RegistrationEmail: registrationEmail,
+			Email:              emailAddr,
+			Password:           password,
+			ClientID:           clientID,
+			RefreshToken:       refreshToken,
+			RegistrationEmail:  registrationEmail,
+			GraphPrimaryEmail:  graphPrimaryEmail,
+			GraphAliasVerified: graphAliasVerified,
+			GraphResolvedAt:    graphResolvedAt,
 		}
 		failReason, _ := acc["failReason"].(string)
 		if shouldDeferOutlookAccountForPreviousFailure(failReason) {
@@ -237,6 +260,37 @@ func shouldDeferOutlookAccountForPreviousFailure(failReason string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func newCachedOutlookGraphProfileResolver(resolver outlookGraphProfileResolver) outlookGraphProfileResolver {
+	type cachedProfile struct {
+		profile email.OutlookGraphProfile
+		err     error
+	}
+	cache := make(map[string]cachedProfile)
+	var mu sync.Mutex
+	return func(acc email.OutlookAccount, proxyURL string) (email.OutlookGraphProfile, error) {
+		if resolver == nil {
+			return email.OutlookGraphProfile{}, fmt.Errorf("Outlook Graph profile resolver is nil")
+		}
+		key := strings.ToLower(strings.TrimSpace(acc.ClientID)) + "\x00" + strings.TrimSpace(acc.RefreshToken)
+		if strings.TrimSpace(key) == "\x00" {
+			return resolver(acc, proxyURL)
+		}
+		mu.Lock()
+		if item, ok := cache[key]; ok {
+			mu.Unlock()
+			return item.profile, item.err
+		}
+		mu.Unlock()
+		profile, err := resolver(acc, proxyURL)
+		if err == nil {
+			mu.Lock()
+			cache[key] = cachedProfile{profile: profile}
+			mu.Unlock()
+		}
+		return profile, err
 	}
 }
 
@@ -273,6 +327,8 @@ func resolveOutlookGraphRegistrationEmailWithMode(acc email.OutlookAccount, emai
 	}
 	primary := strings.TrimSpace(profile.PrimaryEmail)
 	acc.GraphPrimaryEmail = primary
+	acc.GraphAliasVerified = profile.HasAliasData() && profile.HasAddress(imported)
+	acc.GraphResolvedAt = time.Now().Format("2006-01-02 15:04:05")
 	switch mode {
 	case storage.OutlookGraphRegistrationEmailPrimary:
 		if primary != "" {
@@ -553,7 +609,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	taskConfig.VerifyModelsEnabled = storage.GetVerifyModelsEnabled()
 	taskConfig.OTPTimeout = req.OTPTimeout
 	if taskConfig.OTPTimeout < 30 {
-		taskConfig.OTPTimeout = 120
+		taskConfig.OTPTimeout = 60
 	}
 	if taskConfig.EmailProxy == "" {
 		log.Printf("[Kiro] 邮箱代理: 直连")
@@ -678,7 +734,13 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	var statsMu sync.Mutex
 	var taskDurations []float64
 	failCategories := make(map[string]int)
+	networkStageFailures := make(map[string]int)
 	sendOTPDiagnostics := make([]map[string]string, 0)
+	registeredSkipCount := 0
+	graphResolveFailureCount := 0
+	clashNetworkErrorCount := 0
+	otpTimeoutStopTriggered := false
+	var otpTimeoutStreak outlookOTPTimeoutStreak
 	taskStartTime := time.Now()
 	var batchSuccessMu sync.Mutex
 	batchSuccessEmails := make([]string, 0, successTarget)
@@ -738,6 +800,15 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	}
 
 	var reusableEmails reusableEmailPool
+	graphProfileResolver := newCachedOutlookGraphProfileResolver(func(acc email.OutlookAccount, proxyURL string) (email.OutlookGraphProfile, error) {
+		profile, err := email.GetOutlookGraphProfileWithProxy(acc, proxyURL)
+		if err != nil {
+			statsMu.Lock()
+			graphResolveFailureCount++
+			statsMu.Unlock()
+		}
+		return profile, err
+	})
 
 	// requestTaskStop 在内部达成停止条件时关闭任务信号，避免继续领取新尝试。
 	var stopOnce sync.Once
@@ -810,7 +881,12 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		var currentEmail string
 		setOutlookAccount := func(acc email.OutlookAccount) {
 			if taskCfg.UseOutlookGraph() {
-				acc = resolveOutlookGraphRegistrationEmailWithMode(acc, taskCfg.EmailProxy, storage.GetOutlookGraphRegistrationEmailMode(), email.GetOutlookGraphProfileWithProxy)
+				graphMode := storage.GetOutlookGraphRegistrationEmailMode()
+				acc = resolveOutlookGraphRegistrationEmailWithMode(acc, taskCfg.EmailProxy, graphMode, graphProfileResolver)
+				hasGraphResolution := strings.TrimSpace(acc.GraphPrimaryEmail) != "" || strings.TrimSpace(acc.GraphResolvedAt) != ""
+				if graphMode != storage.OutlookGraphRegistrationEmailImported && strings.TrimSpace(acc.RegistrationEmail) != "" && hasGraphResolution {
+					email.SaveOutlookGraphResolution(acc.Email, acc)
+				}
 			}
 			taskCfg.OutlookAccount = &acc
 			accountEmail = acc.Email
@@ -996,6 +1072,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 		var result map[string]interface{}
 		proxySwitches := 0
+		currentClashNode := ""
 	retryLoop:
 		for attempt := 0; attempt < maxAttempts; attempt++ {
 			// 每次重试前检查停止信号
@@ -1048,6 +1125,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 					attemptCfg.TimeZone = locale.TimeZone
 					attemptCfg.TimeZoneSet = true
 					attemptCfg.ProxySwitchable = true
+					currentClashNode = selection.Node
 					delayText := "跳过连通性测试"
 					if !selection.SkippedTest {
 						delayText = fmt.Sprintf("延迟 %dms", selection.DelayMs)
@@ -1105,14 +1183,33 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			if result["status"] == "success" {
+				if clashEnabled && currentClashNode != "" {
+					clashMu.Lock()
+					clashClient.RecordNodeSuccess(currentClashNode)
+					clashMu.Unlock()
+				}
 				break
 			}
 
 			errorMsg, _ := result["error"].(string)
+			proxyNetworkErr := isProxyNetworkError(errorMsg)
+			if clashEnabled && currentClashNode != "" && proxyNetworkErr {
+				statsMu.Lock()
+				clashNetworkErrorCount++
+				statsMu.Unlock()
+				clashMu.Lock()
+				clashClient.RecordNodeNetworkFailure(currentClashNode)
+				clashMu.Unlock()
+			}
+			if clashEnabled && currentClashNode != "" && !proxyNetworkErr {
+				clashMu.Lock()
+				clashClient.RecordNodeSuccess(currentClashNode)
+				clashMu.Unlock()
+			}
 
-			// AWS/TES 熔断：任一任务遇到明确 BLOCKED/TES 类错误就终止全部。
-			// 明确 TES/BLOCKED 不受用户熔断开关影响；普通 send-otp 400 仍按邮箱/配置失败处理。
-			if shouldForceStopTask(errorMsg, emailProvider, killSwitchEnabled) {
+			// AWS/TES 熔断：普通数量模式下任一任务遇到明确 BLOCKED/TES 类错误即终止全部。
+			// 成功目标模式下失败尝试应继续补齐成功数；这类错误只失败当前尝试，不提前结束批次。
+			if shouldForceStopTaskForMode(errorMsg, emailProvider, killSwitchEnabled, successTargetMode) {
 				otpKillOnce.Do(func() {
 					log.Printf("[Kiro] ⚠️ 检测到不可继续错误(%s)，立即终止所有注册任务", errorMsg)
 					go StopTask(true)
@@ -1123,6 +1220,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			// 邮箱已注册：标记当前账号，换号重来（重置 attempt）
 			if taskConfig.UseOutlook && strings.Contains(errorMsg, "邮箱已注册过") {
 				log.Printf("[Kiro][%d/%d] %s 已注册，标记并换号", i+1, displayTotal, currentEmail)
+				statsMu.Lock()
+				registeredSkipCount++
+				statsMu.Unlock()
 				email.UpdateAccountStatus(accountEmail, true, false, "邮箱已注册")
 				acc, ok := nextAccount()
 				if ok {
@@ -1166,7 +1266,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			// 动态代理池中部分 UUID 节点可能不可用；代理类网络错误优先切换新 UUID，不消耗业务重试次数。
-			if (proxy.HasURLTemplate(taskCfg.Proxy) || clashEnabled) && isProxyNetworkError(errorMsg) && proxySwitches < maxProxySwitches {
+			if (proxy.HasURLTemplate(taskCfg.Proxy) || clashEnabled) && proxyNetworkErr && proxySwitches < maxProxySwitches {
 				proxySwitches++
 				if clashEnabled {
 					log.Printf("[Kiro][%d/%d] 检测到 Clash 节点网络错误，切换下一个节点重试 (%d/%d): %s",
@@ -1221,14 +1321,28 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			errorMsg, _ := result["error"].(string)
 			failReason = classifyError(errorMsg)
 			failCategories[failReason]++
+			if failReason == "网络/代理问题" || isProxyNetworkError(errorMsg) {
+				networkStageFailures[classifyNetworkErrorStage(errorMsg)]++
+			}
 			if diag, ok := parseSendOTPDiagnostics(errorMsg); ok {
 				sendOTPDiagnostics = append(sendOTPDiagnostics, diag)
 			}
 		}
+		shouldStopForOTPTimeouts := shouldStopForOutlookOTPTimeout(taskConfig.UseOutlook, success, failReason, successTargetMode, &otpTimeoutStreak)
+		if success || (!success && failReason != "验证码超时") {
+			otpTimeoutStreak.Record(failReason)
+		}
+		if shouldStopForOTPTimeouts {
+			otpTimeoutStopTriggered = true
+		}
 		statsMu.Unlock()
 
+		if shouldStopForOTPTimeouts {
+			requestTaskStop("[Kiro] 连续验证码超时达到 5 次，停止本批任务；请检查 Outlook Graph 收信、别名投递或邮箱代理")
+		}
+
 		recycleErrorMsg, _ := result["error"].(string)
-		if candidate, ok := recycleReusableFailedEmail(req, &reusableEmails, emailProvider, &taskCfg, result, shouldForceStopTask(recycleErrorMsg, emailProvider, killSwitchEnabled)); ok {
+		if candidate, ok := recycleReusableFailedEmail(req, &reusableEmails, emailProvider, &taskCfg, result, shouldForceStopTaskForMode(recycleErrorMsg, emailProvider, killSwitchEnabled, successTargetMode)); ok {
 			log.Printf("[Kiro][%d/%d] 回收可复用临时邮箱: %s", completedCount, displayTotal, candidate.address)
 		}
 
@@ -1423,6 +1537,45 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		for _, e := range entries {
 			log.Printf("[Kiro]   %s: %d (%.0f%%)", e.name, e.count, float64(e.count)/float64(totalCount)*100)
 		}
+		statsMu.Lock()
+		regSkip := registeredSkipCount
+		graphFails := graphResolveFailureCount
+		clashNetErrs := clashNetworkErrorCount
+		otpStopped := otpTimeoutStopTriggered
+		networkStages := make(map[string]int, len(networkStageFailures))
+		for k, v := range networkStageFailures {
+			networkStages[k] = v
+		}
+		clashQuarantined := 0
+		if clashClient != nil {
+			clashQuarantined = clashClient.QuarantinedNodeCount()
+		}
+		statsMu.Unlock()
+		if regSkip > 0 || graphFails > 0 || clashNetErrs > 0 || clashQuarantined > 0 || otpStopped {
+			log.Printf("[Kiro] 优化诊断: 已注册跳过=%d, Graph地址解析失败=%d, Clash网络错误=%d, Clash临时拉黑节点=%d, 连续验证码超时熔断=%v",
+				regSkip, graphFails, clashNetErrs, clashQuarantined, otpStopped)
+		}
+		if len(networkStages) > 0 {
+			type stageEntry struct {
+				name  string
+				count int
+			}
+			stages := make([]stageEntry, 0, len(networkStages))
+			for name, count := range networkStages {
+				stages = append(stages, stageEntry{name: name, count: count})
+			}
+			sort.Slice(stages, func(i, j int) bool {
+				if stages[i].count == stages[j].count {
+					return stages[i].name < stages[j].name
+				}
+				return stages[i].count > stages[j].count
+			})
+			parts := make([]string, 0, len(stages))
+			for _, stage := range stages {
+				parts = append(parts, fmt.Sprintf("%s:%d", stage.name, stage.count))
+			}
+			log.Printf("[Kiro] 网络/代理错误阶段分布: %s", strings.Join(parts, "；"))
+		}
 		if summary := failureDiagnosisSummary(failCategories, totalCount, sucCount); summary != "" {
 			log.Printf("[Kiro] 诊断建议: %s", summary)
 		}
@@ -1602,6 +1755,27 @@ func classifyError(errorMsg string) string {
 		return "网络/代理问题"
 	}
 	return "其他错误"
+}
+
+func classifyNetworkErrorStage(errorMsg string) string {
+	switch {
+	case strings.Contains(errorMsg, "设备注册失败"):
+		return "设备授权"
+	case strings.Contains(errorMsg, "门户访问失败"):
+		return "Portal 初始化"
+	case strings.Contains(errorMsg, "工作流初始化失败"):
+		return "工作流初始化"
+	case strings.Contains(errorMsg, "提交邮箱失败"):
+		return "提交邮箱"
+	case strings.Contains(errorMsg, "send-otp") || strings.Contains(errorMsg, "发送验证码"):
+		return "发送验证码"
+	case strings.Contains(errorMsg, "等待验证码") || strings.Contains(errorMsg, "获取邮件失败"):
+		return "等待验证码"
+	case strings.Contains(errorMsg, "配置初始化失败") || strings.Contains(errorMsg, "配置启动失败") || strings.Contains(errorMsg, "初始化注册失败"):
+		return "注册初始化"
+	default:
+		return "其他阶段"
+	}
 }
 
 func resetOutlookRetryBudgetAfterAccountRotation(attempt, proxySwitches int) (int, int) {
@@ -1960,6 +2134,21 @@ func shouldForceStopTask(errorMsg, emailProvider string, killSwitchEnabled bool)
 		return true
 	}
 	return killSwitchEnabled && isKillSwitchError(errorMsg, emailProvider)
+}
+
+func shouldForceStopTaskForMode(errorMsg, emailProvider string, killSwitchEnabled bool, successTargetMode bool) bool {
+	if successTargetMode {
+		return false
+	}
+	return shouldForceStopTask(errorMsg, emailProvider, killSwitchEnabled)
+}
+
+func shouldStopForOutlookOTPTimeout(useOutlook bool, success bool, failReason string, successTargetMode bool, streak *outlookOTPTimeoutStreak) bool {
+	if streak == nil || !useOutlook || success {
+		return false
+	}
+	shouldStop := streak.Record(failReason)
+	return shouldStop && !successTargetMode
 }
 
 func isTemporaryEmailProvider(emailProvider string) bool {
