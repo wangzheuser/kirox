@@ -383,6 +383,23 @@ function batchDeleteOutlookAccounts() {
   });
 }
 
+function cleanRegisteredOutlookAccounts() {
+  showConfirmModal('清理已注册', '确认删除所有失败原因为“邮箱已注册”的微软邮箱？此操作不可恢复。', '确认清理', async function() {
+    try {
+      var result = await window.go.main.App.DeleteOutlookAccountsByFailReason('邮箱已注册');
+      if (result.error) {
+        showToast(result.error, 'error');
+        return;
+      }
+      outlookSelectedEmails = {};
+      await loadOutlookAccountsList();
+      showToast('已清理 ' + (result.removed || 0) + ' 个已注册账号');
+    } catch(e) {
+      showToast('清理已注册失败: ' + e.message, 'error');
+    }
+  });
+}
+
 async function deleteOutlookAccount(email) {
   showConfirmModal(
     _accT('accounts.deleteTitle', '删除账号'),

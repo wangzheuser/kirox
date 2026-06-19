@@ -24,3 +24,34 @@ func TestPickRandomSkipsDisabledEntries(t *testing.T) {
 		}
 	}
 }
+
+func TestProxyPoolQuarantinesAfterThreeNetworkFailures(t *testing.T) {
+	InitPool(t.TempDir())
+	_, err := Add(PoolEntry{Name: "bad", URL: "http://bad.example:8080", Weight: 1, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Add(PoolEntry{Name: "good", URL: "http://good.example:8080", Weight: 1, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	RecordPoolProxyNetworkFailure("http://bad.example:8080")
+	RecordPoolProxyNetworkFailure("http://bad.example:8080")
+	if QuarantinedPoolProxyCount() != 0 {
+		t.Fatalf("proxy should not be quarantined before third failure")
+	}
+	RecordPoolProxyNetworkFailure("http://bad.example:8080")
+	if QuarantinedPoolProxyCount() != 1 {
+		t.Fatalf("proxy should be quarantined after third failure")
+	}
+	for i := 0; i < 20; i++ {
+		if got := PickRandom(); got == "http://bad.example:8080" {
+			t.Fatalf("quarantined proxy should be skipped, got %q", got)
+		}
+	}
+	RecordPoolProxySuccess("http://bad.example:8080")
+	if QuarantinedPoolProxyCount() != 0 {
+		t.Fatalf("success should clear quarantine")
+	}
+}

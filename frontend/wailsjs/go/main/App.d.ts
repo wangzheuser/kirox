@@ -23,6 +23,8 @@ export function DeleteOutlookAccount(arg1:string):Promise<Record<string, any>>;
 
 export function DeleteOutlookAccounts(arg1:Array<string>):Promise<Record<string, any>>;
 
+export function DeleteOutlookAccountsByFailReason(arg1:string):Promise<Record<string, any>>;
+
 export function DeleteProxyEntry(arg1:string):Promise<Record<string, any>>;
 
 export function DetectClashProxy(arg1:string,arg2:proxy.ClashConfig):Promise<proxy.Info>;
@@ -110,6 +112,8 @@ export function ResetFingerprintCache():Promise<Record<string, any>>;
 export function ResetOutlookAccountStatuses():Promise<Record<string, any>>;
 
 export function ResetOutlookAccountStatusesByEmails(arg1:Array<string>):Promise<Record<string, any>>;
+
+export function ResetOutlookAccountsByFailReason(arg1:string):Promise<Record<string, any>>;
 
 export function ResetProxy():Promise<Record<string, any>>;
 

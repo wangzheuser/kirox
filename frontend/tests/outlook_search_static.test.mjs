@@ -22,3 +22,9 @@ test('Outlook supports batch reset of selected emails', () => {
   assert.match(js, /batchResetOutlookAccountStatuses/);
   assert.match(js, /ResetOutlookAccountStatusesByEmails/);
 });
+
+test('Outlook page exposes cleanup registered controls and APIs', () => {
+  assert.match(html, /id="outlook-clean-registered-btn"/);
+  assert.match(js, /cleanRegisteredOutlookAccounts/);
+  assert.match(js, /DeleteOutlookAccountsByFailReason/);
+});

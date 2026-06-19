@@ -227,6 +227,29 @@ func DeleteOutlookAccounts(emails []string) map[string]interface{} {
 	return map[string]interface{}{"status": "deleted", "removed": removed, "total": newLen}
 }
 
+func DeleteOutlookAccountsByFailReason(reason string) map[string]interface{} {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return map[string]interface{}{"error": "失败原因为空"}
+	}
+	removed := 0
+	newLen := 0
+	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
+		out := make([]map[string]interface{}, 0, len(accounts))
+		for _, acc := range accounts {
+			failReason, _ := acc["failReason"].(string)
+			if strings.TrimSpace(failReason) == reason {
+				removed++
+				continue
+			}
+			out = append(out, acc)
+		}
+		newLen = len(out)
+		return out
+	})
+	return map[string]interface{}{"status": "deleted", "removed": removed, "total": newLen}
+}
+
 // ClearOutlookAccounts 清空所有 Outlook 账号
 func ClearOutlookAccounts() map[string]interface{} {
 	storage.SetAccountsCached([]map[string]interface{}{})
@@ -290,6 +313,29 @@ func ResetOutlookAccountStatusesByEmails(emails []string) map[string]interface{}
 			}
 			email, _ := accounts[i]["email"].(string)
 			if _, ok := target[strings.ToLower(strings.TrimSpace(email))]; !ok {
+				continue
+			}
+			resetOutlookStatusFields(accounts[i])
+			reset++
+		}
+		return accounts
+	})
+	return map[string]interface{}{"status": "reset", "reset": reset}
+}
+
+func ResetOutlookAccountsByFailReason(reason string) map[string]interface{} {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return map[string]interface{}{"error": "失败原因为空"}
+	}
+	reset := 0
+	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
+		for i := range accounts {
+			if accounts[i] == nil {
+				continue
+			}
+			failReason, _ := accounts[i]["failReason"].(string)
+			if strings.TrimSpace(failReason) != reason {
 				continue
 			}
 			resetOutlookStatusFields(accounts[i])

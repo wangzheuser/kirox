@@ -1177,6 +1177,7 @@
             <!-- 批量操作区 -->
             <div style="display:flex;align-items:center;gap:8px;">
               <button class="btn btn-secondary btn-sm" onclick="invertOutlookSelection()">反选</button>
+              <button id="outlook-clean-registered-btn" class="btn btn-secondary btn-sm" onclick="cleanRegisteredOutlookAccounts()">清理已注册</button>
               <button id="outlook-batch-reset-btn" class="btn btn-secondary btn-sm" onclick="batchResetOutlookAccountStatuses()" disabled>批量重置状态</button>
               <button id="outlook-batch-delete-btn" class="btn btn-danger btn-sm" onclick="batchDeleteOutlookAccounts()" disabled>批量删除 (<span id="outlook-selected-count">0</span>)</button>
             </div>

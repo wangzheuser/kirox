@@ -273,6 +273,10 @@ func (a *App) DeleteOutlookAccounts(emails []string) map[string]interface{} {
 	return email.DeleteOutlookAccounts(emails)
 }
 
+func (a *App) DeleteOutlookAccountsByFailReason(reason string) map[string]interface{} {
+	return email.DeleteOutlookAccountsByFailReason(reason)
+}
+
 func (a *App) ClearOutlookAccounts() map[string]interface{} {
 	return email.ClearOutlookAccounts()
 }
@@ -289,6 +293,10 @@ func (a *App) ResetOutlookAccountStatuses() map[string]interface{} {
 // ResetOutlookAccountStatusesByEmails 重置指定 Outlook 账号状态但不删除账号。
 func (a *App) ResetOutlookAccountStatusesByEmails(emails []string) map[string]interface{} {
 	return email.ResetOutlookAccountStatusesByEmails(emails)
+}
+
+func (a *App) ResetOutlookAccountsByFailReason(reason string) map[string]interface{} {
+	return email.ResetOutlookAccountsByFailReason(reason)
 }
 
 func (a *App) ImportOutlookFile(filePath string) map[string]interface{} {

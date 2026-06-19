@@ -28,14 +28,18 @@ type poolFile struct {
 
 const (
 	// Power 用于"软最大化"：>1 时拉大权重差，<1 时压平。0.6 保证哪怕权重 1 vs 100 也有 ~6% 概率被选中。
-	weightPower = 0.6
+	weightPower            = 0.6
+	poolQuarantineFailures = 3
+	poolQuarantineDuration = 30 * time.Minute
 )
 
 var (
-	poolMu      sync.Mutex
-	poolLoaded  bool
-	poolEntries []PoolEntry
-	poolPath    string
+	poolMu          sync.Mutex
+	poolLoaded      bool
+	poolEntries     []PoolEntry
+	poolPath        string
+	poolFailures    = make(map[string]int)
+	poolQuarantined = make(map[string]time.Time)
 )
 
 // InitPool 在 App 启动时调用一次，传入数据目录
@@ -44,6 +48,8 @@ func InitPool(dataDir string) {
 	defer poolMu.Unlock()
 	poolPath = filepath.Join(dataDir, "proxy_pool.json")
 	poolLoaded = false
+	poolFailures = make(map[string]int)
+	poolQuarantined = make(map[string]time.Time)
 	_ = loadPoolLocked()
 }
 
@@ -207,6 +213,9 @@ func PickRandom() string {
 		if !e.Enabled || e.URL == "" {
 			continue
 		}
+		if isPoolProxyQuarantinedLocked(e.URL, time.Now()) {
+			continue
+		}
 		w := e.Weight
 		if w <= 0 {
 			w = 1
@@ -226,6 +235,56 @@ func PickRandom() string {
 		}
 	}
 	return candidates[len(candidates)-1].url
+}
+
+func RecordPoolProxyNetworkFailure(proxyURL string) {
+	key := strings.TrimSpace(proxyURL)
+	if key == "" {
+		return
+	}
+	poolMu.Lock()
+	defer poolMu.Unlock()
+	poolFailures[key]++
+	if poolFailures[key] >= poolQuarantineFailures {
+		poolQuarantined[key] = time.Now().Add(poolQuarantineDuration)
+	}
+}
+
+func RecordPoolProxySuccess(proxyURL string) {
+	key := strings.TrimSpace(proxyURL)
+	if key == "" {
+		return
+	}
+	poolMu.Lock()
+	defer poolMu.Unlock()
+	delete(poolFailures, key)
+	delete(poolQuarantined, key)
+}
+
+func QuarantinedPoolProxyCount() int {
+	poolMu.Lock()
+	defer poolMu.Unlock()
+	now := time.Now()
+	count := 0
+	for proxyURL := range poolQuarantined {
+		if isPoolProxyQuarantinedLocked(proxyURL, now) {
+			count++
+		}
+	}
+	return count
+}
+
+func isPoolProxyQuarantinedLocked(proxyURL string, now time.Time) bool {
+	until, ok := poolQuarantined[proxyURL]
+	if !ok {
+		return false
+	}
+	if now.After(until) {
+		delete(poolQuarantined, proxyURL)
+		delete(poolFailures, proxyURL)
+		return false
+	}
+	return true
 }
 
 // HasEnabled 是否至少一个启用的池条目

@@ -519,10 +519,10 @@ func TestTemporaryEmailSendOTPBlockedDoesNotRecycleReusableMailbox(t *testing.T)
 	}
 }
 
-func TestClassifyOutlookGraphInvalidGrantAsAbnormalMailbox(t *testing.T) {
+func TestClassifyOutlookGraphInvalidGrantAsTokenInvalid(t *testing.T) {
 	errText := `刷新 Outlook Graph Token 失败: 刷新失败 400: {"error":"invalid_grant","error_description":"AADSTS70000: User account is found to be in service abuse mode."}`
-	if got := classifyError(errText); got != "异常邮箱" {
-		t.Fatalf("Outlook Graph invalid_grant should classify as abnormal mailbox, got %q", got)
+	if got := classifyError(errText); got != "Graph Token失效" {
+		t.Fatalf("Outlook Graph invalid_grant should classify as graph token invalid, got %q", got)
 	}
 }
 
@@ -786,5 +786,84 @@ func TestCachedOutlookGraphProfileResolverDoesNotCacheErrors(t *testing.T) {
 	}
 	if calls != 2 || profile.PrimaryEmail != "primary@hotmail.com" {
 		t.Fatalf("resolver should not cache errors, calls=%d profile=%+v", calls, profile)
+	}
+}
+
+func TestRuntimeProgressSummaryIncludesLiveDiagnostics(t *testing.T) {
+	stats := newRuntimeTaskStats()
+	stats.RecordFailure("验活失败: UnauthorizedException", true, "验活")
+	stats.RecordRegisteredSkip()
+	stats.RecordGraphFailure("Graph网络错误")
+	stats.RecordNetworkError("门户访问失败: connection reset")
+
+	got := stats.ProgressSummary(3, 1, 2, 2)
+	for _, want := range []string{"进度汇总", "总计=3", "成功=1", "失败=2", "成功率=33.3%", "已注册跳过=1", "Graph失败=1", "网络错误=1", "passwordSet失败=1", "Top失败="} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("progress summary missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestClassifyErrorSplitsFormerOtherErrors(t *testing.T) {
+	cases := map[string]string{
+		"验活失败: UnauthorizedException":          "验活失败",
+		"KiroAuthorize: exchange failed":       "Kiro授权失败",
+		"KiroExchange: token endpoint failed":  "Token交换失败",
+		"SetPassword: bad response":            "密码设置失败",
+		"Outlook Graph 地址解析失败: Graph 查询失败 403": "Graph权限错误",
+		"任务已取消":                                "任务取消",
+	}
+	for input, want := range cases {
+		if got := classifyError(input); got != want {
+			t.Fatalf("classifyError(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestOutlookRegistrationAddressTrackerSkipsDuplicateAndRegisteredAddresses(t *testing.T) {
+	tracker := newOutlookRegistrationAddressTracker()
+	first := email.OutlookAccount{Email: "alias1@outlook.jp", RegistrationEmail: "primary@hotmail.com"}
+	second := email.OutlookAccount{Email: "alias2@outlook.jp", RegistrationEmail: "PRIMARY@hotmail.com"}
+
+	if tracker.ShouldSkip(first) {
+		t.Fatalf("first address should be allowed")
+	}
+	tracker.MarkAttempt(first)
+	if !tracker.ShouldSkip(second) {
+		t.Fatalf("duplicate final registration address should be skipped")
+	}
+	tracker.MarkRegistered(first)
+	if !tracker.IsRegistered(second) {
+		t.Fatalf("registered final address should be remembered case-insensitively")
+	}
+}
+
+func TestResolveOutlookGraphRegistrationEmailReportsFailureForAutoMode(t *testing.T) {
+	acc := email.OutlookAccount{Email: "alias@outlook.jp", ClientID: "client", RefreshToken: "refresh"}
+	resolved, graphErr := resolveOutlookGraphRegistrationEmailForTask(acc, "", storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+		return email.OutlookGraphProfile{}, fmt.Errorf("Graph 查询失败 403: forbidden")
+	})
+
+	if graphErr == nil {
+		t.Fatalf("auto mode should return graph resolution error")
+	}
+	if resolved.RegistrationEmail != "alias@outlook.jp" {
+		t.Fatalf("failed resolution should keep imported address for diagnostics, got %#v", resolved)
+	}
+}
+
+func TestResolveOutlookGraphRegistrationEmailImportedModeSkipsFailure(t *testing.T) {
+	calls := 0
+	acc := email.OutlookAccount{Email: "alias@outlook.jp", ClientID: "client", RefreshToken: "refresh"}
+	resolved, graphErr := resolveOutlookGraphRegistrationEmailForTask(acc, "", storage.OutlookGraphRegistrationEmailImported, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+		calls++
+		return email.OutlookGraphProfile{}, fmt.Errorf("should not be called")
+	})
+
+	if graphErr != nil || calls != 0 {
+		t.Fatalf("imported mode should skip graph lookup, calls=%d err=%v", calls, graphErr)
+	}
+	if resolved.RegistrationEmail != "alias@outlook.jp" {
+		t.Fatalf("imported mode should use imported address, got %#v", resolved)
 	}
 }

@@ -38,6 +38,10 @@ export function DeleteOutlookAccounts(arg1) {
   return window['go']['main']['App']['DeleteOutlookAccounts'](arg1);
 }
 
+export function DeleteOutlookAccountsByFailReason(arg1) {
+  return window['go']['main']['App']['DeleteOutlookAccountsByFailReason'](arg1);
+}
+
 export function DeleteProxyEntry(arg1) {
   return window['go']['main']['App']['DeleteProxyEntry'](arg1);
 }
@@ -212,6 +216,10 @@ export function ResetOutlookAccountStatuses() {
 
 export function ResetOutlookAccountStatusesByEmails(arg1) {
   return window['go']['main']['App']['ResetOutlookAccountStatusesByEmails'](arg1);
+}
+
+export function ResetOutlookAccountsByFailReason(arg1) {
+  return window['go']['main']['App']['ResetOutlookAccountsByFailReason'](arg1);
 }
 
 export function ResetProxy() {
