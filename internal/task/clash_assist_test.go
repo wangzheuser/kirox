@@ -51,3 +51,24 @@ func TestApplyClashSelectionToConfigBindsFingerprintAndLocale(t *testing.T) {
 		t.Fatalf("returned locale should match applied locale, got %+v", locale)
 	}
 }
+
+func TestApplyClashSelectionToConfigForSubjectSeparatesAccountFingerprints(t *testing.T) {
+	selection := proxy.ClashSelection{Node: "日本东京3-AN | 1x"}
+	cfgA := core.NewConfig()
+	cfgB := core.NewConfig()
+	cfgRetry := core.NewConfig()
+
+	applyClashSelectionToConfigForSubject(cfgA, "http://127.0.0.1:7890", selection, "clash:", "alice@example.com")
+	applyClashSelectionToConfigForSubject(cfgB, "http://127.0.0.1:7890", selection, "clash:", "bob@example.com")
+	applyClashSelectionToConfigForSubject(cfgRetry, "http://127.0.0.1:7890", selection, "clash:", "ALICE@example.com")
+
+	if cfgA.FingerprintKey == cfgB.FingerprintKey {
+		t.Fatalf("different accounts on the same node should not reuse one hardware fingerprint key: %q", cfgA.FingerprintKey)
+	}
+	if cfgA.FingerprintKey != cfgRetry.FingerprintKey {
+		t.Fatalf("same account retry should keep a stable fingerprint key: %q vs %q", cfgA.FingerprintKey, cfgRetry.FingerprintKey)
+	}
+	if strings.Contains(cfgA.FingerprintKey, "alice@example.com") {
+		t.Fatalf("fingerprint key should not store raw account email: %q", cfgA.FingerprintKey)
+	}
+}

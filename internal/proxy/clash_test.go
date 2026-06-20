@@ -276,6 +276,41 @@ func TestClashClientFiltersPolicyGroupPseudoNodes(t *testing.T) {
 	}
 }
 
+func TestClashClientFiltersNestedProxyGroups(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/version":
+			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.2.3"})
+		case r.URL.Path == "/proxies":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"proxies": map[string]interface{}{
+					"GLOBAL":     map[string]interface{}{"type": "Selector", "all": []string{"Free Cloud", "自动选择", "故障转移", "日本东京1-AN | 1x"}, "now": "Free Cloud"},
+					"Free Cloud": map[string]interface{}{"type": "Selector", "all": []string{"自动选择", "故障转移", "日本东京1-AN | 1x"}, "now": "自动选择"},
+					"自动选择":       map[string]interface{}{"type": "URLTest", "all": []string{"日本东京1-AN | 1x"}, "now": "日本东京1-AN | 1x"},
+					"故障转移":       map[string]interface{}{"type": "Fallback", "all": []string{"日本东京1-AN | 1x"}, "now": "日本东京1-AN | 1x"},
+					"日本东京1-AN | 1x": map[string]interface{}{"type": "Vless"},
+				},
+			})
+		case r.URL.Path == "/proxies/GLOBAL":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"type": "Selector", "all": []string{"Free Cloud", "自动选择", "故障转移", "日本东京1-AN | 1x"}, "now": "Free Cloud"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: server.URL, ProxyGroup: "GLOBAL"})
+	if err := client.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize() error = %v", err)
+	}
+	if len(client.nodes) != 1 || client.nodes[0] != "日本东京1-AN | 1x" {
+		t.Fatalf("nested selector/urltest/fallback groups should be filtered, got %v", client.nodes)
+	}
+	if client.nodeIndex != -1 {
+		t.Fatalf("current nested group should not set nodeIndex, got %d", client.nodeIndex)
+	}
+}
+
 func TestClashClientQuarantinesNodeAfterThreeNetworkFailures(t *testing.T) {
 	var switched []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

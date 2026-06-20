@@ -293,19 +293,46 @@ func (c *ClashClient) getGroupInfo(ctx context.Context, group string) (clashProx
 }
 
 func (c *ClashClient) getAvailableNodes(ctx context.Context, group string) ([]string, error) {
-	info, err := c.getGroupInfo(ctx, group)
+	proxies, err := c.getAllProxies(ctx)
 	if err != nil {
 		return nil, err
+	}
+	info, ok := proxies[group]
+	if !ok {
+		info, err = c.getGroupInfo(ctx, group)
+		if err != nil {
+			return nil, err
+		}
 	}
 	special := map[string]bool{"DIRECT": true, "REJECT": true, "PASS": true, "COMPATIBLE": true}
 	nodes := make([]string, 0, len(info.All))
 	for _, node := range info.All {
-		if special[node] || isClashMetadataNode(node) {
+		if special[node] || isClashMetadataNode(node) || isClashProxyGroupNode(node, proxies) {
 			continue
 		}
 		nodes = append(nodes, node)
 	}
 	return nodes, nil
+}
+
+func isClashProxyGroupNode(node string, proxies map[string]clashProxyGroup) bool {
+	name := strings.TrimSpace(node)
+	if name == "" || proxies == nil {
+		return false
+	}
+	group, ok := proxies[name]
+	if !ok {
+		return false
+	}
+	if len(group.All) > 0 {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(group.Type)) {
+	case "selector", "urltest", "fallback", "loadbalance", "relay":
+		return true
+	default:
+		return false
+	}
 }
 
 func isClashMetadataNode(node string) bool {

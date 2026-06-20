@@ -1418,7 +1418,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 						}
 						return false
 					}
-					locale := applyClashSelectionToConfig(&attemptCfg, taskConfig.Proxy, selection, clashFingerprintPrefix)
+					locale := applyClashSelectionToConfigForSubject(&attemptCfg, taskConfig.Proxy, selection, clashFingerprintPrefix, fingerprintSubjectForTask(&attemptCfg, currentEmail))
 					currentClashNode = selection.Node
 					currentClashAssisted = true
 					delayText := "跳过连通性测试"
@@ -1442,7 +1442,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 						log.Printf("[Kiro][%d/%d] 普通代理 Clash 辅助真实性不可用，降级为普通代理: %v", i+1, displayTotal, err)
 						normalClashAssist = false
 					} else {
-						locale := applyClashSelectionToConfig(&attemptCfg, taskConfig.Proxy, selection, normalClashFingerprintPrefix)
+						locale := applyClashSelectionToConfigForSubject(&attemptCfg, taskConfig.Proxy, selection, normalClashFingerprintPrefix, fingerprintSubjectForTask(&attemptCfg, currentEmail))
 						currentClashNode = selection.Node
 						currentClashAssisted = true
 						delayText := "跳过连通性测试"

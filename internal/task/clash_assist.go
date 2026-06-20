@@ -1,6 +1,8 @@
 package task
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net"
 	"net/url"
 	"strings"
@@ -38,8 +40,12 @@ func shouldEnableNormalClashAssist(proxyMode, normalProxyURL, clashProxyURL stri
 }
 
 func applyClashSelectionToConfig(cfg *core.Config, proxyURL string, selection proxy.ClashSelection, fingerprintPrefix string) core.BrowserLocale {
+	return applyClashSelectionToConfigForSubject(cfg, proxyURL, selection, fingerprintPrefix, "")
+}
+
+func applyClashSelectionToConfigForSubject(cfg *core.Config, proxyURL string, selection proxy.ClashSelection, fingerprintPrefix string, subject string) core.BrowserLocale {
 	cfg.Proxy = proxyURL
-	cfg.FingerprintKey = fingerprintPrefix + strings.TrimSpace(selection.Node)
+	cfg.FingerprintKey = clashFingerprintKey(fingerprintPrefix, selection.Node, subject)
 	locale := core.BrowserLocaleForClashNode(selection.Node)
 	cfg.AcceptLanguage = locale.AcceptLanguage
 	cfg.I18Next = locale.I18Next
@@ -47,6 +53,28 @@ func applyClashSelectionToConfig(cfg *core.Config, proxyURL string, selection pr
 	cfg.TimeZoneSet = true
 	cfg.ProxySwitchable = true
 	return locale
+}
+
+func clashFingerprintKey(prefix, node, subject string) string {
+	key := prefix + strings.TrimSpace(node)
+	subject = strings.ToLower(strings.TrimSpace(subject))
+	if subject == "" {
+		return key
+	}
+	sum := sha256.Sum256([]byte(subject))
+	return key + ":acct:" + hex.EncodeToString(sum[:])[:12]
+}
+
+func fingerprintSubjectForTask(cfg *core.Config, fallbackEmail string) string {
+	if cfg != nil && cfg.OutlookAccount != nil {
+		if email := strings.TrimSpace(cfg.OutlookAccount.RegistrationEmail); email != "" {
+			return email
+		}
+		if email := strings.TrimSpace(cfg.OutlookAccount.Email); email != "" {
+			return email
+		}
+	}
+	return strings.TrimSpace(fallbackEmail)
 }
 
 func isLoopbackProxyURL(raw string) bool {
