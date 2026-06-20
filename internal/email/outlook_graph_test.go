@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -58,6 +59,101 @@ func TestRefreshOutlookGraphTokenUsesCommonEndpointAndGraphScopes(t *testing.T) 
 	}
 	if gotScope != outlookGraphScope {
 		t.Fatalf("Graph scope 不正确: got %q", gotScope)
+	}
+}
+
+func TestRefreshOutlookGraphTokenFallsBackToDirectWhenProxyRefused(t *testing.T) {
+	var gotClientID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/token" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := r.ParseForm(); err != nil {
+			t.Fatal(err)
+		}
+		gotClientID = r.Form.Get("client_id")
+		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "direct-token"})
+	}))
+	defer server.Close()
+
+	oldEndpoint := outlookGraphTokenEndpoint
+	outlookGraphTokenEndpoint = server.URL + "/token"
+	t.Cleanup(func() { outlookGraphTokenEndpoint = oldEndpoint })
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refusedProxy := "http://" + listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	token, err := RefreshOutlookGraphTokenWithProxy(OutlookAccount{
+		Email:        "user@outlook.com",
+		ClientID:     "client-id",
+		RefreshToken: "refresh-token",
+	}, refusedProxy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "direct-token" {
+		t.Fatalf("fallback token mismatch: got %q", token)
+	}
+	if gotClientID != "client-id" {
+		t.Fatalf("direct fallback did not submit client_id, got %q", gotClientID)
+	}
+}
+
+func TestGetOutlookGraphProfileFallsBackToDirectWhenProxyRefused(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/token":
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "direct-token"})
+		case r.URL.Path == "/me":
+			if got := r.Header.Get("Authorization"); got != "Bearer direct-token" {
+				t.Fatalf("unexpected authorization: %q", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"userPrincipalName": "primary@hotmail.com",
+				"mail":              "primary@hotmail.com",
+				"proxyAddresses":    []string{"SMTP:primary@hotmail.com", "smtp:alias@hotmail.com"},
+				"otherMails":        []string{"other@hotmail.com"},
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	oldEndpoint := outlookGraphTokenEndpoint
+	oldBase := outlookGraphAPIBase
+	outlookGraphTokenEndpoint = server.URL + "/token"
+	outlookGraphAPIBase = server.URL
+	t.Cleanup(func() {
+		outlookGraphTokenEndpoint = oldEndpoint
+		outlookGraphAPIBase = oldBase
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refusedProxy := "http://" + listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	profile, err := GetOutlookGraphProfileWithProxy(OutlookAccount{
+		Email:        "alias@hotmail.com",
+		ClientID:     "client-id",
+		RefreshToken: "refresh-token",
+	}, refusedProxy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profile.PrimaryEmail != "primary@hotmail.com" || !profile.HasAddress("alias@hotmail.com") || !profile.HasAddress("other@hotmail.com") {
+		t.Fatalf("profile fallback parsed unexpected data: %+v", profile)
 	}
 }
 

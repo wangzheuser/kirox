@@ -78,8 +78,15 @@ func RefreshOutlookGraphTokenWithProxy(acc OutlookAccount, proxyURL string) (str
 		"scope":         {outlookGraphScope},
 	}
 
-	client := httpClientWithProxy(runtimeProxyURL, emailRequestTimeout)
-	resp, err := client.Post(outlookGraphTokenEndpoint, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
+	formBody := form.Encode()
+	resp, err := doOutlookGraphRequestWithProxyFallback(runtimeProxyURL, func() (*http.Request, error) {
+		req, err := http.NewRequest(http.MethodPost, outlookGraphTokenEndpoint, strings.NewReader(formBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		return req, nil
+	})
 	if err != nil {
 		return "", fmt.Errorf("请求失败: %v", err)
 	}
@@ -119,12 +126,14 @@ func GetOutlookGraphProfileWithProxy(acc OutlookAccount, proxyURL string) (Outlo
 		return OutlookGraphProfile{}, err
 	}
 	endpoint := strings.TrimRight(outlookGraphAPIBase, "/") + "/me?$select=userPrincipalName,mail,proxyAddresses,otherMails"
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return OutlookGraphProfile{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	resp, err := httpClientWithProxy(runtimeProxyURL, emailRequestTimeout).Do(req)
+	resp, err := doOutlookGraphRequestWithProxyFallback(runtimeProxyURL, func() (*http.Request, error) {
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		return req, nil
+	})
 	if err != nil {
 		return OutlookGraphProfile{}, err
 	}
@@ -305,6 +314,43 @@ func isTransientOutlookGraphTokenError(err error) bool {
 	return false
 }
 
+func doOutlookGraphRequestWithProxyFallback(proxyURL string, makeReq func() (*http.Request, error)) (*http.Response, error) {
+	req, err := makeReq()
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClientWithProxy(proxyURL, emailRequestTimeout).Do(req)
+	if err == nil || !shouldFallbackOutlookGraphProxy(err, proxyURL) {
+		return resp, err
+	}
+	log.Printf("[Outlook Graph] 邮箱代理不可用，改用直连重试: %v", err)
+	req, reqErr := makeReq()
+	if reqErr != nil {
+		return nil, reqErr
+	}
+	return httpClientWithProxy("", emailRequestTimeout).Do(req)
+}
+
+func shouldFallbackOutlookGraphProxy(err error, proxyURL string) bool {
+	if err == nil || strings.TrimSpace(proxyURL) == "" {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	markers := []string{
+		"proxyconnect tcp",
+		"connection refused",
+		"actively refused",
+		"no connection could be made",
+		"connectex:",
+	}
+	for _, marker := range markers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 type OutlookGraphOTPDiagnostic struct {
 	TotalMessages      int
 	RelevantMessages   int
@@ -441,14 +487,15 @@ func fetchGraphMessagesWithTop(accessToken, folder, proxyURL string, top int) ([
 	endpoint := strings.TrimRight(outlookGraphAPIBase, "/") +
 		"/me/mailFolders/" + url.PathEscape(folder) + "/messages?" + params.Encode()
 
-	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	req.Header.Set("Prefer", `outlook.body-content-type="text"`)
-
-	resp, err := httpClientWithProxy(proxyURL, emailRequestTimeout).Do(req)
+	resp, err := doOutlookGraphRequestWithProxyFallback(proxyURL, func() (*http.Request, error) {
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Prefer", `outlook.body-content-type="text"`)
+		return req, nil
+	})
 	if err != nil {
 		return nil, err
 	}

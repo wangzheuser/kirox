@@ -873,6 +873,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	var clashConfig proxy.ClashConfig
 	clashEnabled := false
+	normalClashAssist := false
 	switch proxyMode {
 	case storage.ProxyModeNone:
 		log.Printf("[Kiro] 代理模式: 直连")
@@ -886,6 +887,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			log.Printf("[Kiro] 代理模式: 普通代理模板，注册时将动态生成会话代理")
 		} else if taskConfig.Proxy != "" {
 			log.Printf("[Kiro] 代理模式: 普通代理")
+		}
+		normalClashConfig := storage.GetClashConfig()
+		if shouldEnableNormalClashAssist(proxyMode, taskConfig.Proxy, storage.GetClashProxy(), normalClashConfig, req.Concurrency) {
+			clashConfig = normalClashConfig
+			normalClashAssist = true
 		}
 	case storage.ProxyModePool:
 		if !proxy.HasEnabled() {
@@ -909,14 +915,18 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	var clashClient *proxy.ClashClient
 	var clashMu sync.Mutex
-	if clashEnabled {
+	if clashEnabled || normalClashAssist {
 		clashClient = proxy.NewClashClient(clashConfig)
-		log.Printf("[Kiro] 已启用 Clash API 自动切换: %s", clashConfig.APIURL)
-		if emailProxyUsesClash(taskConfig.EmailProxy, taskConfig.Proxy) {
-			log.Printf("[Kiro] 邮箱代理复用 Clash 本地代理；临时邮箱服务出口会受 Clash 当前节点影响")
-		}
-		if req.Concurrency > 1 {
-			log.Printf("[Kiro] Clash 节点为全局状态，注册流程将串行使用代理，避免中途切换节点")
+		if clashEnabled {
+			log.Printf("[Kiro] 已启用 Clash API 自动切换: %s", clashConfig.APIURL)
+			if emailProxyUsesClash(taskConfig.EmailProxy, taskConfig.Proxy) {
+				log.Printf("[Kiro] 邮箱代理复用 Clash 本地代理；临时邮箱服务出口会受 Clash 当前节点影响")
+			}
+			if req.Concurrency > 1 {
+				log.Printf("[Kiro] Clash 节点为全局状态，注册流程将串行使用代理，避免中途切换节点")
+			}
+		} else {
+			log.Printf("[Kiro] 普通代理启用 Clash 辅助真实性: %s", clashConfig.APIURL)
 		}
 	}
 	killSwitchEnabled := storage.GetKillSwitchEnabled()
@@ -1361,6 +1371,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		var result map[string]interface{}
 		proxySwitches := 0
 		currentClashNode := ""
+		currentClashAssisted := false
 		currentPoolProxy := ""
 	retryLoop:
 		for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -1392,6 +1403,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				return reg.Run()
 			}
 			runAttempt := func() bool {
+				currentClashAssisted = false
 				if clashEnabled {
 					clashMu.Lock()
 					defer clashMu.Unlock()
@@ -1406,15 +1418,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 						}
 						return false
 					}
-					attemptCfg.Proxy = taskConfig.Proxy
-					attemptCfg.FingerprintKey = "clash:" + selection.Node
-					locale := core.BrowserLocaleForClashNode(selection.Node)
-					attemptCfg.AcceptLanguage = locale.AcceptLanguage
-					attemptCfg.I18Next = locale.I18Next
-					attemptCfg.TimeZone = locale.TimeZone
-					attemptCfg.TimeZoneSet = true
-					attemptCfg.ProxySwitchable = true
+					locale := applyClashSelectionToConfig(&attemptCfg, taskConfig.Proxy, selection, clashFingerprintPrefix)
 					currentClashNode = selection.Node
+					currentClashAssisted = true
 					delayText := "跳过连通性测试"
 					if !selection.SkippedTest {
 						delayText = fmt.Sprintf("延迟 %dms", selection.DelayMs)
@@ -1426,6 +1432,28 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 					result = runRegistrar(&attemptCfg)
 					return true
+				}
+
+				if normalClashAssist {
+					clashMu.Lock()
+					selection, err := clashClient.SwitchToNextAvailable(taskCtx)
+					clashMu.Unlock()
+					if err != nil {
+						log.Printf("[Kiro][%d/%d] 普通代理 Clash 辅助真实性不可用，降级为普通代理: %v", i+1, displayTotal, err)
+						normalClashAssist = false
+					} else {
+						locale := applyClashSelectionToConfig(&attemptCfg, taskConfig.Proxy, selection, normalClashFingerprintPrefix)
+						currentClashNode = selection.Node
+						currentClashAssisted = true
+						delayText := "跳过连通性测试"
+						if !selection.SkippedTest {
+							delayText = fmt.Sprintf("延迟 %dms", selection.DelayMs)
+						}
+						log.Printf("[Kiro][%d/%d] 普通代理已绑定 Clash 节点: %s / %s (%s, 尝试 %d 个, 耗时 %dms)",
+							i+1, displayTotal, selection.ProxyGroup, selection.Node, delayText, selection.Attempts, selection.DurationMs)
+						log.Printf("[Kiro][%d/%d] 浏览器地区已绑定: acceptLanguage=%s, i18next=%s, timeZone=%d",
+							i+1, displayTotal, locale.AcceptLanguage, locale.I18Next, locale.TimeZone)
+					}
 				}
 
 				if attemptCfg.Proxy == "" {
@@ -1475,7 +1503,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			if result["status"] == "success" {
-				if clashEnabled && currentClashNode != "" {
+				if currentClashAssisted && currentClashNode != "" {
 					clashMu.Lock()
 					clashClient.RecordNodeSuccess(currentClashNode)
 					clashMu.Unlock()
@@ -1488,7 +1516,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 			errorMsg, _ := result["error"].(string)
 			proxyNetworkErr := isProxyNetworkError(errorMsg)
-			if clashEnabled && currentClashNode != "" && proxyNetworkErr {
+			if currentClashAssisted && currentClashNode != "" && proxyNetworkErr {
 				statsMu.Lock()
 				runtimeStats.clashNetworkErrors++
 				statsMu.Unlock()
@@ -1496,7 +1524,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				clashClient.RecordNodeNetworkFailure(currentClashNode)
 				clashMu.Unlock()
 			}
-			if clashEnabled && currentClashNode != "" && !proxyNetworkErr {
+			if currentClashAssisted && currentClashNode != "" && !proxyNetworkErr {
 				clashMu.Lock()
 				clashClient.RecordNodeSuccess(currentClashNode)
 				clashMu.Unlock()
@@ -1570,9 +1598,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			// 动态代理池中部分 UUID 节点可能不可用；代理类网络错误优先切换新 UUID，不消耗业务重试次数。
-			if (proxy.HasURLTemplate(taskCfg.Proxy) || clashEnabled) && proxyNetworkErr && proxySwitches < maxProxySwitches {
+			if (proxy.HasURLTemplate(taskCfg.Proxy) || currentClashAssisted) && proxyNetworkErr && proxySwitches < maxProxySwitches {
 				proxySwitches++
-				if clashEnabled {
+				if currentClashAssisted {
 					log.Printf("[Kiro][%d/%d] 检测到 Clash 节点网络错误，切换下一个节点重试 (%d/%d): %s",
 						i+1, displayTotal, proxySwitches, maxProxySwitches, errorMsg)
 				} else {
