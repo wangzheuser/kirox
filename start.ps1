@@ -4,6 +4,8 @@ $ErrorActionPreference = 'Stop'
 $script:RootDir = $PSScriptRoot
 $script:FrontendDir = Join-Path $script:RootDir 'frontend'
 $script:GoCmd = $null
+$script:WailsProcess = $null
+$script:CleanupStarted = $false
 
 if (-not $script:RootDir) {
     $script:RootDir = (Get-Location).Path
@@ -100,6 +102,105 @@ function Invoke-Checked {
             Set-Location $oldLocation
         }
     }
+}
+
+function Get-StartChildProcessIds {
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+
+    try {
+        return @(Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction Stop | ForEach-Object { [int]$_.ProcessId })
+    }
+    catch {
+        try {
+            return @(Get-WmiObject -Class Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction Stop | ForEach-Object { [int]$_.ProcessId })
+        }
+        catch {
+            return @()
+        }
+    }
+}
+
+function Stop-StartProcessTree {
+    param(
+        [Parameter(Mandatory = $true)][int]$ProcessId,
+        [hashtable]$Visited
+    )
+
+    if ($ProcessId -le 0) {
+        return
+    }
+
+    if (-not $Visited) {
+        $Visited = @{}
+    }
+
+    if ($Visited.ContainsKey($ProcessId)) {
+        return
+    }
+    $Visited[$ProcessId] = $true
+
+    foreach ($childId in @(Get-StartChildProcessIds -ProcessId $ProcessId)) {
+        Stop-StartProcessTree -ProcessId $childId -Visited $Visited
+    }
+
+    if ($ProcessId -eq $PID) {
+        return
+    }
+
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $process) {
+        return
+    }
+
+    try {
+        if (-not $process.HasExited) {
+            Log-Start "结束进程：$($process.ProcessName)($ProcessId)"
+            Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+            try {
+                Wait-Process -Id $ProcessId -Timeout 5 -ErrorAction SilentlyContinue
+            }
+            catch {
+                # 进程可能已退出；无需额外处理。
+            }
+        }
+    }
+    catch {
+        Log-Start "结束进程 $ProcessId 失败：$($_.Exception.Message)"
+    }
+}
+
+function Stop-StartedProcessTrees {
+    if ($script:CleanupStarted) {
+        return
+    }
+    $script:CleanupStarted = $true
+
+    if (-not $script:WailsProcess) {
+        return
+    }
+
+    $wailsProcessId = [int]$script:WailsProcess.Id
+    $childIds = @(Get-StartChildProcessIds -ProcessId $wailsProcessId)
+    $wailsAlive = $false
+
+    try {
+        $script:WailsProcess.Refresh()
+        $wailsAlive = -not $script:WailsProcess.HasExited
+    }
+    catch {
+        $wailsAlive = $false
+    }
+
+    if ($wailsAlive -or $childIds.Count -gt 0) {
+        Log-Start '正在结束 Wails 开发模式进程树'
+        Stop-StartProcessTree -ProcessId $wailsProcessId
+    }
+}
+
+trap [System.Management.Automation.PipelineStoppedException] {
+    Log-Start '收到 Ctrl+C，正在强制结束已启动的进程'
+    Stop-StartedProcessTrees
+    exit 130
 }
 
 function Ensure-Go {
@@ -279,5 +380,28 @@ Ensure-FrontendDependencies
 $wailsCmd = Ensure-Wails
 
 Log-Start '使用 Wails 开发模式启动项目（强制重新构建后端）'
-& $wailsCmd 'dev' '-forcebuild' @args
-exit $LASTEXITCODE
+$wailsArgs = @('dev', '-forcebuild') + $args
+$exitCode = 0
+
+try {
+    $script:WailsProcess = Start-Process `
+        -FilePath $wailsCmd `
+        -ArgumentList $wailsArgs `
+        -WorkingDirectory $script:RootDir `
+        -NoNewWindow `
+        -PassThru
+
+    while ($true) {
+        $script:WailsProcess.Refresh()
+        if ($script:WailsProcess.HasExited) {
+            $exitCode = $script:WailsProcess.ExitCode
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+}
+finally {
+    Stop-StartedProcessTrees
+}
+
+exit $exitCode
