@@ -40,7 +40,15 @@
         kiroAccounts: 'Kiro 账号数', successRate: '注册成功率',
         liveStatus: '实时状态', progress: '进度', success: '成功', failed: '失败',
         elapsed: '已耗时', eta: '预计剩余', avg: '平均耗时', rate: '成功率',
-        newTask: '新建任务', stop: '停止'
+        newTask: '新建任务', stop: '停止',
+        diagnosticsTitle: '诊断详情', diagnosticsExpand: '展开', diagnosticsCollapse: '收起',
+        diagnosticsOtp: 'OTP失败', diagnosticsPostRegistration: '注册后失败',
+        diagnosticsNetwork: '网络/代理问题', diagnosticsGraph: 'Graph失败',
+        diagnosticsRisk: '风控/拦截', diagnosticsEmailService: '邮箱服务问题',
+        diagnosticsProxy: '代理池/Clash', diagnosticsSendOTP: 'send-otp诊断',
+        diagnosticsTopFailures: '失败Top', diagnosticsOtpSendFailed: '验证码发送失败',
+        diagnosticsOtpInvalid: '验证码无效', diagnosticsOtpTimeout: '验证码超时',
+        diagnosticsModelListFailed: '模型列表失败'
       },
       about: {
         currentVersion: '当前版本', latestVersion: '最新版本', releaseDate: '发布日期', author: '作者',
@@ -300,7 +308,15 @@
         kiroAccounts: 'Kiro accounts', successRate: 'Success rate',
         liveStatus: 'Live status', progress: 'Progress', success: 'Success', failed: 'Failed',
         elapsed: 'Elapsed', eta: 'ETA', avg: 'Average', rate: 'Rate',
-        newTask: 'New task', stop: 'Stop'
+        newTask: 'New task', stop: 'Stop',
+        diagnosticsTitle: 'Diagnostics', diagnosticsExpand: 'Expand', diagnosticsCollapse: 'Collapse',
+        diagnosticsOtp: 'OTP failures', diagnosticsPostRegistration: 'Post-registration failures',
+        diagnosticsNetwork: 'Network/proxy issues', diagnosticsGraph: 'Graph failures',
+        diagnosticsRisk: 'Risk/blocking', diagnosticsEmailService: 'Mailbox service issues',
+        diagnosticsProxy: 'Proxy pool/Clash', diagnosticsSendOTP: 'send-otp diagnostics',
+        diagnosticsTopFailures: 'Failure top', diagnosticsOtpSendFailed: 'send failed',
+        diagnosticsOtpInvalid: 'invalid', diagnosticsOtpTimeout: 'timeout',
+        diagnosticsModelListFailed: 'model list failed'
       },
       about: {
         currentVersion: 'Current', latestVersion: 'Latest', releaseDate: 'Released', author: 'Author',
@@ -560,7 +576,15 @@
         kiroAccounts: 'Kiro アカウント数', successRate: '登録成功率',
         liveStatus: 'リアルタイム状態', progress: '進行状況', success: '成功', failed: '失敗',
         elapsed: '経過時間', eta: '残り時間', avg: '平均', rate: '成功率',
-        newTask: '新規タスク', stop: '停止'
+        newTask: '新規タスク', stop: '停止',
+        diagnosticsTitle: '診断詳細', diagnosticsExpand: '展開', diagnosticsCollapse: '折りたたむ',
+        diagnosticsOtp: 'OTP失敗', diagnosticsPostRegistration: '登録後失敗',
+        diagnosticsNetwork: 'ネットワーク/プロキシ問題', diagnosticsGraph: 'Graph失敗',
+        diagnosticsRisk: 'リスク/ブロック', diagnosticsEmailService: 'メールサービス問題',
+        diagnosticsProxy: 'プロキシプール/Clash', diagnosticsSendOTP: 'send-otp診断',
+        diagnosticsTopFailures: '失敗Top', diagnosticsOtpSendFailed: '送信失敗',
+        diagnosticsOtpInvalid: '無効', diagnosticsOtpTimeout: 'タイムアウト',
+        diagnosticsModelListFailed: 'モデル一覧失敗'
       },
       about: {
         currentVersion: '現在のバージョン', latestVersion: '最新バージョン', releaseDate: 'リリース日', author: '作者',

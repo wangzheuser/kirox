@@ -24,6 +24,7 @@ type State struct {
 	successTargetEnabled bool
 	results              []map[string]interface{}
 	startTime            time.Time
+	diagnostics          TaskDiagnostics
 	logs                 []string
 	logsMu               sync.Mutex
 	logFile              *lumberjack.Logger // 日志文件写入器，支持自动轮转
@@ -31,8 +32,100 @@ type State struct {
 	OnSyncResult func(interface{})
 }
 
+// DiagnosticGroup 表示一个可下钻诊断指标：总数 + 明细数量。
+type DiagnosticGroup struct {
+	Total   int            `json:"total"`
+	Details map[string]int `json:"details"`
+}
+
+// DiagnosticTopItem 表示 Top 诊断项。
+type DiagnosticTopItem struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+// TaskDiagnostics 是实时任务状态中的结构化诊断快照。
+type TaskDiagnostics struct {
+	OTPFailures              DiagnosticGroup                `json:"otpFailures"`
+	PostRegistrationFailures DiagnosticGroup                `json:"postRegistrationFailures"`
+	NetworkProxyFailures     DiagnosticGroup                `json:"networkProxyFailures"`
+	GraphFailures            DiagnosticGroup                `json:"graphFailures"`
+	RiskFailures             DiagnosticGroup                `json:"riskFailures"`
+	EmailServiceFailures     DiagnosticGroup                `json:"emailServiceFailures"`
+	ProxyFailures            DiagnosticGroup                `json:"proxyFailures"`
+	SendOTPDiagnostics       map[string][]DiagnosticTopItem `json:"sendOTPDiagnostics"`
+	TopFailures              []DiagnosticTopItem            `json:"topFailures"`
+}
+
 var Manager = &State{
 	logs: make([]string, 0),
+}
+
+func (g DiagnosticGroup) Clone() DiagnosticGroup {
+	return DiagnosticGroup{
+		Total:   g.Total,
+		Details: cloneStringIntMap(g.Details),
+	}
+}
+
+func (d TaskDiagnostics) Clone() TaskDiagnostics {
+	sendOTP := make(map[string][]DiagnosticTopItem, len(d.SendOTPDiagnostics))
+	for key, items := range d.SendOTPDiagnostics {
+		copied := make([]DiagnosticTopItem, len(items))
+		copy(copied, items)
+		sendOTP[key] = copied
+	}
+	topFailures := make([]DiagnosticTopItem, len(d.TopFailures))
+	copy(topFailures, d.TopFailures)
+	return TaskDiagnostics{
+		OTPFailures:              d.OTPFailures.Clone(),
+		PostRegistrationFailures: d.PostRegistrationFailures.Clone(),
+		NetworkProxyFailures:     d.NetworkProxyFailures.Clone(),
+		GraphFailures:            d.GraphFailures.Clone(),
+		RiskFailures:             d.RiskFailures.Clone(),
+		EmailServiceFailures:     d.EmailServiceFailures.Clone(),
+		ProxyFailures:            d.ProxyFailures.Clone(),
+		SendOTPDiagnostics:       sendOTP,
+		TopFailures:              topFailures,
+	}
+}
+
+func cloneStringIntMap(src map[string]int) map[string]int {
+	if len(src) == 0 {
+		return map[string]int{}
+	}
+	dst := make(map[string]int, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func diagnosticGroup(details map[string]int) DiagnosticGroup {
+	clean := make(map[string]int, len(details))
+	total := 0
+	for k, v := range details {
+		if k == "" || v <= 0 {
+			continue
+		}
+		clean[k] = v
+		total += v
+	}
+	return DiagnosticGroup{Total: total, Details: clean}
+}
+
+// SetDiagnostics 写入当前任务诊断快照。
+func (s *State) SetDiagnostics(diagnostics TaskDiagnostics) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.diagnostics = diagnostics.Clone()
+}
+
+// ResetDiagnostics 清空当前任务诊断快照。
+func (s *State) ResetDiagnostics() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.diagnostics = TaskDiagnostics{}
 }
 
 // AppendLog 追加日志，最多保留 500 条，同时写入日志文件
@@ -113,5 +206,6 @@ func (s *State) GetStatus() map[string]interface{} {
 		"successTarget":        s.successTarget,
 		"successTargetEnabled": s.successTargetEnabled,
 		"elapsed":              elapsed,
+		"diagnostics":          s.diagnostics.Clone(),
 	}
 }

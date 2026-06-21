@@ -183,6 +183,179 @@ function notifyTaskComplete(taskName, success, failed, total) {
   }
 }
 
+var _lastTaskDiagnostics = null;
+
+function _diagField(obj, lowerKey, upperKey, fallback) {
+  if (!obj) return fallback;
+  if (Object.prototype.hasOwnProperty.call(obj, lowerKey)) return obj[lowerKey];
+  if (upperKey && Object.prototype.hasOwnProperty.call(obj, upperKey)) return obj[upperKey];
+  return fallback;
+}
+
+function _diagGroup(diagnostics, lowerKey, upperKey) {
+  var group = _diagField(diagnostics, lowerKey, upperKey, null) || {};
+  return {
+    total: parseInt(_diagField(group, 'total', 'Total', 0), 10) || 0,
+    details: _diagField(group, 'details', 'Details', {}) || {}
+  };
+}
+
+function _diagTopItems(diagnostics, lowerKey, upperKey) {
+  return _diagField(diagnostics, lowerKey, upperKey, []) || [];
+}
+
+function _diagLabel(label) {
+  var map = {
+    '验证码发送失败': 'overview.diagnosticsOtpSendFailed',
+    '验证码无效': 'overview.diagnosticsOtpInvalid',
+    '验证码超时': 'overview.diagnosticsOtpTimeout',
+    '模型列表失败': 'overview.diagnosticsModelListFailed'
+  };
+  if (map[label]) return _tkT(map[label], label);
+  return label;
+}
+
+function _orderedDiagnosticDetails(details, order) {
+  var items = [];
+  var seen = {};
+  (order || []).forEach(function(label) {
+    var count = parseInt(details[label], 10) || 0;
+    if (count > 0) {
+      items.push({ label: label, count: count });
+      seen[label] = true;
+    }
+  });
+  Object.keys(details || {}).forEach(function(label) {
+    if (seen[label]) return;
+    var count = parseInt(details[label], 10) || 0;
+    if (count > 0) items.push({ label: label, count: count });
+  });
+  items.sort(function(a, b) {
+    var ai = (order || []).indexOf(a.label);
+    var bi = (order || []).indexOf(b.label);
+    if (ai >= 0 || bi >= 0) return (ai < 0 ? 9999 : ai) - (bi < 0 ? 9999 : bi);
+    if (a.count === b.count) return a.label.localeCompare(b.label);
+    return b.count - a.count;
+  });
+  return items;
+}
+
+function formatDiagnosticGroup(label, group, order) {
+  var details = _orderedDiagnosticDetails(group.details || {}, order || []);
+  if (!group.total && !details.length) return label + '：-';
+  var detailText = details.map(function(item) {
+    return _diagLabel(item.label) + ' ' + item.count;
+  }).join(' / ');
+  return label + '：' + group.total + (detailText ? '（' + detailText + '）' : '');
+}
+
+function _renderDiagnosticChip(text) {
+  return '<span style="padding:3px 7px;border-radius:999px;background:var(--bg-subtle);border:1px solid var(--border);">' +
+    _escapeLogHtml(text) + '</span>';
+}
+
+function _renderDiagnosticRow(title, body) {
+  return '<div style="display:flex;gap:8px;justify-content:space-between;border-bottom:1px dashed var(--border);padding:3px 0;">' +
+    '<span style="font-weight:600;color:var(--text);">' + _escapeLogHtml(title) + '</span>' +
+    '<span style="text-align:right;min-width:0;">' + _escapeLogHtml(body) + '</span>' +
+    '</div>';
+}
+
+function _formatTopItems(items) {
+  if (!items || !items.length) return '-';
+  return items.map(function(item) {
+    var label = item.label != null ? item.label : item.Label;
+    var count = item.count != null ? item.count : item.Count;
+    return String(label) + ' ' + (parseInt(count, 10) || 0);
+  }).join(' / ');
+}
+
+function _formatSendOTPDiagnostics(diagnostics) {
+  var data = _diagField(diagnostics, 'sendOTPDiagnostics', 'SendOTPDiagnostics', {}) || {};
+  var parts = [];
+  ['provider', 'domain', 'emailProxy', 'proxy'].forEach(function(key) {
+    if (data[key] && data[key].length) {
+      parts.push(key + '：' + _formatTopItems(data[key]));
+    }
+  });
+  return parts.length ? parts.join('；') : '-';
+}
+
+function renderTaskDiagnostics(diagnostics) {
+  _lastTaskDiagnostics = diagnostics || null;
+  var root = document.getElementById('st-diagnostics');
+  if (!root) return;
+  var summaryEl = document.getElementById('st-diagnostics-summary');
+  var detailsEl = document.getElementById('st-diagnostics-details');
+  var toggleText = document.getElementById('st-diagnostics-toggle-text');
+  if (!summaryEl || !detailsEl) return;
+
+  diagnostics = diagnostics || {};
+  var groups = [
+    {
+      key: 'otpFailures', goKey: 'OTPFailures',
+      label: _tkT('overview.diagnosticsOtp', 'OTP失败'),
+      order: ['验证码发送失败', '验证码无效', '验证码超时']
+    },
+    {
+      key: 'postRegistrationFailures', goKey: 'PostRegistrationFailures',
+      label: _tkT('overview.diagnosticsPostRegistration', '注册后失败'),
+      order: ['模型列表失败', '验活失败', '账号封禁', 'Token交换失败', 'Kiro授权失败']
+    },
+    {
+      key: 'networkProxyFailures', goKey: 'NetworkProxyFailures',
+      label: _tkT('overview.diagnosticsNetwork', '网络/代理问题'),
+      order: ['设备授权', 'Portal 初始化', '工作流初始化', '提交邮箱', '发送验证码', '等待验证码', '注册初始化', '验活', '其他阶段']
+    },
+    {
+      key: 'graphFailures', goKey: 'GraphFailures',
+      label: _tkT('overview.diagnosticsGraph', 'Graph失败'),
+      order: ['Graph Token失效', 'Graph权限错误', 'Graph网络错误', 'Graph响应异常']
+    },
+    { key: 'riskFailures', goKey: 'RiskFailures', label: _tkT('overview.diagnosticsRisk', '风控/拦截') },
+    { key: 'emailServiceFailures', goKey: 'EmailServiceFailures', label: _tkT('overview.diagnosticsEmailService', '邮箱服务问题') },
+    { key: 'proxyFailures', goKey: 'ProxyFailures', label: _tkT('overview.diagnosticsProxy', '代理池/Clash') }
+  ];
+
+  var rendered = groups.map(function(cfg) {
+    var group = _diagGroup(diagnostics, cfg.key, cfg.goKey);
+    return {
+      label: cfg.label,
+      total: group.total,
+      text: formatDiagnosticGroup(cfg.label, group, cfg.order)
+    };
+  });
+
+  var nonEmpty = rendered.filter(function(item) { return item.total > 0; });
+  var summaryItems = nonEmpty.slice(0, 6);
+  summaryEl.innerHTML = summaryItems.length
+    ? summaryItems.map(function(item) { return _renderDiagnosticChip(item.text); }).join('')
+    : '<span style="color:var(--text-muted);">-</span>';
+
+  var rows = rendered.map(function(item) {
+    return _renderDiagnosticRow(item.label, item.text.replace(item.label + '：', ''));
+  });
+  rows.push(_renderDiagnosticRow(_tkT('overview.diagnosticsSendOTP', 'send-otp诊断'), _formatSendOTPDiagnostics(diagnostics)));
+  rows.push(_renderDiagnosticRow(_tkT('overview.diagnosticsTopFailures', '失败Top'), _formatTopItems(_diagTopItems(diagnostics, 'topFailures', 'TopFailures'))));
+  detailsEl.innerHTML = rows.join('');
+
+  var expanded = root.getAttribute('data-diagnostics-expanded') === 'true';
+  detailsEl.style.display = expanded ? 'block' : 'none';
+  if (toggleText) {
+    toggleText.textContent = expanded
+      ? _tkT('overview.diagnosticsCollapse', '收起')
+      : _tkT('overview.diagnosticsExpand', '展开');
+  }
+}
+
+function toggleTaskDiagnostics() {
+  var root = document.getElementById('st-diagnostics');
+  if (!root) return;
+  var expanded = root.getAttribute('data-diagnostics-expanded') === 'true';
+  root.setAttribute('data-diagnostics-expanded', expanded ? 'false' : 'true');
+  renderTaskDiagnostics(_lastTaskDiagnostics);
+}
+
 async function startTask() {
   if (typeof setTaskActionState === 'function') setTaskActionState('starting');
   try {
@@ -412,6 +585,7 @@ setInterval(async function() {
     } else {
       etaEl.textContent = '-';
     }
+    renderTaskDiagnostics(s.diagnostics || s.Diagnostics || null);
   } catch(e) {}
   try {
     var kiroLogs = await window.go.main.App.GetLogs() || [];
@@ -432,4 +606,5 @@ setInterval(async function() {
 // 切换语言时立刻按新语言重渲染日志（renderUnifiedLogs 自带 innerHTML 短路，无副作用）
 window.addEventListener('i18n:changed', function() {
   if (typeof renderUnifiedLogs === 'function') renderUnifiedLogs();
+  if (typeof renderTaskDiagnostics === 'function') renderTaskDiagnostics(_lastTaskDiagnostics);
 });

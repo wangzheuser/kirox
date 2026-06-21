@@ -30,23 +30,32 @@ const (
 var emailProviderRateLimitBackoffs = []time.Duration{60 * time.Second, 120 * time.Second, 300 * time.Second}
 
 type runtimeTaskStats struct {
-	failCategories       map[string]int
-	failureSamples       map[string]int
-	networkStageFailures map[string]int
-	registeredSkipCount  int
-	graphResolveFailures int
-	clashNetworkErrors   int
-	clashRiskFailures    int
-	poolNetworkErrors    int
-	passwordSetFailures  int
-	otpTimeoutStopped    bool
+	failCategories               map[string]int
+	failureSamples               map[string]int
+	networkStageFailures         map[string]int
+	graphFailureCategories       map[string]int
+	passwordSetFailureCategories map[string]int
+	emailServiceFailureDetails   map[string]int
+	sendOTPDiagnosticCounts      map[string]map[string]int
+	registeredSkipCount          int
+	graphResolveFailures         int
+	clashNetworkErrors           int
+	clashRiskFailures            int
+	poolNetworkErrors            int
+	passwordSetFailures          int
+	sendOTPBlockedFailures       int
+	otpTimeoutStopped            bool
 }
 
 func newRuntimeTaskStats() *runtimeTaskStats {
 	return &runtimeTaskStats{
-		failCategories:       make(map[string]int),
-		failureSamples:       make(map[string]int),
-		networkStageFailures: make(map[string]int),
+		failCategories:               make(map[string]int),
+		failureSamples:               make(map[string]int),
+		networkStageFailures:         make(map[string]int),
+		graphFailureCategories:       make(map[string]int),
+		passwordSetFailureCategories: make(map[string]int),
+		emailServiceFailureDetails:   make(map[string]int),
+		sendOTPDiagnosticCounts:      make(map[string]map[string]int),
 	}
 }
 
@@ -58,9 +67,19 @@ func (s *runtimeTaskStats) RecordFailure(errorMsg string, passwordSet bool, stag
 	s.failCategories[reason]++
 	if passwordSet {
 		s.passwordSetFailures++
+		s.passwordSetFailureCategories[postRegistrationFailureDetail(errorMsg, reason)]++
 	}
 	if normalized := normalizeFailureSample(errorMsg); normalized != "" {
 		s.failureSamples[normalized]++
+	}
+	if isSendOTPBlockedError(errorMsg) {
+		s.sendOTPBlockedFailures++
+	}
+	if detail := emailServiceFailureDetail(errorMsg, reason); detail != "" {
+		s.emailServiceFailureDetails[detail]++
+	}
+	if diag, ok := parseSendOTPDiagnostics(errorMsg); ok {
+		s.recordSendOTPDiagnostics(diag)
 	}
 	if reason == "网络/代理问题" || isProxyNetworkError(errorMsg) {
 		stage := strings.TrimSpace(stageHint)
@@ -81,6 +100,11 @@ func (s *runtimeTaskStats) RecordRegisteredSkip() {
 func (s *runtimeTaskStats) RecordGraphFailure(reason string) {
 	if s != nil {
 		s.graphResolveFailures++
+		reason = strings.TrimSpace(reason)
+		if reason == "" {
+			reason = "Graph响应异常"
+		}
+		s.graphFailureCategories[reason]++
 		if normalized := normalizeFailureSample(reason); normalized != "" {
 			s.failureSamples["Graph: "+normalized]++
 		}
@@ -91,6 +115,91 @@ func (s *runtimeTaskStats) RecordNetworkError(errorMsg string) {
 	if s != nil {
 		s.networkStageFailures[classifyNetworkErrorStage(errorMsg)]++
 	}
+}
+
+func (s *runtimeTaskStats) recordSendOTPDiagnostics(diag map[string]string) {
+	if s == nil {
+		return
+	}
+	for _, key := range []string{"provider", "domain", "emailProxy", "proxy"} {
+		value := strings.TrimSpace(diag[key])
+		if value == "" {
+			continue
+		}
+		if s.sendOTPDiagnosticCounts[key] == nil {
+			s.sendOTPDiagnosticCounts[key] = make(map[string]int)
+		}
+		s.sendOTPDiagnosticCounts[key][value]++
+	}
+}
+
+func (s *runtimeTaskStats) DiagnosticsSnapshot(clashQuarantined, poolQuarantined, topN int) TaskDiagnostics {
+	if s == nil {
+		return TaskDiagnostics{}
+	}
+	return TaskDiagnostics{
+		OTPFailures: diagnosticGroup(map[string]int{
+			"验证码发送失败": s.failCategories["验证码发送失败"] + s.sendOTPBlockedFailures,
+			"验证码无效":   s.failCategories["验证码无效"],
+			"验证码超时":   s.failCategories["验证码超时"],
+		}),
+		PostRegistrationFailures: diagnosticGroup(s.passwordSetFailureCategories),
+		NetworkProxyFailures:     diagnosticGroup(s.networkStageFailures),
+		GraphFailures:            diagnosticGroup(s.graphFailureCategories),
+		RiskFailures: diagnosticGroup(map[string]int{
+			"IP/指纹风控":              s.failCategories["IP/指纹风控"],
+			"send-otp TES/BLOCKED": s.sendOTPBlockedFailures,
+			"Clash风控节点":            s.clashRiskFailures,
+			"被临时拉黑代理":              clashQuarantined + poolQuarantined,
+		}),
+		EmailServiceFailures: diagnosticGroup(s.emailServiceFailureDetails),
+		ProxyFailures: diagnosticGroup(map[string]int{
+			"Clash网络错误": s.clashNetworkErrors,
+			"Clash风控错误": s.clashRiskFailures,
+			"Clash临时拉黑": clashQuarantined,
+			"代理池网络错误":   s.poolNetworkErrors,
+			"代理池临时拉黑":   poolQuarantined,
+		}),
+		SendOTPDiagnostics: s.topSendOTPDiagnostics(topN),
+		TopFailures:        sortedDiagnosticTopItems(s.failureSamples, topN),
+	}
+}
+
+func (s *runtimeTaskStats) topSendOTPDiagnostics(topN int) map[string][]DiagnosticTopItem {
+	out := make(map[string][]DiagnosticTopItem, len(s.sendOTPDiagnosticCounts))
+	for _, key := range []string{"provider", "domain", "emailProxy", "proxy"} {
+		items := sortedDiagnosticTopItems(s.sendOTPDiagnosticCounts[key], topN)
+		if len(items) > 0 {
+			out[key] = items
+		}
+	}
+	return out
+}
+
+func sortedDiagnosticTopItems(counts map[string]int, n int) []DiagnosticTopItem {
+	if n <= 0 {
+		n = 10
+	}
+	if len(counts) == 0 {
+		return nil
+	}
+	items := make([]DiagnosticTopItem, 0, len(counts))
+	for label, count := range counts {
+		if strings.TrimSpace(label) == "" || count <= 0 {
+			continue
+		}
+		items = append(items, DiagnosticTopItem{Label: label, Count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Count == items[j].Count {
+			return items[i].Label < items[j].Label
+		}
+		return items[i].Count > items[j].Count
+	})
+	if n > len(items) {
+		n = len(items)
+	}
+	return items[:n]
 }
 
 func (s *runtimeTaskStats) ProgressSummary(completed, success, failed, topN int) string {
@@ -790,6 +899,7 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 	Manager.successTarget = req.SuccessTarget
 	Manager.successTargetEnabled = req.SuccessTarget > 0
 	Manager.results = nil
+	Manager.diagnostics = TaskDiagnostics{}
 	Manager.startTime = time.Now()
 	Manager.mu.Unlock()
 
@@ -1026,6 +1136,17 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	runtimeStats := newRuntimeTaskStats()
 	sendOTPDiagnostics := make([]map[string]string, 0)
 	otpTimeoutStopTriggered := false
+	publishDiagnostics := func() {
+		clashQuarantined := 0
+		if clashClient != nil {
+			clashQuarantined = clashClient.QuarantinedNodeCount()
+		}
+		statsMu.Lock()
+		runtimeStats.otpTimeoutStopped = otpTimeoutStopTriggered
+		diagnostics := runtimeStats.DiagnosticsSnapshot(clashQuarantined, proxy.QuarantinedPoolProxyCount(), 10)
+		statsMu.Unlock()
+		Manager.SetDiagnostics(diagnostics)
+	}
 	var otpTimeoutStreak outlookOTPTimeoutStreak
 	taskStartTime := time.Now()
 	var batchSuccessMu sync.Mutex
@@ -1092,6 +1213,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			statsMu.Lock()
 			runtimeStats.RecordGraphFailure(classifyGraphResolutionError(err.Error()))
 			statsMu.Unlock()
+			publishDiagnostics()
 		}
 		return profile, err
 	})
@@ -1187,6 +1309,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 					statsMu.Lock()
 					progressSummary := runtimeStats.ProgressSummary(completedCount, successCount, failedCount, 3)
 					statsMu.Unlock()
+					publishDiagnostics()
 					log.Println(progressSummary)
 					return false
 				}
@@ -1205,6 +1328,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				runtimeStats.RecordRegisteredSkip()
 				progressSummary := runtimeStats.ProgressSummary(completedCount, successCount, failedCount, 3)
 				statsMu.Unlock()
+				publishDiagnostics()
 				log.Println(progressSummary)
 				return false
 			}
@@ -1230,6 +1354,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			runtimeStats.RecordFailure("邮箱创建失败: "+err.Error(), false, "注册初始化")
 			progressSummary := runtimeStats.ProgressSummary(completedCount, successCount, failedCount, 3)
 			statsMu.Unlock()
+			publishDiagnostics()
 			log.Println(progressSummary)
 			if isEmailProviderAccessBlockedError(err.Error()) {
 				requestTaskStop(fmt.Sprintf("[Kiro] %s 邮箱服务拒绝当前出口国家/IP，停止任务；请更换邮箱代理/Clash 节点或邮箱渠道", providerLabel))
@@ -1772,6 +1897,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				statsMu.Lock()
 				runtimeStats.RecordRegisteredSkip()
 				statsMu.Unlock()
+				publishDiagnostics()
 				email.UpdateAccountStatus(accountEmail, true, false, "邮箱已注册")
 				if taskCfg.OutlookAccount != nil {
 					registrationTracker.MarkRegistered(*taskCfg.OutlookAccount)
@@ -1828,6 +1954,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				statsMu.Lock()
 				runtimeStats.RecordFailure(errorMsg, true, "验活")
 				statsMu.Unlock()
+				publishDiagnostics()
 				email.UpdateAccountStatus(accountEmail, true, false, failReason)
 				if nextUsableOutlookAccount() {
 					taskCfg.Password = core.GenPassword()
@@ -1917,6 +2044,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			otpTimeoutStopTriggered = true
 		}
 		statsMu.Unlock()
+		publishDiagnostics()
 
 		if shouldStopForOTPTimeouts {
 			requestTaskStop("[Kiro] 连续验证码超时达到 5 次，停止本批任务；请检查 Outlook Graph 收信、别名投递或邮箱代理")
@@ -1936,6 +2064,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		statsMu.Lock()
 		progressSummary := runtimeStats.ProgressSummary(completedCount, successCount, failedCount, 3)
 		statsMu.Unlock()
+		publishDiagnostics()
 		log.Println(progressSummary)
 
 		// 邮箱状态标记：registered 仍仅在设密码后置为 true（保持可重试语义不变），
@@ -2398,6 +2527,32 @@ func classifyNetworkErrorStage(errorMsg string) string {
 		return "验活"
 	default:
 		return "其他阶段"
+	}
+}
+
+func postRegistrationFailureDetail(errorMsg, fallbackReason string) string {
+	if isModelVerificationAccessDeniedError(errorMsg) {
+		return "模型列表失败"
+	}
+	reason := strings.TrimSpace(fallbackReason)
+	if reason == "" {
+		return "其他错误"
+	}
+	return reason
+}
+
+func emailServiceFailureDetail(errorMsg, reason string) string {
+	switch {
+	case strings.Contains(errorMsg, "邮箱创建失败") || strings.Contains(errorMsg, "生成") && strings.Contains(errorMsg, "邮箱失败"):
+		return "邮箱创建失败"
+	case strings.Contains(errorMsg, "获取邮件失败") || strings.Contains(errorMsg, "获取邮件列表失败") || strings.Contains(errorMsg, "获取邮件详情失败"):
+		return "获取邮件失败"
+	case strings.TrimSpace(reason) == "邮箱已注册":
+		return "邮箱已注册"
+	case strings.TrimSpace(reason) == "邮箱服务异常":
+		return "邮箱服务异常"
+	default:
+		return ""
 	}
 }
 

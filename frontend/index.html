@@ -285,6 +285,14 @@
                 <div class="db-sub-row"><span data-i18n="overview.avg">平均耗时</span><span id="st-avg">-</span></div>
                 <div class="db-sub-row"><span data-i18n="overview.rate">成功率</span><span id="st-rate">-</span></div>
               </div>
+              <div id="st-diagnostics" data-diagnostics-expanded="false" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+                <button id="st-diagnostics-toggle" onclick="toggleTaskDiagnostics()" type="button" class="btn btn-secondary btn-sm" style="width:100%;justify-content:space-between;font-size:11px;padding:4px 8px;">
+                  <span data-i18n="overview.diagnosticsTitle">诊断详情</span>
+                  <span id="st-diagnostics-toggle-text" data-i18n="overview.diagnosticsExpand">展开</span>
+                </button>
+                <div id="st-diagnostics-summary" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--text-secondary);">-</div>
+                <div id="st-diagnostics-details" style="display:none;margin-top:8px;font-size:11px;color:var(--text-secondary);line-height:1.6;"></div>
+              </div>
             </div>
           </div>
         </div>
