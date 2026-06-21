@@ -34,13 +34,16 @@ const (
 	DefaultRegistrationConcurrency   = 1
 	DefaultRegistrationDelay         = 1
 
-	RegistrationEmailProviderOutlook     = "outlook"
-	RegistrationEmailProviderMoeMail     = "moemail"
-	RegistrationEmailProviderMailporary  = "mailporary"
-	RegistrationEmailProviderEmailnator  = "emailnator"
-	RegistrationEmailProviderMailGW      = "mailgw"
-	RegistrationEmailProviderMailTM      = "mailtm"
-	RegistrationEmailProviderTempMailLOL = "tempmail_lol"
+	RegistrationEmailProviderOutlook      = "outlook"
+	RegistrationEmailProviderMoeMail      = "moemail"
+	RegistrationEmailProviderMailporary   = "mailporary"
+	RegistrationEmailProviderEmailnator   = "emailnator"
+	RegistrationEmailProviderMailGW       = "mailgw"
+	RegistrationEmailProviderMailTM       = "mailtm"
+	RegistrationEmailProviderTempMailLOL  = "tempmail_lol"
+	RegistrationEmailProviderGuerrilla    = "guerrillamail"
+	RegistrationEmailProviderMailTemp     = "mailtemp"
+	RegistrationEmailProviderTempMailPlus = "tempmail_plus"
 
 	MoeMailDomainModeRandom = "random"
 	MoeMailDomainModeAll    = "all"
@@ -991,6 +994,12 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderMailTM
 	case RegistrationEmailProviderTempMailLOL:
 		return RegistrationEmailProviderTempMailLOL
+	case RegistrationEmailProviderGuerrilla:
+		return RegistrationEmailProviderGuerrilla
+	case RegistrationEmailProviderMailTemp:
+		return RegistrationEmailProviderMailTemp
+	case RegistrationEmailProviderTempMailPlus:
+		return RegistrationEmailProviderTempMailPlus
 	default:
 		return ""
 	}

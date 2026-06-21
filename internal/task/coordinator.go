@@ -254,7 +254,7 @@ type StartTaskRequest struct {
 	OTPTimeout        int                              `json:"otpTimeout"`
 	ReuseFailedEmail  bool                             `json:"reuseFailedEmail"`
 	OutputPath        string                           `json:"outputPath"`
-	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary"、"emailnator"、"mailgw"、"mailtm"、"tempmail_lol" 或 "cloudmail"
+	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary"、"emailnator"、"mailgw"、"mailtm"、"tempmail_lol"、"guerrillamail"、"mailtemp"、"tempmail_plus" 或 "cloudmail"
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
 	MoeMailConfigs    map[string][]email.MoeMailConfig `json:"moemailConfigs"`    // 域名 -> 配置列表映射
 	MoeMailRandomMode bool                             `json:"moemailRandomMode"` // 是否为随机模式
@@ -322,7 +322,7 @@ func applyReusableEmailCandidate(provider string, cfg *core.Config, candidate re
 		cfg.CloudMailProvider = candidate.cloudMailProvider
 		address := strings.TrimSpace(candidate.cloudMailProvider.GetAddress())
 		return address, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus":
 		if candidate.tempEmailService == nil {
 			return "", false
 		}
@@ -352,7 +352,7 @@ func reusableEmailCandidateFromConfig(provider string, cfg *core.Config) (reusab
 		}
 		address := strings.TrimSpace(cfg.CloudMailProvider.GetAddress())
 		return reusableEmailCandidate{provider: provider, address: address, cloudMailProvider: cfg.CloudMailProvider}, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus":
 		if cfg.TempEmailService == nil {
 			return reusableEmailCandidate{}, false
 		}
@@ -741,7 +741,7 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 			return map[string]interface{}{"error": err.Error()}
 		}
 		// MoeMail 不需要预先加载账号，每次任务动态生成
-	} else if emailProvider == "mailporary" || emailProvider == "emailnator" || emailProvider == "mailgw" || emailProvider == "mailtm" || emailProvider == "tempmail_lol" {
+	} else if emailProvider == "mailporary" || emailProvider == "emailnator" || emailProvider == "mailgw" || emailProvider == "mailtm" || emailProvider == "tempmail_lol" || emailProvider == "guerrillamail" || emailProvider == "mailtemp" || emailProvider == "tempmail_plus" {
 		// Mailporary / Emailnator / mail.gw / mail.tm / TempMail.lol 为零配置临时邮箱，不需要预加载账号或域名配置。
 	} else if emailProvider == "cloudmail" {
 		if len(req.CloudMailDomains) == 0 {
@@ -987,6 +987,12 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Println("[Kiro] mail.tm 零配置邮箱模式")
 	} else if emailProvider == "tempmail_lol" {
 		log.Println("[Kiro] TempMail.lol 零配置邮箱模式")
+	} else if emailProvider == "guerrillamail" {
+		log.Println("[Kiro] GuerrillaMail 零配置邮箱模式")
+	} else if emailProvider == "mailtemp" {
+		log.Println("[Kiro] MailTemp 零配置邮箱模式")
+	} else if emailProvider == "tempmail_plus" {
+		log.Println("[Kiro] TempMail.plus 零配置邮箱模式")
 	}
 
 	// 预先准备 CloudMail 域名池
@@ -1384,6 +1390,48 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				address, err := createTempEmailWithRetry("TempMail.lol", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMail.lol", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "guerrillamail" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 GuerrillaMail 邮箱", i+1, displayTotal)
+				service := email.NewGuerrillaMailService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("GuerrillaMail", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("GuerrillaMail", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "mailtemp" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 MailTemp 邮箱", i+1, displayTotal)
+				service := email.NewMailTempService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("MailTemp", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("MailTemp", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "tempmail_plus" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 TempMail.plus 邮箱", i+1, displayTotal)
+				service := email.NewTempMailPlusService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("TempMail.plus", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("TempMail.plus", err)
 					return
 				}
 				taskCfg.TempEmailService = service
@@ -2764,7 +2812,7 @@ func isKillSwitchError(errorMsg, emailProvider string) bool {
 		return true
 	}
 	if strings.Contains(errorMsg, "send-otp 失败 (400)") {
-		return emailProvider != "mailporary" && emailProvider != "emailnator" && emailProvider != "mailgw" && emailProvider != "mailtm" && emailProvider != "tempmail_lol"
+		return emailProvider != "mailporary" && emailProvider != "emailnator" && emailProvider != "mailgw" && emailProvider != "mailtm" && emailProvider != "tempmail_lol" && emailProvider != "guerrillamail" && emailProvider != "mailtemp" && emailProvider != "tempmail_plus"
 	}
 	triggers := []string{
 		"注册被拦截",       // formatError 对 BLOCKED/注册请求被拦截 的翻译
@@ -2816,7 +2864,7 @@ func shouldStopForOutlookOTPTimeout(useOutlook bool, success bool, failReason st
 
 func isTemporaryEmailProvider(emailProvider string) bool {
 	switch emailProvider {
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus":
 		return true
 	default:
 		return false
