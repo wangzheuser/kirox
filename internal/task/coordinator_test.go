@@ -492,6 +492,30 @@ func TestShouldRotateOutlookAfterPostPasswordSuspended(t *testing.T) {
 	}
 }
 
+func TestRecordPostPasswordSuspendedRegionRequiresTwoConsecutiveFailures(t *testing.T) {
+	counts := map[string]int{}
+
+	key, count, cooldown := recordPostPasswordSuspendedRegion(counts, "英国伦敦1-AN | 1x")
+	if key != "en-GB" || count != 1 || cooldown {
+		t.Fatalf("first same-region suspended failure should only count, key=%q count=%d cooldown=%v", key, count, cooldown)
+	}
+
+	key, count, cooldown = recordPostPasswordSuspendedRegion(counts, "英国伦敦2-AN | 1x")
+	if key != "en-GB" || count != 2 || !cooldown {
+		t.Fatalf("second same-region suspended failure should trigger cooldown, key=%q count=%d cooldown=%v", key, count, cooldown)
+	}
+}
+
+func TestRecordPostPasswordSuspendedRegionDoesNotMixLocales(t *testing.T) {
+	counts := map[string]int{}
+
+	recordPostPasswordSuspendedRegion(counts, "英国伦敦1-AN | 1x")
+	key, count, cooldown := recordPostPasswordSuspendedRegion(counts, "法国1-巴黎-AN | 1x")
+	if key != "fr-FR" || count != 1 || cooldown {
+		t.Fatalf("different browser locale should have independent risk counter, key=%q count=%d cooldown=%v", key, count, cooldown)
+	}
+}
+
 func TestShouldForceStopTaskRespectsKillSwitchForPlainSendOTP400(t *testing.T) {
 	if shouldForceStopTask("send-otp 失败 (400): domain rejected", "tempmail_lol", false) {
 		t.Fatalf("plain temporary-email send-otp 400 should not force-stop")

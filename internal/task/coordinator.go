@@ -24,6 +24,7 @@ import (
 const (
 	concurrentStartStaggerStep      = 100 * time.Millisecond
 	concurrentStartStaggerJitterMax = 80 * time.Millisecond
+	postPasswordRegionCooldownAfter = 2
 )
 
 var emailProviderRateLimitBackoffs = []time.Duration{60 * time.Second, 120 * time.Second, 300 * time.Second}
@@ -1114,6 +1115,8 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 	// send-otp 400 熔断：任一任务遇到该错误即终止全部并发任务（只触发一次）
 	var otpKillOnce sync.Once
+	postPasswordSuspendedRegions := make(map[string]int)
+	var postPasswordSuspendedRegionsMu sync.Mutex
 	doTask := func(i int) {
 		select {
 		case <-Manager.stopCh:
@@ -1511,6 +1514,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 					clashMu.Lock()
 					clashClient.RecordNodeSuccess(currentClashNode)
 					clashMu.Unlock()
+					postPasswordSuspendedRegionsMu.Lock()
+					resetPostPasswordSuspendedRegion(postPasswordSuspendedRegions, currentClashNode)
+					postPasswordSuspendedRegionsMu.Unlock()
 				}
 				if proxyMode == storage.ProxyModePool && currentPoolProxy != "" {
 					proxy.RecordPoolProxySuccess(currentPoolProxy)
@@ -1686,6 +1692,18 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			if shouldRotateOutlookAfterPostPasswordAccountFailure(taskConfig.UseOutlook, result) {
 				failReason := classifyError(errorMsg)
 				log.Printf("[Kiro][%d/%d] Outlook 账号注册后不可用，标记并换号补齐: %s (%s)", i+1, displayTotal, currentEmail, failReason)
+				if currentClashAssisted && currentClashNode != "" && isPostPasswordSuspendedAccountFailure(errorMsg) {
+					postPasswordSuspendedRegionsMu.Lock()
+					regionKey, regionCount, cooldownRegion := recordPostPasswordSuspendedRegion(postPasswordSuspendedRegions, currentClashNode)
+					postPasswordSuspendedRegionsMu.Unlock()
+					if cooldownRegion {
+						clashMu.Lock()
+						clashClient.RecordNodeRegionRiskFailure(currentClashNode)
+						clashMu.Unlock()
+						log.Printf("[Kiro][%d/%d] 同地区连续账号暂锁，短期跳过该 Clash 地区节点簇: region=%s count=%d node=%s",
+							i+1, displayTotal, regionKey, regionCount, currentClashNode)
+					}
+				}
 				statsMu.Lock()
 				runtimeStats.RecordFailure(errorMsg, true, "验活")
 				statsMu.Unlock()
@@ -2458,6 +2476,42 @@ func shouldRotateOutlookAfterPostPasswordAccountFailure(useOutlook bool, result 
 	}
 	errorMsg, _ := result["error"].(string)
 	return isModelVerificationAccessDeniedError(errorMsg) || strings.Contains(strings.ToLower(errorMsg), "suspended") || strings.Contains(errorMsg, "封禁")
+}
+
+func isPostPasswordSuspendedAccountFailure(errorMsg string) bool {
+	lower := strings.ToLower(strings.TrimSpace(errorMsg))
+	return strings.Contains(lower, "suspended") || strings.Contains(errorMsg, "封禁")
+}
+
+func recordPostPasswordSuspendedRegion(counts map[string]int, node string) (string, int, bool) {
+	if counts == nil {
+		return "", 0, false
+	}
+	key := postPasswordSuspendedRegionKey(node)
+	if key == "" {
+		return "", 0, false
+	}
+	counts[key]++
+	count := counts[key]
+	return key, count, count >= postPasswordRegionCooldownAfter
+}
+
+func resetPostPasswordSuspendedRegion(counts map[string]int, node string) {
+	if counts == nil {
+		return
+	}
+	if key := postPasswordSuspendedRegionKey(node); key != "" {
+		delete(counts, key)
+	}
+}
+
+func postPasswordSuspendedRegionKey(node string) string {
+	loc := core.BrowserLocaleForClashNode(node)
+	key := strings.TrimSpace(loc.I18Next)
+	if key == "" || key == core.DefaultBrowserLocale().I18Next {
+		return ""
+	}
+	return key
 }
 
 func reverifyRegistrationResult(cfg *core.Config, result map[string]interface{}) (map[string]interface{}, bool) {

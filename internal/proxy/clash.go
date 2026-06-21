@@ -360,6 +360,11 @@ func isClashMetadataNode(node string) bool {
 		"♻️ 自动选择",
 		"🤖 openai",
 		"openai",
+		"无法使用",
+		"不可用",
+		"见官网",
+		"请查看",
+		"教程",
 	}
 	for _, prefix := range metadataPrefixes {
 		if strings.HasPrefix(name, prefix) || strings.HasPrefix(lower, strings.ToLower(prefix)) {
@@ -508,6 +513,38 @@ func (c *ClashClient) RecordNodeRiskFailure(node string) {
 	if node == "" {
 		return
 	}
+	c.quarantineNode(node)
+}
+
+// RecordNodeRegionRiskFailure 记录某一地区节点簇出现连续注册后账号暂锁。
+// 账号暂锁本身仍是账号级结果；只有上层确认同地区连续异常时，才调用本方法跳过同地区出口簇。
+func (c *ClashClient) RecordNodeRegionRiskFailure(node string) {
+	node = strings.TrimSpace(node)
+	if node == "" {
+		return
+	}
+	key := clashNodeRegionKey(node)
+	if key == "" {
+		c.quarantineNode(node)
+		return
+	}
+	matched := false
+	for _, candidate := range c.nodes {
+		if clashNodeRegionKey(candidate) == key {
+			c.quarantineNode(candidate)
+			matched = true
+		}
+	}
+	if !matched {
+		c.quarantineNode(node)
+	}
+}
+
+func (c *ClashClient) quarantineNode(node string) {
+	node = strings.TrimSpace(node)
+	if node == "" {
+		return
+	}
 	if c.networkFailures == nil {
 		c.networkFailures = make(map[string]int)
 	}
@@ -520,6 +557,58 @@ func (c *ClashClient) RecordNodeRiskFailure(node string) {
 	c.networkFailures[node] = clashQuarantineFailures
 	c.quarantinedUntil[node] = time.Now().Add(clashQuarantineDuration)
 	c.failedNodes[node] = true
+}
+
+func clashNodeRegionKey(node string) string {
+	name := strings.ToLower(strings.TrimSpace(node))
+	if name == "" {
+		return ""
+	}
+	aliases := []struct {
+		key     string
+		markers []string
+	}{
+		{key: "GB", markers: []string{"英国", "伦敦", "🇬🇧", "london", "united kingdom", " uk "}},
+		{key: "DE", markers: []string{"德国", "纽伦堡", "🇩🇪", "germany", "nuremberg", "frankfurt"}},
+		{key: "FR", markers: []string{"法国", "巴黎", "马赛", "🇫🇷", "france", "paris", "marseille"}},
+		{key: "ES", markers: []string{"西班牙", "🇪🇸", "spain", "madrid"}},
+		{key: "NL", markers: []string{"荷兰", "🇳🇱", "netherlands", "amsterdam"}},
+		{key: "CA", markers: []string{"加拿大", "多伦多", "🇨🇦", "canada", "toronto"}},
+		{key: "US", markers: []string{"美国", "洛杉矶", "纽约", "芝加哥", "达拉斯", "丹佛", "🇺🇸", "usa", "united states", "los angeles", "new york", "chicago", "dallas", "denver"}},
+		{key: "JP", markers: []string{"日本", "东京", "大阪", "🇯🇵", "japan", "tokyo", "osaka"}},
+		{key: "AU", markers: []string{"澳大利亚", "墨尔本", "🇦🇺", "australia", "melbourne"}},
+		{key: "IL", markers: []string{"以色列", "🇮🇱", "israel"}},
+		{key: "MX", markers: []string{"墨西哥", "蒙特雷", "🇲🇽", "mexico", "monterrey"}},
+		{key: "BR", markers: []string{"巴西", "圣保罗", "维涅社", "🇧🇷", "brazil", "sao paulo", "são paulo"}},
+		{key: "ZA", markers: []string{"南非", "🇿🇦", "south africa"}},
+		{key: "IN", markers: []string{"印度", "海得拉巴", "🇮🇳", "india", "hyderabad"}},
+		{key: "TH", markers: []string{"泰国", "🇹🇭", "thailand"}},
+		{key: "RO", markers: []string{"罗马尼亚", "🇷🇴", "romania"}},
+		{key: "TR", markers: []string{"土耳其", "🇹🇷", "turkey"}},
+		{key: "NG", markers: []string{"尼日利亚", "🇳🇬", "nigeria"}},
+		{key: "CL", markers: []string{"智利", "🇨🇱", "chile"}},
+		{key: "CO", markers: []string{"哥伦比亚", "🇨🇴", "colombia"}},
+		{key: "SG", markers: []string{"新加坡", "🇸🇬", "singapore"}},
+		{key: "HK", markers: []string{"香港", "🇭🇰", "hong kong"}},
+		{key: "VN", markers: []string{"越南", "河内", "🇻🇳", "vietnam", "hanoi"}},
+		{key: "MY", markers: []string{"马来西亚", "吉隆坡", "🇲🇾", "malaysia", "kuala lumpur"}},
+		{key: "ID", markers: []string{"印度尼西亚", "印尼", "🇮🇩", "indonesia"}},
+		{key: "SA", markers: []string{"沙特", "吉达", "🇸🇦", "saudi", "jeddah"}},
+		{key: "RU", markers: []string{"俄罗斯", "圣彼得堡", "🇷🇺", "russia", "saint petersburg"}},
+		{key: "IE", markers: []string{"爱尔兰", "都柏林", "🇮🇪", "ireland", "dublin"}},
+		{key: "CH", markers: []string{"瑞士", "苏黎世", "🇨🇭", "switzerland", "zurich"}},
+		{key: "IT", markers: []string{"意大利", "🇮🇹", "italy"}},
+	}
+	padded := " " + name + " "
+	for _, alias := range aliases {
+		for _, marker := range alias.markers {
+			marker = strings.ToLower(marker)
+			if strings.Contains(name, marker) || strings.Contains(padded, marker) {
+				return alias.key
+			}
+		}
+	}
+	return ""
 }
 
 // RecordNodeSuccess 清除指定节点的注册链路网络失败计数。

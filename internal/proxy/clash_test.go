@@ -311,6 +311,34 @@ func TestClashClientFiltersNestedProxyGroups(t *testing.T) {
 	}
 }
 
+func TestClashClientFiltersProviderInstructionNodes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/version":
+			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.2.3"})
+		case r.URL.Path == "/proxies":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"proxies": map[string]interface{}{
+					"Proxy": map[string]interface{}{"type": "Selector", "all": []string{"无法使用-见官网教程说明", "日本东京1-AN | 1x"}, "now": "无法使用-见官网教程说明"},
+				},
+			})
+		case r.URL.Path == "/proxies/Proxy":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"type": "Selector", "all": []string{"无法使用-见官网教程说明", "日本东京1-AN | 1x"}, "now": "无法使用-见官网教程说明"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: server.URL, TestTimeout: 1})
+	if err := client.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+	if len(client.nodes) != 1 || client.nodes[0] != "日本东京1-AN | 1x" {
+		t.Fatalf("provider instruction nodes should be filtered, got %#v", client.nodes)
+	}
+}
+
 func TestClashClientQuarantinesNodeAfterThreeNetworkFailures(t *testing.T) {
 	var switched []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -401,6 +429,75 @@ func TestClashClientQuarantinesNodeAfterRiskFailure(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(switched, ","), "risk") {
 		t.Fatalf("should not switch to risk-quarantined node, switches=%v", switched)
+	}
+}
+
+func TestClashClientQuarantinesRegionAfterRiskFailure(t *testing.T) {
+	var switched []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/version":
+			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.2.3"})
+		case r.URL.Path == "/proxies":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"proxies": map[string]interface{}{
+				"Proxy": map[string]interface{}{"type": "Selector", "all": []string{"英国伦敦1-AN | 1x", "英国伦敦2-AN | 1x", "法国1-巴黎-AN | 1x"}, "now": "英国伦敦1-AN | 1x"},
+			}})
+		case r.URL.Path == "/proxies/Proxy" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"type": "Selector", "all": []string{"英国伦敦1-AN | 1x", "英国伦敦2-AN | 1x", "法国1-巴黎-AN | 1x"}, "now": "英国伦敦1-AN | 1x"})
+		case r.URL.Path == "/proxies/Proxy" && r.Method == http.MethodPut:
+			var body struct {
+				Name string `json:"name"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			switched = append(switched, body.Name)
+			w.WriteHeader(http.StatusNoContent)
+		case strings.HasSuffix(r.URL.Path, "/delay"):
+			_ = json.NewEncoder(w).Encode(map[string]int{"delay": 10})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: server.URL, TestTimeout: 1})
+	if err := client.Initialize(context.Background()); err != nil {
+		t.Fatalf("Initialize: %v", err)
+	}
+
+	client.RecordNodeRegionRiskFailure("英国伦敦1-AN | 1x")
+	if client.QuarantinedNodeCount() != 2 {
+		t.Fatalf("region risk should quarantine both London nodes, got %d", client.QuarantinedNodeCount())
+	}
+	selection, err := client.SwitchToNextAvailable(context.Background())
+	if err != nil {
+		t.Fatalf("SwitchToNextAvailable: %v", err)
+	}
+	if selection.Node != "法国1-巴黎-AN | 1x" {
+		t.Fatalf("region-quarantined nodes should be skipped, got %q", selection.Node)
+	}
+	if strings.Contains(strings.Join(switched, ","), "英国伦敦") {
+		t.Fatalf("should not switch to region-quarantined London nodes, switches=%v", switched)
+	}
+}
+
+func TestClashNodeRegionKeyCoversCurrentRealRunRegions(t *testing.T) {
+	tests := []struct {
+		node string
+		want string
+	}{
+		{node: "以色列3-AN | 1x", want: "IL"},
+		{node: "墨西哥-蒙特雷2-AN | 1x", want: "MX"},
+		{node: "巴西圣保罗3-AN | 1x", want: "BR"},
+		{node: "巴西维涅社4-AN | 1x", want: "BR"},
+		{node: "南非1-AN | 1x", want: "ZA"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.node, func(t *testing.T) {
+			if got := clashNodeRegionKey(tt.node); got != tt.want {
+				t.Fatalf("clashNodeRegionKey(%q)=%q, want %q", tt.node, got, tt.want)
+			}
+		})
 	}
 }
 
