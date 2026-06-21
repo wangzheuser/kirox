@@ -366,12 +366,12 @@ func normalizeMailGWMessages(payload interface{}) []map[string]interface{} {
 	if !ok {
 		return nil
 	}
-	for _, key := range []string{"hydra:member", "messages", "emails", "items", "data"} {
+	for _, key := range []string{"hydra:member", "messages", "emails", "items", "data", "msgs"} {
 		switch value := obj[key].(type) {
 		case []interface{}:
 			return mailGWMapItems(value)
 		case map[string]interface{}:
-			for _, nestedKey := range []string{"messages", "emails", "hydra:member", "items", "data"} {
+			for _, nestedKey := range []string{"messages", "emails", "hydra:member", "items", "data", "msgs"} {
 				if nested, ok := value[nestedKey].([]interface{}); ok {
 					return mailGWMapItems(nested)
 				}

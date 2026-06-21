@@ -44,6 +44,8 @@ const (
 	RegistrationEmailProviderGuerrilla    = "guerrillamail"
 	RegistrationEmailProviderMailTemp     = "mailtemp"
 	RegistrationEmailProviderTempMailPlus = "tempmail_plus"
+	RegistrationEmailProviderInboxKitten  = "inboxkitten"
+	RegistrationEmailProviderInboxes      = "inboxes"
 
 	MoeMailDomainModeRandom = "random"
 	MoeMailDomainModeAll    = "all"
@@ -1000,6 +1002,10 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderMailTemp
 	case RegistrationEmailProviderTempMailPlus:
 		return RegistrationEmailProviderTempMailPlus
+	case RegistrationEmailProviderInboxKitten:
+		return RegistrationEmailProviderInboxKitten
+	case RegistrationEmailProviderInboxes:
+		return RegistrationEmailProviderInboxes
 	default:
 		return ""
 	}

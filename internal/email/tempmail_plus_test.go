@@ -18,6 +18,15 @@ func withTempMailPlusTestServer(t *testing.T, handler http.HandlerFunc) {
 }
 
 func TestTempMailPlusCreateUsesSupportedDomain(t *testing.T) {
+	oldDomains := tempMailPlusDomains
+	oldIx := tempMailPlusDomainIx
+	tempMailPlusDomains = []string{"fexpost.com"}
+	tempMailPlusDomainIx = 0
+	t.Cleanup(func() {
+		tempMailPlusDomains = oldDomains
+		tempMailPlusDomainIx = oldIx
+	})
+
 	withTempMailPlusTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/mails" {
 			t.Fatalf("path=%q, want /api/mails", r.URL.Path)
@@ -35,6 +44,38 @@ func TestTempMailPlusCreateUsesSupportedDomain(t *testing.T) {
 	}
 	if !strings.HasSuffix(address, "@fexpost.com") {
 		t.Fatalf("address=%q, want fexpost.com", address)
+	}
+}
+
+func TestTempMailPlusCreateFallsBackToNextDomainWhenFirstDomainFails(t *testing.T) {
+	oldDomains := tempMailPlusDomains
+	oldIx := tempMailPlusDomainIx
+	tempMailPlusDomains = []string{"fexpost.com", "fextemp.com"}
+	tempMailPlusDomainIx = 0
+	t.Cleanup(func() {
+		tempMailPlusDomains = oldDomains
+		tempMailPlusDomainIx = oldIx
+	})
+
+	withTempMailPlusTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		email := r.URL.Query().Get("email")
+		if strings.HasSuffix(email, "@fexpost.com") {
+			http.Error(w, "blocked", http.StatusBadRequest)
+			return
+		}
+		if !strings.HasSuffix(email, "@fextemp.com") {
+			t.Fatalf("email=%q, want fallback fextemp.com", email)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": true, "mail_list": []interface{}{}})
+	})
+
+	service := NewTempMailPlusService("")
+	address, err := service.CreateWithError()
+	if err != nil {
+		t.Fatalf("CreateWithError returned error: %v", err)
+	}
+	if !strings.HasSuffix(address, "@fextemp.com") {
+		t.Fatalf("address=%q, want fallback fextemp.com", address)
 	}
 }
 

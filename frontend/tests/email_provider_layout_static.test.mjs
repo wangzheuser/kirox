@@ -6,7 +6,7 @@ const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const uiJs = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
 const componentsCss = fs.readFileSync(new URL('../css/components.css', import.meta.url), 'utf8');
 
-const providers = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'mailgw', 'mailtm', 'tempmail_lol', 'emailnator', 'guerrillamail'];
+const providers = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'mailgw', 'mailtm', 'tempmail_lol', 'emailnator', 'guerrillamail', 'inboxkitten'];
 
 test('email provider options use a uniform grid layout', () => {
   assert.match(html, /class="email-provider-grid"/);

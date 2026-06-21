@@ -16,8 +16,9 @@ import (
 const tempMailPlusPollInterval = 3
 
 var (
-	tempMailPlusBaseURL = "https://tempmail.plus"
-	tempMailPlusDomains = []string{"fexpost.com", "mailto.plus"}
+	tempMailPlusBaseURL  = "https://tempmail.plus"
+	tempMailPlusDomains  = []string{"fextemp.com", "fexbox.org", "merepost.com", "rover.info", "fexpost.com", "mailto.plus"}
+	tempMailPlusDomainIx int
 )
 
 // TempMailPlusService 提供 TempMail.plus 零配置临时邮箱能力。
@@ -48,16 +49,25 @@ func (s *TempMailPlusService) Create() string {
 	return address
 }
 
-// CreateWithError 生成一个 fexpost.com 地址并探测邮箱 API。
+// CreateWithError 生成一个 TempMail.plus 地址并探测邮箱 API。
 func (s *TempMailPlusService) CreateWithError() (string, error) {
-	domain := tempMailPlusDomains[0]
-	address := strings.ToLower(fmt.Sprintf("%s@%s", GenerateEmailName(time.Now().Nanosecond()), domain))
-	if _, err := s.listMessagesFor(address); err != nil {
-		return "", err
+	domains := nextTempMailPlusDomains()
+	var lastErr error
+	for _, domain := range domains {
+		address := strings.ToLower(fmt.Sprintf("%s@%s", GenerateEmailName(time.Now().Nanosecond()), domain))
+		if _, err := s.listMessagesFor(address); err != nil {
+			lastErr = err
+			log.Printf("[TempMail.plus] 域名探测失败: %s (%v)", domain, err)
+			continue
+		}
+		s.address = address
+		log.Printf("[TempMail.plus] 邮箱生成成功: %s", address)
+		return address, nil
 	}
-	s.address = address
-	log.Printf("[TempMail.plus] 邮箱生成成功: %s", address)
-	return address, nil
+	if lastErr != nil {
+		return "", lastErr
+	}
+	return "", fmt.Errorf("TempMail.plus 未配置可用域名")
 }
 
 // WaitForCode 轮询等待 AWS/Kiro 注册验证码。
@@ -223,4 +233,17 @@ func tempMailPlusDetailText(detail map[string]interface{}) string {
 		mailGWString(detail, "text", "body", "html", "content"),
 		mailGWHTMLToText(mailGWString(detail, "html", "body", "content")),
 	}, "\n")
+}
+
+func nextTempMailPlusDomains() []string {
+	if len(tempMailPlusDomains) == 0 {
+		return nil
+	}
+	start := tempMailPlusDomainIx % len(tempMailPlusDomains)
+	tempMailPlusDomainIx++
+	out := make([]string, 0, len(tempMailPlusDomains))
+	for i := 0; i < len(tempMailPlusDomains); i++ {
+		out = append(out, tempMailPlusDomains[(start+i)%len(tempMailPlusDomains)])
+	}
+	return out
 }

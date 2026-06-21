@@ -64,7 +64,7 @@
       logs: { title: '运行日志', copyLog: '复制日志', empty: '暂无日志' },
       register: {
         newTask: '新建注册任务', count: '注册数量', successTarget: '注册成功数量', concurrency: '并发数', delay: '延迟 (秒)',
-        emailProvider: '邮箱提供商', outlook: '微软邮箱', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail',
+        emailProvider: '邮箱提供商', outlook: '微软邮箱', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten',
         selectDomain: '选择域名', selectAllDomain: '全选域名',
         domainHint: '邮箱名将自动生成随机字符串',
         outlookHint: '使用微软邮箱进行注册。',
@@ -74,6 +74,7 @@
         mailtmHint: '使用 mail.tm 零配置临时邮箱进行注册。',
         tempmailLolHint: '使用 TempMail.lol 随机临时邮箱进行注册。',
         guerrillaMailHint: '使用 GuerrillaMail 零配置临时邮箱进行注册。',
+        inboxKittenHint: '使用 InboxKitten 零配置临时邮箱进行注册。',
         cloudmailHint: '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。',
         cloudmailWarn: '⚠️ 每次注册会在 Cloud-Mail 上创建一个永久账号，需手动清理',
         outlookHintFull: '使用微软邮箱进行注册，代理配置请在设置页设置。',
@@ -322,7 +323,7 @@
       logs: { title: 'Logs', copyLog: 'Copy logs', empty: 'No logs' },
       register: {
         newTask: 'New registration task', count: 'Count', successTarget: 'Success target', concurrency: 'Concurrency', delay: 'Delay (s)',
-        emailProvider: 'Email provider', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail',
+        emailProvider: 'Email provider', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten',
         selectDomain: 'Select domain', selectAllDomain: 'Select all',
         domainHint: 'Email username is auto-generated as random string',
         outlookHint: 'Register using Microsoft mailboxes.',
@@ -332,6 +333,7 @@
         mailtmHint: 'Register using mail.tm temporary mailboxes. No setup required.',
         tempmailLolHint: 'Register using TempMail.lol random temporary mailboxes. No setup required.',
         guerrillaMailHint: 'Register using GuerrillaMail temporary mailboxes. No setup required.',
+        inboxKittenHint: 'Register using InboxKitten temporary mailboxes. No setup required.',
         cloudmailHint: 'Register using self-hosted Cloud-Mail. ⚠️ Each run creates a permanent account — clean up manually.',
         cloudmailWarn: '⚠️ Each registration creates a permanent account on Cloud-Mail. Clean up manually.',
         outlookHintFull: 'Register using Microsoft mailboxes. Configure proxy in Settings.',
@@ -580,7 +582,7 @@
       logs: { title: 'ログ', copyLog: 'ログをコピー', empty: 'ログなし' },
       register: {
         newTask: '新規登録タスク', count: '登録数', successTarget: '成功目標数', concurrency: '同時実行数', delay: '遅延 (秒)',
-        emailProvider: 'メールプロバイダ', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail',
+        emailProvider: 'メールプロバイダ', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten',
         selectDomain: 'ドメイン選択', selectAllDomain: 'すべて選択',
         domainHint: 'ユーザー名はランダム文字列で自動生成されます',
         outlookHint: 'Microsoft メールで登録します。',

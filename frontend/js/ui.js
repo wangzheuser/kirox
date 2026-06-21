@@ -166,7 +166,7 @@ function selectEmailProvider(provider, options) {
   selectedEmailProvider = provider;
 
   // 更新按钮样式
-  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail'].forEach(function(name) {
+  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten'].forEach(function(name) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
     if (!btn) return;
     const active = provider === name;
@@ -210,6 +210,10 @@ function selectEmailProvider(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.guerrillaMailHint', '使用 GuerrillaMail 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.guerrillaMailHint');
+  } else if (provider === 'inboxkitten') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.inboxKittenHint', '使用 InboxKitten 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.inboxKittenHint');
   } else if (provider === 'cloudmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');
