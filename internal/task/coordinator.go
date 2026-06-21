@@ -35,6 +35,7 @@ type runtimeTaskStats struct {
 	registeredSkipCount  int
 	graphResolveFailures int
 	clashNetworkErrors   int
+	clashRiskFailures    int
 	poolNetworkErrors    int
 	passwordSetFailures  int
 	otpTimeoutStopped    bool
@@ -1372,6 +1373,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		proxySwitches := 0
 		currentClashNode := ""
 		currentClashAssisted := false
+		currentClashFingerprintPrefix := ""
 		currentPoolProxy := ""
 	retryLoop:
 		for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -1421,6 +1423,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 					locale := applyClashSelectionToConfigForSubject(&attemptCfg, taskConfig.Proxy, selection, clashFingerprintPrefix, fingerprintSubjectForTask(&attemptCfg, currentEmail))
 					currentClashNode = selection.Node
 					currentClashAssisted = true
+					currentClashFingerprintPrefix = clashFingerprintPrefix
 					delayText := "跳过连通性测试"
 					if !selection.SkippedTest {
 						delayText = fmt.Sprintf("延迟 %dms", selection.DelayMs)
@@ -1445,6 +1448,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 						locale := applyClashSelectionToConfigForSubject(&attemptCfg, taskConfig.Proxy, selection, normalClashFingerprintPrefix, fingerprintSubjectForTask(&attemptCfg, currentEmail))
 						currentClashNode = selection.Node
 						currentClashAssisted = true
+						currentClashFingerprintPrefix = normalClashFingerprintPrefix
 						delayText := "跳过连通性测试"
 						if !selection.SkippedTest {
 							delayText = fmt.Sprintf("延迟 %dms", selection.DelayMs)
@@ -1516,18 +1520,29 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 			errorMsg, _ := result["error"].(string)
 			proxyNetworkErr := isProxyNetworkError(errorMsg)
-			if currentClashAssisted && currentClashNode != "" && proxyNetworkErr {
-				statsMu.Lock()
-				runtimeStats.clashNetworkErrors++
-				statsMu.Unlock()
-				clashMu.Lock()
-				clashClient.RecordNodeNetworkFailure(currentClashNode)
-				clashMu.Unlock()
-			}
-			if currentClashAssisted && currentClashNode != "" && !proxyNetworkErr {
-				clashMu.Lock()
-				clashClient.RecordNodeSuccess(currentClashNode)
-				clashMu.Unlock()
+			clashRiskErr := isClashNodeRiskFailure(errorMsg)
+			if currentClashAssisted && currentClashNode != "" {
+				switch {
+				case proxyNetworkErr:
+					statsMu.Lock()
+					runtimeStats.clashNetworkErrors++
+					statsMu.Unlock()
+					clashMu.Lock()
+					clashClient.RecordNodeNetworkFailure(currentClashNode)
+					clashMu.Unlock()
+				case clashRiskErr:
+					statsMu.Lock()
+					runtimeStats.clashRiskFailures++
+					statsMu.Unlock()
+					clashMu.Lock()
+					clashClient.RecordNodeRiskFailure(currentClashNode)
+					clashMu.Unlock()
+					log.Printf("[Kiro][%d/%d] Clash 节点触发注册/验活风控，临时隔离: %s (%s)", i+1, displayTotal, currentClashNode, errorMsg)
+				default:
+					clashMu.Lock()
+					clashClient.RecordNodeSuccess(currentClashNode)
+					clashMu.Unlock()
+				}
 			}
 			if proxyMode == storage.ProxyModePool && currentPoolProxy != "" {
 				if proxyNetworkErr {
@@ -1538,6 +1553,80 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				} else {
 					proxy.RecordPoolProxySuccess(currentPoolProxy)
 				}
+			}
+
+			if currentClashAssisted && isModelVerificationAccessDeniedError(errorMsg) && !shouldRotateOutlookAfterPostPasswordModelFailure(taskConfig.UseOutlook, result) && proxySwitches < maxProxySwitches {
+				if currentClashFingerprintPrefix == "" {
+					currentClashFingerprintPrefix = clashFingerprintPrefix
+				}
+				for proxySwitches < maxProxySwitches {
+					proxySwitches++
+					clashMu.Lock()
+					selection, err := clashClient.SwitchToNextAvailable(taskCtx)
+					clashMu.Unlock()
+					if err != nil {
+						log.Printf("[Kiro][%d/%d] models 403 后切换 Clash 节点重验活失败 (%d/%d): %v",
+							i+1, displayTotal, proxySwitches, maxProxySwitches, err)
+						break
+					}
+					locale := applyClashSelectionToConfigForSubject(&attemptCfg, attemptCfg.Proxy, selection, currentClashFingerprintPrefix, fingerprintSubjectForTask(&attemptCfg, currentEmail))
+					currentClashNode = selection.Node
+					delayText := "跳过连通性测试"
+					if !selection.SkippedTest {
+						delayText = fmt.Sprintf("延迟 %dms", selection.DelayMs)
+					}
+					log.Printf("[Kiro][%d/%d] models 403 后切换 Clash 节点重验活: %s / %s (%s, 尝试 %d 个, 耗时 %dms)",
+						i+1, displayTotal, selection.ProxyGroup, selection.Node, delayText, selection.Attempts, selection.DurationMs)
+					log.Printf("[Kiro][%d/%d] 重验活浏览器地区已绑定: acceptLanguage=%s, i18next=%s, timeZone=%d",
+						i+1, displayTotal, locale.AcceptLanguage, locale.I18Next, locale.TimeZone)
+
+					rebuilt, alive := reverifyRegistrationResult(&attemptCfg, result)
+					result = rebuilt
+					if resultEmail, _ := result["email"].(string); resultEmail != "" {
+						currentEmail = resultEmail
+					}
+					if alive {
+						clashMu.Lock()
+						clashClient.RecordNodeSuccess(currentClashNode)
+						clashMu.Unlock()
+						log.Printf("[Kiro][%d/%d] 切换 Clash 节点后验活成功，保留已注册账号: %s", i+1, displayTotal, currentEmail)
+						break
+					}
+
+					retryErr, _ := result["error"].(string)
+					switch {
+					case isProxyNetworkError(retryErr):
+						statsMu.Lock()
+						runtimeStats.clashNetworkErrors++
+						statsMu.Unlock()
+						clashMu.Lock()
+						clashClient.RecordNodeNetworkFailure(currentClashNode)
+						clashMu.Unlock()
+					case isClashNodeRiskFailure(retryErr):
+						statsMu.Lock()
+						runtimeStats.clashRiskFailures++
+						statsMu.Unlock()
+						clashMu.Lock()
+						clashClient.RecordNodeRiskFailure(currentClashNode)
+						clashMu.Unlock()
+						log.Printf("[Kiro][%d/%d] 重验活 Clash 节点仍触发风控，临时隔离: %s (%s)", i+1, displayTotal, currentClashNode, retryErr)
+					default:
+						log.Printf("[Kiro][%d/%d] 切换 Clash 节点后验活仍失败: %s", i+1, displayTotal, retryErr)
+						clashMu.Lock()
+						clashClient.RecordNodeSuccess(currentClashNode)
+						clashMu.Unlock()
+						break
+					}
+					if !isModelVerificationAccessDeniedError(retryErr) && !isProxyNetworkError(retryErr) {
+						break
+					}
+				}
+				if result["status"] == "success" {
+					break
+				}
+				errorMsg, _ = result["error"].(string)
+				proxyNetworkErr = isProxyNetworkError(errorMsg)
+				clashRiskErr = isClashNodeRiskFailure(errorMsg)
 			}
 
 			// AWS/TES 熔断：普通数量模式下任一任务遇到明确 BLOCKED/TES 类错误即终止全部。
@@ -1578,6 +1667,28 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			if taskConfig.UseOutlook && shouldRotateOutlookAccountAfterFailure(errorMsg) {
 				failReason := classifyError(errorMsg)
 				log.Printf("[Kiro][%d/%d] Outlook 账号异常，标记并换号: %s (%s)", i+1, displayTotal, currentEmail, failReason)
+				email.UpdateAccountStatus(accountEmail, true, false, failReason)
+				if nextUsableOutlookAccount() {
+					taskCfg.Password = core.GenPassword()
+					attempt, proxySwitches = resetOutlookRetryBudgetAfterAccountRotation(attempt, proxySwitches)
+					continue retryLoop
+				}
+				log.Printf("[Kiro][%d/%d] Outlook 账号池已耗尽", i+1, displayTotal)
+				if successTargetMode {
+					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止成功目标模式")
+				}
+				break
+			}
+
+			// models 403 发生在 SetPassword 之后：邮箱已被消耗，但该账号无法正常拉模型。
+			// 对 Outlook 账号池而言，这类账号应标记为已注册失败并换下一个账号补齐当前序号，
+			// 避免 Count=3 时因为账号级模型权限未放行而直接变成 0/3 或 2/3。
+			if shouldRotateOutlookAfterPostPasswordAccountFailure(taskConfig.UseOutlook, result) {
+				failReason := classifyError(errorMsg)
+				log.Printf("[Kiro][%d/%d] Outlook 账号注册后不可用，标记并换号补齐: %s (%s)", i+1, displayTotal, currentEmail, failReason)
+				statsMu.Lock()
+				runtimeStats.RecordFailure(errorMsg, true, "验活")
+				statsMu.Unlock()
 				email.UpdateAccountStatus(accountEmail, true, false, failReason)
 				if nextUsableOutlookAccount() {
 					taskCfg.Password = core.GenPassword()
@@ -1876,6 +1987,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		regSkip := runtimeStats.registeredSkipCount
 		graphFails := runtimeStats.graphResolveFailures
 		clashNetErrs := runtimeStats.clashNetworkErrors
+		clashRiskErrs := runtimeStats.clashRiskFailures
 		otpStopped := otpTimeoutStopTriggered
 		networkStages := make(map[string]int, len(runtimeStats.networkStageFailures))
 		for k, v := range runtimeStats.networkStageFailures {
@@ -1887,9 +1999,9 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		}
 		poolQuarantined := proxy.QuarantinedPoolProxyCount()
 		statsMu.Unlock()
-		if regSkip > 0 || graphFails > 0 || clashNetErrs > 0 || clashQuarantined > 0 || poolQuarantined > 0 || otpStopped {
-			log.Printf("[Kiro] 优化诊断: 已注册跳过=%d, Graph地址解析失败=%d, Clash网络错误=%d, Clash临时拉黑节点=%d, 代理池临时拉黑=%d, 连续验证码超时熔断=%v",
-				regSkip, graphFails, clashNetErrs, clashQuarantined, poolQuarantined, otpStopped)
+		if regSkip > 0 || graphFails > 0 || clashNetErrs > 0 || clashRiskErrs > 0 || clashQuarantined > 0 || poolQuarantined > 0 || otpStopped {
+			log.Printf("[Kiro] 优化诊断: 已注册跳过=%d, Graph地址解析失败=%d, Clash网络错误=%d, Clash风控节点=%d, Clash临时拉黑节点=%d, 代理池临时拉黑=%d, 连续验证码超时熔断=%v",
+				regSkip, graphFails, clashNetErrs, clashRiskErrs, clashQuarantined, poolQuarantined, otpStopped)
 		}
 		if len(networkStages) > 0 {
 			type stageEntry struct {
@@ -2105,7 +2217,7 @@ func classifyError(errorMsg string) string {
 	if strings.Contains(errorMsg, "加密失败") || strings.Contains(errorMsg, "JWE") {
 		return "加密服务异常"
 	}
-	if strings.Contains(lower, "timeout") || strings.Contains(errorMsg, "网络") || strings.Contains(lower, "connection") || strings.Contains(lower, "tls") || strings.Contains(errorMsg, "代理") {
+	if isProxyNetworkError(errorMsg) || strings.Contains(lower, "timeout") || strings.Contains(errorMsg, "网络") || strings.Contains(lower, "connection") || strings.Contains(lower, "tls") || strings.Contains(errorMsg, "代理") {
 		return "网络/代理问题"
 	}
 	return "其他错误"
@@ -2268,6 +2380,9 @@ func isProxyNetworkError(errorMsg string) bool {
 		return false
 	}
 	lower := strings.ToLower(errorMsg)
+	if lower == "eof" || strings.Contains(lower, ": eof") || strings.Contains(lower, " eof") {
+		return true
+	}
 	triggers := []string{
 		"timeout",
 		"i/o timeout",
@@ -2276,6 +2391,7 @@ func isProxyNetworkError(errorMsg string) bool {
 		"connection reset",
 		"connection refused",
 		"unexpected eof",
+		"client.timeout exceeded",
 		"broken pipe",
 		"connect",
 		"proxy",
@@ -2292,6 +2408,102 @@ func isProxyNetworkError(errorMsg string) bool {
 		}
 	}
 	return false
+}
+
+func isClashNodeRiskFailure(errorMsg string) bool {
+	if errorMsg == "" {
+		return false
+	}
+	if isModelVerificationAccessDeniedError(errorMsg) {
+		return true
+	}
+	if isSendOTPBlockedError(errorMsg) || strings.Contains(errorMsg, "注册被拦截") {
+		return true
+	}
+	lower := strings.ToLower(errorMsg)
+	return (strings.Contains(errorMsg, "IP或浏览器指纹") || strings.Contains(errorMsg, "IP/指纹风控")) &&
+		(strings.Contains(lower, "blocked") || strings.Contains(errorMsg, "风控"))
+}
+
+func isModelVerificationAccessDeniedError(errorMsg string) bool {
+	lower := strings.ToLower(strings.TrimSpace(errorMsg))
+	if lower == "" {
+		return false
+	}
+	if !strings.Contains(lower, "models query failed") && !strings.Contains(lower, "端点查询失败 [models]") {
+		return false
+	}
+	return strings.Contains(lower, "403") || strings.Contains(lower, "forbidden")
+}
+
+func shouldRotateOutlookAfterPostPasswordModelFailure(useOutlook bool, result map[string]interface{}) bool {
+	if !useOutlook || result == nil || result["status"] == "success" {
+		return false
+	}
+	passwordSet, _ := result["passwordSet"].(bool)
+	if !passwordSet {
+		return false
+	}
+	errorMsg, _ := result["error"].(string)
+	return isModelVerificationAccessDeniedError(errorMsg)
+}
+
+func shouldRotateOutlookAfterPostPasswordAccountFailure(useOutlook bool, result map[string]interface{}) bool {
+	if !useOutlook || result == nil || result["status"] == "success" {
+		return false
+	}
+	passwordSet, _ := result["passwordSet"].(bool)
+	if !passwordSet {
+		return false
+	}
+	errorMsg, _ := result["error"].(string)
+	return isModelVerificationAccessDeniedError(errorMsg) || strings.Contains(strings.ToLower(errorMsg), "suspended") || strings.Contains(errorMsg, "封禁")
+}
+
+func reverifyRegistrationResult(cfg *core.Config, result map[string]interface{}) (map[string]interface{}, bool) {
+	if result == nil {
+		return result, false
+	}
+	awsToken, ok := result["aws_token"].(map[string]interface{})
+	if !ok || awsToken == nil {
+		return result, false
+	}
+	reg := core.NewRegistrar(cfg)
+	reg.Email, _ = result["email"].(string)
+	reg.ClientID, _ = result["client_id"].(string)
+	reg.ClientSecret, _ = result["client_secret"].(string)
+	reg.DeviceCode, _ = result["device_code"].(string)
+	verify := reg.VerifyAlive(awsToken)
+	return rebuildRegistrationResultAfterReverify(result, verify)
+}
+
+func rebuildRegistrationResultAfterReverify(result, verify map[string]interface{}) (map[string]interface{}, bool) {
+	if result == nil || verify == nil {
+		return result, false
+	}
+	rebuilt := make(map[string]interface{}, len(result)+1)
+	for k, v := range result {
+		rebuilt[k] = v
+	}
+	rebuilt["verify"] = verify
+	rebuilt["passwordSet"] = true
+	if suspended, _ := verify["suspended"].(bool); suspended {
+		rebuilt["status"] = "failed"
+		rebuilt["error"] = "suspended"
+		return rebuilt, false
+	}
+	if alive, _ := verify["alive"].(bool); !alive {
+		errMsg, _ := verify["error"].(string)
+		if strings.TrimSpace(errMsg) == "" {
+			errMsg = "unknown"
+		}
+		rebuilt["status"] = "failed"
+		rebuilt["error"] = "验活失败: " + errMsg
+		return rebuilt, false
+	}
+	rebuilt["status"] = "success"
+	delete(rebuilt, "error")
+	return rebuilt, true
 }
 
 func isEmailProviderRateLimitError(errorMsg string) bool {

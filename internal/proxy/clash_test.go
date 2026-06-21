@@ -284,10 +284,10 @@ func TestClashClientFiltersNestedProxyGroups(t *testing.T) {
 		case r.URL.Path == "/proxies":
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"proxies": map[string]interface{}{
-					"GLOBAL":     map[string]interface{}{"type": "Selector", "all": []string{"Free Cloud", "自动选择", "故障转移", "日本东京1-AN | 1x"}, "now": "Free Cloud"},
-					"Free Cloud": map[string]interface{}{"type": "Selector", "all": []string{"自动选择", "故障转移", "日本东京1-AN | 1x"}, "now": "自动选择"},
-					"自动选择":       map[string]interface{}{"type": "URLTest", "all": []string{"日本东京1-AN | 1x"}, "now": "日本东京1-AN | 1x"},
-					"故障转移":       map[string]interface{}{"type": "Fallback", "all": []string{"日本东京1-AN | 1x"}, "now": "日本东京1-AN | 1x"},
+					"GLOBAL":        map[string]interface{}{"type": "Selector", "all": []string{"Free Cloud", "自动选择", "故障转移", "日本东京1-AN | 1x"}, "now": "Free Cloud"},
+					"Free Cloud":    map[string]interface{}{"type": "Selector", "all": []string{"自动选择", "故障转移", "日本东京1-AN | 1x"}, "now": "自动选择"},
+					"自动选择":          map[string]interface{}{"type": "URLTest", "all": []string{"日本东京1-AN | 1x"}, "now": "日本东京1-AN | 1x"},
+					"故障转移":          map[string]interface{}{"type": "Fallback", "all": []string{"日本东京1-AN | 1x"}, "now": "日本东京1-AN | 1x"},
 					"日本东京1-AN | 1x": map[string]interface{}{"type": "Vless"},
 				},
 			})
@@ -357,6 +357,50 @@ func TestClashClientQuarantinesNodeAfterThreeNetworkFailures(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(switched, ","), "bad") {
 		t.Fatalf("should not switch to quarantined node, switches=%v", switched)
+	}
+}
+
+func TestClashClientQuarantinesNodeAfterRiskFailure(t *testing.T) {
+	var switched []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/version":
+			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.2.3"})
+		case r.URL.Path == "/proxies":
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"proxies": map[string]interface{}{
+				"Proxy": map[string]interface{}{"type": "Selector", "all": []string{"risk", "good"}, "now": "risk"},
+			}})
+		case r.URL.Path == "/proxies/Proxy" && r.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"type": "Selector", "all": []string{"risk", "good"}, "now": "risk"})
+		case r.URL.Path == "/proxies/Proxy" && r.Method == http.MethodPut:
+			var body struct {
+				Name string `json:"name"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			switched = append(switched, body.Name)
+			w.WriteHeader(http.StatusNoContent)
+		case strings.HasSuffix(r.URL.Path, "/delay"):
+			_ = json.NewEncoder(w).Encode(map[string]int{"delay": 10})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClashClient(ClashConfig{Enabled: true, APIURL: server.URL, TestTimeout: 1})
+	client.RecordNodeRiskFailure("risk")
+	if client.QuarantinedNodeCount() != 1 {
+		t.Fatalf("risk failure should immediately quarantine the node")
+	}
+	selection, err := client.SwitchToNextAvailable(context.Background())
+	if err != nil {
+		t.Fatalf("SwitchToNextAvailable: %v", err)
+	}
+	if selection.Node != "good" {
+		t.Fatalf("risk-quarantined node should be skipped, got %q", selection.Node)
+	}
+	if strings.Contains(strings.Join(switched, ","), "risk") {
+		t.Fatalf("should not switch to risk-quarantined node, switches=%v", switched)
 	}
 }
 

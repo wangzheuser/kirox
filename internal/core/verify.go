@@ -123,7 +123,15 @@ func checkEndpointResponse(url string, statusCode int, body []byte) endpointResu
 	label := endpointLabel(url)
 	if statusCode == 403 {
 		if label == "models" {
-			log.Printf("端点查询失败 [%s]: %d", label, statusCode)
+			if responseIndicatesSuspension(body) {
+				log.Printf("账号已被封禁 (403) [%s]: body=%s", label, endpointBodySnippet(body))
+				return endpointResult{suspended: true, statusCode: statusCode}
+			}
+			if snippet := endpointBodySnippet(body); snippet != "" {
+				log.Printf("端点查询失败 [%s]: %d body=%s", label, statusCode, snippet)
+			} else {
+				log.Printf("端点查询失败 [%s]: %d", label, statusCode)
+			}
 			return endpointResult{statusCode: statusCode}
 		}
 		log.Printf("账号已被封禁 (403) [%s]", label)
@@ -140,6 +148,30 @@ func checkEndpointResponse(url string, statusCode int, body []byte) endpointResu
 		return endpointResult{statusCode: statusCode}
 	}
 	return endpointResult{body: body, ok: true, statusCode: statusCode}
+}
+
+func endpointBodySnippet(body []byte) string {
+	text := strings.TrimSpace(scrubURLs(string(body)))
+	if text == "" {
+		return ""
+	}
+	const maxLen = 200
+	if len(text) > maxLen {
+		text = text[:maxLen] + "..."
+	}
+	return text
+}
+
+func responseIndicatesSuspension(body []byte) bool {
+	lower := strings.ToLower(string(body))
+	if lower == "" {
+		return false
+	}
+	return strings.Contains(lower, "suspended") ||
+		strings.Contains(lower, "locked your account") ||
+		strings.Contains(lower, "account locked") ||
+		strings.Contains(lower, "security precaution") ||
+		strings.Contains(lower, "account_suspended")
 }
 
 func responseReason(body []byte) string {

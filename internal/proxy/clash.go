@@ -501,6 +501,27 @@ func (c *ClashClient) RecordNodeNetworkFailure(node string) {
 	}
 }
 
+// RecordNodeRiskFailure 记录当前节点出现注册/验活风控反馈。
+// 这类失败不是传输层网络抖动，而是该出口在当前任务中已不适合继续承载后续账号，因此立即临时隔离。
+func (c *ClashClient) RecordNodeRiskFailure(node string) {
+	node = strings.TrimSpace(node)
+	if node == "" {
+		return
+	}
+	if c.networkFailures == nil {
+		c.networkFailures = make(map[string]int)
+	}
+	if c.quarantinedUntil == nil {
+		c.quarantinedUntil = make(map[string]time.Time)
+	}
+	if c.failedNodes == nil {
+		c.failedNodes = make(map[string]bool)
+	}
+	c.networkFailures[node] = clashQuarantineFailures
+	c.quarantinedUntil[node] = time.Now().Add(clashQuarantineDuration)
+	c.failedNodes[node] = true
+}
+
 // RecordNodeSuccess 清除指定节点的注册链路网络失败计数。
 func (c *ClashClient) RecordNodeSuccess(node string) {
 	node = strings.TrimSpace(node)

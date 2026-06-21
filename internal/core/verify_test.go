@@ -39,6 +39,16 @@ func TestCheckEndpointResponseModels403IsOrdinaryFailure(t *testing.T) {
 	}
 }
 
+func TestCheckEndpointResponseModels403SuspendedBodyMarksSuspended(t *testing.T) {
+	body := []byte(`{"message":"Your User ID temporarily is suspended. We've locked your account as a security precaution."}`)
+
+	res := checkEndpointResponse("https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR", 403, body)
+
+	if !res.suspended {
+		t.Fatalf("models 403 with suspended/locked body should mark account suspended: %+v", res)
+	}
+}
+
 func TestCheckEndpointResponseTreatsReasonJSONAsSuspendedAndLogsFullBody(t *testing.T) {
 	body := []byte(`{"reason":"ACCOUNT_SUSPENDED","message":"temporarily suspended by upstream"}`)
 
@@ -88,6 +98,17 @@ func TestShouldVerifyModelsFollowsConfigSwitch(t *testing.T) {
 	}
 	if !shouldVerifyModels(&Config{VerifyModelsEnabled: true}) {
 		t.Fatalf("VerifyModelsEnabled=true should enable ListAvailableModels verification")
+	}
+}
+
+func TestEndpointBodySnippetTruncatesAndScrubs(t *testing.T) {
+	body := []byte(`{"message":"forbidden","url":"https://example.com/very/secret/path","padding":"` + strings.Repeat("x", 400) + `"}`)
+	got := endpointBodySnippet(body)
+	if strings.Contains(got, "https://example.com/very/secret/path") {
+		t.Fatalf("endpoint body snippet should scrub URLs: %s", got)
+	}
+	if len(got) > 220 {
+		t.Fatalf("endpoint body snippet should be capped, len=%d body=%s", len(got), got)
 	}
 }
 

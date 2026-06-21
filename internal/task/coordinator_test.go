@@ -402,6 +402,96 @@ func TestSendOTPBlockedFriendlyErrorIsNotProxyNetworkError(t *testing.T) {
 	}
 }
 
+func TestBareEOFIsProxyNetworkError(t *testing.T) {
+	errText := `配置初始化失败: Get "<endpoint>": EOF`
+	if !isProxyNetworkError(errText) {
+		t.Fatalf("bare EOF from endpoint initialization should be treated as a proxy network error")
+	}
+	if got := classifyError(errText); got != "网络/代理问题" {
+		t.Fatalf("bare EOF should be classified as network/proxy issue, got %q", got)
+	}
+}
+
+func TestModels403IsClashNodeRiskFailureNotNetworkError(t *testing.T) {
+	errText := `验活失败: models query failed: 403`
+	if isProxyNetworkError(errText) {
+		t.Fatalf("models 403 is endpoint access/risk feedback, not a transport network error")
+	}
+	if !isClashNodeRiskFailure(errText) {
+		t.Fatalf("models 403 should mark the current Clash node as risky for later accounts")
+	}
+}
+
+func TestRebuildRegistrationResultAfterSuccessfulReverify(t *testing.T) {
+	failed := map[string]interface{}{
+		"status":        "failed",
+		"error":         "验活失败: models query failed: 403",
+		"email":         "user@example.com",
+		"password":      "Passw0rd!",
+		"passwordSet":   true,
+		"client_id":     "client-id",
+		"client_secret": "client-secret",
+		"aws_token":     map[string]interface{}{"refreshToken": "refresh-token"},
+	}
+
+	got, ok := rebuildRegistrationResultAfterReverify(failed, map[string]interface{}{
+		"alive":        true,
+		"email":        "user@example.com",
+		"subscription": "KIRO FREE",
+	})
+
+	if !ok || got["status"] != "success" {
+		t.Fatalf("successful reverify should salvage post-password result, ok=%v result=%#v", ok, got)
+	}
+	if _, exists := got["error"]; exists {
+		t.Fatalf("salvaged success should drop stale error: %#v", got)
+	}
+	if got["client_id"] != "client-id" || got["password"] != "Passw0rd!" || got["aws_token"] == nil {
+		t.Fatalf("salvaged success should preserve persisted account fields: %#v", got)
+	}
+}
+
+func TestShouldRotateOutlookAfterPostPasswordModels403(t *testing.T) {
+	result := map[string]interface{}{
+		"status":      "failed",
+		"error":       "验活失败: models query failed: 403",
+		"passwordSet": true,
+	}
+	if !shouldRotateOutlookAfterPostPasswordModelFailure(true, result) {
+		t.Fatalf("post-password models 403 should rotate Outlook account to refill the current success slot")
+	}
+	if shouldRotateOutlookAfterPostPasswordModelFailure(false, result) {
+		t.Fatalf("non-Outlook providers should keep existing failure semantics")
+	}
+	result["error"] = "验活失败: usage query failed"
+	if shouldRotateOutlookAfterPostPasswordModelFailure(true, result) {
+		t.Fatalf("only models access denied should trigger Outlook replacement")
+	}
+	result["error"] = "验活失败: models query failed: 403"
+	result["passwordSet"] = false
+	if shouldRotateOutlookAfterPostPasswordModelFailure(true, result) {
+		t.Fatalf("pre-password failures should not be treated as consumed model failures")
+	}
+}
+
+func TestShouldRotateOutlookAfterPostPasswordSuspended(t *testing.T) {
+	result := map[string]interface{}{
+		"status":      "failed",
+		"error":       "suspended",
+		"passwordSet": true,
+	}
+	if !shouldRotateOutlookAfterPostPasswordAccountFailure(true, result) {
+		t.Fatalf("post-password suspended Outlook account should rotate to refill the current success slot")
+	}
+	if shouldRotateOutlookAfterPostPasswordAccountFailure(false, result) {
+		t.Fatalf("non-Outlook providers should keep existing post-password suspended failure semantics")
+	}
+	result["passwordSet"] = false
+	if shouldRotateOutlookAfterPostPasswordAccountFailure(true, result) {
+		t.Fatalf("pre-password suspended errors should not be treated as consumed post-password failures")
+	}
+}
+
 func TestShouldForceStopTaskRespectsKillSwitchForPlainSendOTP400(t *testing.T) {
 	if shouldForceStopTask("send-otp 失败 (400): domain rejected", "tempmail_lol", false) {
 		t.Fatalf("plain temporary-email send-otp 400 should not force-stop")

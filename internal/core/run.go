@@ -348,7 +348,10 @@ func (r *Registrar) Run() map[string]interface{} {
 
 func buildFinalRegistrationResult(r *Registrar, awsToken, kiroTokens map[string]interface{}, verify map[string]interface{}) map[string]interface{} {
 	if suspended, _ := verify["suspended"].(bool); suspended {
-		return map[string]interface{}{"status": "failed", "error": "suspended", "email": r.Email, "passwordSet": true, "verify": verify}
+		result := basePostPasswordRegistrationResult(r, awsToken, kiroTokens, verify)
+		result["status"] = "failed"
+		result["error"] = "suspended"
+		return result
 	}
 
 	if alive, _ := verify["alive"].(bool); !alive {
@@ -356,25 +359,43 @@ func buildFinalRegistrationResult(r *Registrar, awsToken, kiroTokens map[string]
 		if strings.TrimSpace(errMsg) == "" {
 			errMsg = "unknown"
 		}
-		return map[string]interface{}{
-			"status":      "failed",
-			"error":       "验活失败: " + errMsg,
-			"email":       r.Email,
-			"passwordSet": true,
-			"verify":      verify,
-		}
+		result := basePostPasswordRegistrationResult(r, awsToken, kiroTokens, verify)
+		result["status"] = "failed"
+		result["error"] = "验活失败: " + errMsg
+		return result
 	}
 
-	return map[string]interface{}{
-		"email":         r.Email,
-		"password":      r.Cfg.Password,
+	result := basePostPasswordRegistrationResult(r, awsToken, kiroTokens, verify)
+	result["status"] = "success"
+	return result
+}
+
+func basePostPasswordRegistrationResult(r *Registrar, awsToken, kiroTokens map[string]interface{}, verify map[string]interface{}) map[string]interface{} {
+	email := ""
+	password := ""
+	clientID := ""
+	clientSecret := ""
+	deviceCode := ""
+	if r != nil && r.Cfg != nil {
+		password = r.Cfg.Password
+	}
+	if r != nil {
+		email = r.Email
+		clientID = r.ClientID
+		clientSecret = r.ClientSecret
+		deviceCode = r.DeviceCode
+	}
+	result := map[string]interface{}{
+		"email":         email,
+		"password":      password,
 		"status":        "success",
 		"passwordSet":   true,
-		"client_id":     r.ClientID,
-		"client_secret": r.ClientSecret,
-		"device_code":   r.DeviceCode,
+		"client_id":     clientID,
+		"client_secret": clientSecret,
+		"device_code":   deviceCode,
 		"aws_token":     awsToken,
 		"kiro_tokens":   kiroTokens,
 		"verify":        verify,
 	}
+	return result
 }

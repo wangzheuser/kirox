@@ -26,6 +26,12 @@ func TestBuildFinalRegistrationResultFailsWhenVerificationFailed(t *testing.T) {
 	if got := result["verify"]; got == nil {
 		t.Fatalf("failed result should retain verify payload: %#v", result)
 	}
+	if result["client_id"] != "client-id" || result["client_secret"] != "client-secret" || result["device_code"] != "device-code" {
+		t.Fatalf("post-password verification failure should retain OIDC credentials for re-verification: %#v", result)
+	}
+	if result["password"] != "Passw0rd!" || result["aws_token"] == nil || result["kiro_tokens"] == nil {
+		t.Fatalf("post-password verification failure should retain account payload for salvage: %#v", result)
+	}
 }
 
 func TestBuildFinalRegistrationResultSucceedsWhenVerificationAlive(t *testing.T) {
@@ -49,7 +55,13 @@ func TestBuildFinalRegistrationResultSucceedsWhenVerificationAlive(t *testing.T)
 }
 
 func TestBuildFinalRegistrationResultKeepsSuspendedFailure(t *testing.T) {
-	result := buildFinalRegistrationResult(&Registrar{Email: "user@example.com"}, nil, nil, map[string]interface{}{
+	result := buildFinalRegistrationResult(&Registrar{
+		Cfg:          &Config{Password: "Passw0rd!"},
+		Email:        "user@example.com",
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		DeviceCode:   "device-code",
+	}, map[string]interface{}{"refreshToken": "aws-refresh"}, map[string]interface{}{"refreshToken": "kiro-refresh"}, map[string]interface{}{
 		"alive":     false,
 		"suspended": true,
 		"error":     "suspended",
@@ -60,5 +72,22 @@ func TestBuildFinalRegistrationResultKeepsSuspendedFailure(t *testing.T) {
 	}
 	if got := result["verify"]; got == nil {
 		t.Fatalf("suspended result should retain verify payload: %#v", result)
+	}
+	if result["client_id"] != "client-id" || result["password"] != "Passw0rd!" || result["aws_token"] == nil || result["kiro_tokens"] == nil {
+		t.Fatalf("post-password suspended result should retain account payload for delayed re-verification: %#v", result)
+	}
+}
+
+func TestBuildFinalRegistrationResultHandlesMissingRegistrar(t *testing.T) {
+	result := buildFinalRegistrationResult(nil, nil, nil, map[string]interface{}{
+		"alive": false,
+		"error": "models query failed: 403",
+	})
+
+	if result["status"] != "failed" {
+		t.Fatalf("missing registrar should still produce failed result: %#v", result)
+	}
+	if result["email"] != "" || result["password"] != "" {
+		t.Fatalf("missing registrar should keep identity fields empty instead of panicking: %#v", result)
 	}
 }
