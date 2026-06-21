@@ -79,6 +79,45 @@ func TestSuccessfulSyncEmailsReturnsOnlySuccessfulDetails(t *testing.T) {
 	}
 }
 
+func TestBuildAvailableOutlookAccountsSkipsTerminalGraphFailures(t *testing.T) {
+	accounts := []map[string]interface{}{
+		{"email": "bad-token@example.com", "clientId": "client-1", "refreshToken": "refresh-1", "failReason": "Graph Token失效"},
+		{"email": "bad-permission@example.com", "clientId": "client-2", "refreshToken": "refresh-2", "failReason": "Graph权限错误"},
+		{"email": "fresh@example.com", "clientId": "client-3", "refreshToken": "refresh-3"},
+	}
+
+	got := buildAvailableOutlookAccounts(accounts)
+
+	if len(got) != 1 || got[0].Email != "fresh@example.com" {
+		t.Fatalf("terminal Graph failures should be skipped before task starts, got %#v", got)
+	}
+}
+
+func TestBuildAvailableOutlookAccountsDefersTransientGraphFailures(t *testing.T) {
+	accounts := []map[string]interface{}{
+		{"email": "graph-network@example.com", "clientId": "client-1", "refreshToken": "refresh-1", "failReason": "Graph网络错误"},
+		{"email": "fresh@example.com", "clientId": "client-2", "refreshToken": "refresh-2"},
+	}
+
+	got := buildAvailableOutlookAccounts(accounts)
+
+	if len(got) != 2 || got[0].Email != "fresh@example.com" || got[1].Email != "graph-network@example.com" {
+		t.Fatalf("transient Graph failures should be deferred behind fresh accounts, got %#v", got)
+	}
+}
+
+func TestShouldConsumeOutlookAccountAfterTerminalGraphFailure(t *testing.T) {
+	if !shouldConsumeOutlookAccountAfterGraphResolutionFailure("Graph Token失效") {
+		t.Fatalf("invalid Graph token/service-abuse accounts should be consumed so they are not retried every run")
+	}
+	if !shouldConsumeOutlookAccountAfterGraphResolutionFailure("Graph权限错误") {
+		t.Fatalf("Graph permission failures should be consumed")
+	}
+	if shouldConsumeOutlookAccountAfterGraphResolutionFailure("Graph网络错误") {
+		t.Fatalf("transient Graph network failures should not be consumed")
+	}
+}
+
 func TestSelectAccountsByEmailReportsMissingBatchEmails(t *testing.T) {
 	accounts := []map[string]interface{}{
 		{"email": "saved@example.com"},

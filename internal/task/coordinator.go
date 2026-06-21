@@ -446,6 +446,9 @@ func buildAvailableOutlookAccounts(storedAccounts []map[string]interface{}) []em
 			seen[dedupeKey] = struct{}{}
 		}
 		failReason, _ := acc["failReason"].(string)
+		if shouldSkipOutlookAccountForPreviousFailure(failReason) {
+			continue
+		}
 		if shouldDeferOutlookAccountForPreviousFailure(failReason) {
 			deferred = append(deferred, outlookAccount)
 			continue
@@ -457,7 +460,25 @@ func buildAvailableOutlookAccounts(storedAccounts []map[string]interface{}) []em
 
 func shouldDeferOutlookAccountForPreviousFailure(failReason string) bool {
 	switch strings.TrimSpace(failReason) {
-	case "IP/指纹风控", "验证码发送失败", "验证码超时":
+	case "IP/指纹风控", "验证码发送失败", "验证码超时", "Graph网络错误", "Graph响应异常":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldSkipOutlookAccountForPreviousFailure(failReason string) bool {
+	switch strings.TrimSpace(failReason) {
+	case "Graph Token失效", "Graph权限错误", "账号封禁", "邮箱已注册", "异常邮箱":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldConsumeOutlookAccountAfterGraphResolutionFailure(failReason string) bool {
+	switch strings.TrimSpace(failReason) {
+	case "Graph Token失效", "Graph权限错误":
 		return true
 	default:
 		return false
@@ -1143,7 +1164,11 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				if graphErr != nil && graphMode != storage.OutlookGraphRegistrationEmailImported {
 					failReason := classifyGraphResolutionError(graphErr.Error())
 					log.Printf("[Kiro][%d/%d] Outlook Graph 地址解析失败，跳过账号: %s (%s: %v)", i+1, displayTotal, acc.Email, failReason, graphErr)
-					email.MarkAccountFailReason(acc.Email, failReason)
+					if shouldConsumeOutlookAccountAfterGraphResolutionFailure(failReason) {
+						email.UpdateAccountStatus(acc.Email, true, false, failReason)
+					} else {
+						email.MarkAccountFailReason(acc.Email, failReason)
+					}
 					Manager.mu.Lock()
 					completedCount, successCount, failedCount := Manager.completed, Manager.success, Manager.failed
 					Manager.mu.Unlock()
