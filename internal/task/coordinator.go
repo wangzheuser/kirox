@@ -363,7 +363,7 @@ type StartTaskRequest struct {
 	OTPTimeout        int                              `json:"otpTimeout"`
 	ReuseFailedEmail  bool                             `json:"reuseFailedEmail"`
 	OutputPath        string                           `json:"outputPath"`
-	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary"、"emailnator"、"mailgw"、"mailtm"、"tempmail_lol"、"guerrillamail"、"mailtemp"、"tempmail_plus"、"inboxkitten"、"inboxes"、"freecustom" 或 "cloudmail"
+	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary"、"emailnator"、"mailgw"、"mailtm"、"tempmail_lol"、"guerrillamail"、"mailtemp"、"tempmail_plus"、"inboxkitten"、"inboxes"、"freecustom"、"dropmail" 或 "cloudmail"
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
 	MoeMailConfigs    map[string][]email.MoeMailConfig `json:"moemailConfigs"`    // 域名 -> 配置列表映射
 	MoeMailRandomMode bool                             `json:"moemailRandomMode"` // 是否为随机模式
@@ -431,7 +431,7 @@ func applyReusableEmailCandidate(provider string, cfg *core.Config, candidate re
 		cfg.CloudMailProvider = candidate.cloudMailProvider
 		address := strings.TrimSpace(candidate.cloudMailProvider.GetAddress())
 		return address, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail":
 		if candidate.tempEmailService == nil {
 			return "", false
 		}
@@ -461,7 +461,7 @@ func reusableEmailCandidateFromConfig(provider string, cfg *core.Config) (reusab
 		}
 		address := strings.TrimSpace(cfg.CloudMailProvider.GetAddress())
 		return reusableEmailCandidate{provider: provider, address: address, cloudMailProvider: cfg.CloudMailProvider}, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail":
 		if cfg.TempEmailService == nil {
 			return reusableEmailCandidate{}, false
 		}
@@ -850,7 +850,7 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 			return map[string]interface{}{"error": err.Error()}
 		}
 		// MoeMail 不需要预先加载账号，每次任务动态生成
-	} else if emailProvider == "mailporary" || emailProvider == "emailnator" || emailProvider == "mailgw" || emailProvider == "mailtm" || emailProvider == "tempmail_lol" || emailProvider == "guerrillamail" || emailProvider == "mailtemp" || emailProvider == "tempmail_plus" || emailProvider == "inboxkitten" || emailProvider == "inboxes" || emailProvider == "freecustom" {
+	} else if emailProvider == "mailporary" || emailProvider == "emailnator" || emailProvider == "mailgw" || emailProvider == "mailtm" || emailProvider == "tempmail_lol" || emailProvider == "guerrillamail" || emailProvider == "mailtemp" || emailProvider == "tempmail_plus" || emailProvider == "inboxkitten" || emailProvider == "inboxes" || emailProvider == "freecustom" || emailProvider == "dropmail" {
 		// Mailporary / Emailnator / mail.gw / mail.tm / TempMail.lol / InboxKitten / Inboxes 为零配置临时邮箱，不需要预加载账号或域名配置。
 	} else if emailProvider == "cloudmail" {
 		if len(req.CloudMailDomains) == 0 {
@@ -1109,6 +1109,8 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Println("[Kiro] Inboxes 零配置邮箱模式")
 	} else if emailProvider == "freecustom" {
 		log.Println("[Kiro] FreeCustom.Email 零配置邮箱模式")
+	} else if emailProvider == "dropmail" {
+		log.Println("[Kiro] DropMail 零配置邮箱模式")
 	}
 
 	// 预先准备 CloudMail 域名池
@@ -1605,6 +1607,20 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				address, err := createTempEmailWithRetry("FreeCustom.Email", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("FreeCustom.Email", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "dropmail" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 DropMail 邮箱", i+1, displayTotal)
+				service := email.NewDropMailService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("DropMail", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("DropMail", err)
 					return
 				}
 				taskCfg.TempEmailService = service
@@ -3015,7 +3031,7 @@ func isKillSwitchError(errorMsg, emailProvider string) bool {
 		return true
 	}
 	if strings.Contains(errorMsg, "send-otp 失败 (400)") {
-		return emailProvider != "mailporary" && emailProvider != "emailnator" && emailProvider != "mailgw" && emailProvider != "mailtm" && emailProvider != "tempmail_lol" && emailProvider != "guerrillamail" && emailProvider != "mailtemp" && emailProvider != "tempmail_plus" && emailProvider != "inboxkitten" && emailProvider != "inboxes" && emailProvider != "freecustom"
+		return emailProvider != "mailporary" && emailProvider != "emailnator" && emailProvider != "mailgw" && emailProvider != "mailtm" && emailProvider != "tempmail_lol" && emailProvider != "guerrillamail" && emailProvider != "mailtemp" && emailProvider != "tempmail_plus" && emailProvider != "inboxkitten" && emailProvider != "inboxes" && emailProvider != "freecustom" && emailProvider != "dropmail"
 	}
 	triggers := []string{
 		"注册被拦截",       // formatError 对 BLOCKED/注册请求被拦截 的翻译
@@ -3067,7 +3083,7 @@ func shouldStopForOutlookOTPTimeout(useOutlook bool, success bool, failReason st
 
 func isTemporaryEmailProvider(emailProvider string) bool {
 	switch emailProvider {
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail":
 		return true
 	default:
 		return false
