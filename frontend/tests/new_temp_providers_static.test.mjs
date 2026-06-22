@@ -12,6 +12,9 @@ const providers = [
   ['tempmailo', 'tempMailo', 'TempMailo'],
   ['generator_email', 'generatorEmail', 'Generator.Email'],
   ['mailtowin', 'mailToWin', 'MailToWin'],
+  ['mail2me', 'mail2Me', 'Mail2Me'],
+  ['pickmemail', 'pickMeMail', 'PickMeMail'],
+  ['maximail', 'maxiMail', 'MaxiMail'],
 ];
 
 test('registration page exposes new zero-config providers', () => {

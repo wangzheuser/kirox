@@ -35,13 +35,14 @@ var (
 
 // DropMailService 提供 DropMail 零配置临时邮箱能力。
 type DropMailService struct {
-	client         *http.Client
-	baseURL        string
-	token          string
-	sessionID      string
-	address        string
-	checkedIDs     map[string]struct{}
-	tokenGenerator func() (string, error)
+	client           *http.Client
+	baseURL          string
+	token            string
+	sessionID        string
+	address          string
+	checkedIDs       map[string]struct{}
+	preferredDomains []string
+	tokenGenerator   func() (string, error)
 }
 
 type dropMailGraphQLResponse struct {
@@ -78,10 +79,11 @@ type dropMailMessage struct {
 func NewDropMailService(proxyURL string) *DropMailService {
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	return &DropMailService{
-		client:         httpClientWithProxy(runtimeProxyURL, emailRequestTimeout),
-		baseURL:        dropMailAPIBaseURL,
-		checkedIDs:     make(map[string]struct{}),
-		tokenGenerator: generateDropMailToken,
+		client:           httpClientWithProxy(runtimeProxyURL, emailRequestTimeout),
+		baseURL:          dropMailAPIBaseURL,
+		checkedIDs:       make(map[string]struct{}),
+		preferredDomains: append([]string(nil), dropMailDomains...),
+		tokenGenerator:   generateDropMailToken,
 	}
 }
 
@@ -106,7 +108,7 @@ func (s *DropMailService) CreateWithError() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	domainID := preferredDropMailDomainID(domains)
+	domainID := preferredDropMailDomainID(domains, s.preferredDomains)
 	input := map[string]interface{}{"withAddress": true}
 	if domainID != "" {
 		input["domainId"] = domainID
@@ -273,7 +275,7 @@ func parseDropMailGraphQL(body []byte) (map[string]json.RawMessage, error) {
 	return payload.Data, nil
 }
 
-func preferredDropMailDomainID(domains []dropMailDomain) string {
+func preferredDropMailDomainID(domains []dropMailDomain, preferred []string) string {
 	byName := make(map[string]string, len(domains))
 	for _, domain := range domains {
 		name := strings.ToLower(strings.TrimSpace(domain.Name))
@@ -281,7 +283,10 @@ func preferredDropMailDomainID(domains []dropMailDomain) string {
 			byName[name] = domain.ID
 		}
 	}
-	for _, name := range dropMailDomains {
+	if len(preferred) == 0 {
+		preferred = dropMailDomains
+	}
+	for _, name := range preferred {
 		if id := byName[strings.ToLower(name)]; id != "" {
 			return id
 		}

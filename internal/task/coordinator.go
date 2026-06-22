@@ -431,7 +431,7 @@ func applyReusableEmailCandidate(provider string, cfg *core.Config, candidate re
 		cfg.CloudMailProvider = candidate.cloudMailProvider
 		address := strings.TrimSpace(candidate.cloudMailProvider.GetAddress())
 		return address, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail":
 		if candidate.tempEmailService == nil {
 			return "", false
 		}
@@ -461,7 +461,7 @@ func reusableEmailCandidateFromConfig(provider string, cfg *core.Config) (reusab
 		}
 		address := strings.TrimSpace(cfg.CloudMailProvider.GetAddress())
 		return reusableEmailCandidate{provider: provider, address: address, cloudMailProvider: cfg.CloudMailProvider}, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail":
 		if cfg.TempEmailService == nil {
 			return reusableEmailCandidate{}, false
 		}
@@ -1119,6 +1119,12 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Println("[Kiro] Generator.Email 零配置邮箱模式")
 	} else if emailProvider == "mailtowin" {
 		log.Println("[Kiro] MailToWin 零配置邮箱模式")
+	} else if emailProvider == "mail2me" {
+		log.Println("[Kiro] Mail2Me 零配置邮箱模式")
+	} else if emailProvider == "pickmemail" {
+		log.Println("[Kiro] PickMeMail 零配置邮箱模式")
+	} else if emailProvider == "maximail" {
+		log.Println("[Kiro] MaxiMail 零配置邮箱模式")
 	}
 
 	// 预先准备 CloudMail 域名池
@@ -1685,6 +1691,48 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				address, err := createTempEmailWithRetry("MailToWin", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MailToWin", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "mail2me" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 Mail2Me 邮箱", i+1, displayTotal)
+				service := email.NewMail2MeService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("Mail2Me", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("Mail2Me", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "pickmemail" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 PickMeMail 邮箱", i+1, displayTotal)
+				service := email.NewPickMeMailService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("PickMeMail", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("PickMeMail", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "maximail" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 MaxiMail 邮箱", i+1, displayTotal)
+				service := email.NewMaxiMailService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("MaxiMail", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("MaxiMail", err)
 					return
 				}
 				taskCfg.TempEmailService = service
@@ -3147,7 +3195,7 @@ func shouldStopForOutlookOTPTimeout(useOutlook bool, success bool, failReason st
 
 func isTemporaryEmailProvider(emailProvider string) bool {
 	switch emailProvider {
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail":
 		return true
 	default:
 		return false

@@ -166,7 +166,7 @@ function selectEmailProvider(provider, options) {
   selectedEmailProvider = provider;
 
   // 更新按钮样式
-  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin'].forEach(function(name) {
+  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail'].forEach(function(name) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
     if (!btn) return;
     const active = provider === name;
@@ -238,6 +238,18 @@ function selectEmailProvider(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.mailToWinHint', '使用 MailToWin 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.mailToWinHint');
+  } else if (provider === 'mail2me') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.mail2MeHint', '使用 Mail2Me 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.mail2MeHint');
+  } else if (provider === 'pickmemail') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.pickMeMailHint', '使用 PickMeMail 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.pickMeMailHint');
+  } else if (provider === 'maximail') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.maxiMailHint', '使用 MaxiMail 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.maxiMailHint');
   } else if (provider === 'cloudmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');

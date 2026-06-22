@@ -8,5 +8,7 @@ type MailToWinService struct {
 
 // NewMailToWinService 创建 mailtowin.com 临时邮箱服务。
 func NewMailToWinService(proxyURL string) *MailToWinService {
-	return &MailToWinService{DropMailService: NewDropMailService(proxyURL)}
+	service := NewDropMailService(proxyURL)
+	service.preferredDomains = []string{"mailtowin.com"}
+	return &MailToWinService{DropMailService: service}
 }

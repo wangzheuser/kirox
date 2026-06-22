@@ -3,7 +3,7 @@ package storage
 import "testing"
 
 func TestRegistrationConfigPersistsNewZeroConfigProviders(t *testing.T) {
-	providers := []string{"mailcatch", "tempmailo", "generator_email", "mailtowin"}
+	providers := []string{"mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail"}
 	for _, provider := range providers {
 		t.Run(provider, func(t *testing.T) {
 			withTempStorageConfig(t, "")

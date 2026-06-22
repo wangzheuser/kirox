@@ -52,6 +52,9 @@ const (
 	RegistrationEmailProviderTempMailo      = "tempmailo"
 	RegistrationEmailProviderGeneratorEmail = "generator_email"
 	RegistrationEmailProviderMailToWin      = "mailtowin"
+	RegistrationEmailProviderMail2Me        = "mail2me"
+	RegistrationEmailProviderPickMeMail     = "pickmemail"
+	RegistrationEmailProviderMaxiMail       = "maximail"
 
 	MoeMailDomainModeRandom = "random"
 	MoeMailDomainModeAll    = "all"
@@ -1024,6 +1027,12 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderGeneratorEmail
 	case RegistrationEmailProviderMailToWin:
 		return RegistrationEmailProviderMailToWin
+	case RegistrationEmailProviderMail2Me:
+		return RegistrationEmailProviderMail2Me
+	case RegistrationEmailProviderPickMeMail:
+		return RegistrationEmailProviderPickMeMail
+	case RegistrationEmailProviderMaxiMail:
+		return RegistrationEmailProviderMaxiMail
 	default:
 		return ""
 	}
