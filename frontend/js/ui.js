@@ -166,7 +166,7 @@ function selectEmailProvider(provider, options) {
   selectedEmailProvider = provider;
 
   // 更新按钮样式
-  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail'].forEach(function(name) {
+  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr'].forEach(function(name) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
     if (!btn) return;
     const active = provider === name;
@@ -250,6 +250,26 @@ function selectEmailProvider(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.maxiMailHint', '使用 MaxiMail 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.maxiMailHint');
+  } else if (provider === 'emlpro') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.emlProHint', '使用 EmlPro 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.emlProHint');
+  } else if (provider === 'freeml') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.freeMLHint', '使用 FreeML 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.freeMLHint');
+  } else if (provider === 'emlhub') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.emlHubHint', '使用 EmlHub 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.emlHubHint');
+  } else if (provider === 'emltmp') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.emlTmpHint', '使用 EmlTmp 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.emlTmpHint');
+  } else if (provider === 'mailpwr') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.mailPwrHint', '使用 MailPwr 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.mailPwrHint');
   } else if (provider === 'cloudmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');

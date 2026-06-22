@@ -11,6 +11,11 @@ func TestDropMailDomainChannelConstructorsUseExpectedDomain(t *testing.T) {
 		{name: "mail2me", service: NewMail2MeService(""), domain: "mail2me.co"},
 		{name: "pickmemail", service: NewPickMeMailService(""), domain: "pickmemail.com"},
 		{name: "maximail", service: NewMaxiMailService(""), domain: "maximail.vip"},
+		{name: "emlpro", service: NewEmlProService(""), domain: "emlpro.com"},
+		{name: "freeml", service: NewFreeMLService(""), domain: "freeml.net"},
+		{name: "emlhub", service: NewEmlHubService(""), domain: "emlhub.com"},
+		{name: "emltmp", service: NewEmlTmpService(""), domain: "emltmp.com"},
+		{name: "mailpwr", service: NewMailPwrService(""), domain: "mailpwr.com"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

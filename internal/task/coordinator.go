@@ -431,7 +431,7 @@ func applyReusableEmailCandidate(provider string, cfg *core.Config, candidate re
 		cfg.CloudMailProvider = candidate.cloudMailProvider
 		address := strings.TrimSpace(candidate.cloudMailProvider.GetAddress())
 		return address, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr":
 		if candidate.tempEmailService == nil {
 			return "", false
 		}
@@ -461,7 +461,7 @@ func reusableEmailCandidateFromConfig(provider string, cfg *core.Config) (reusab
 		}
 		address := strings.TrimSpace(cfg.CloudMailProvider.GetAddress())
 		return reusableEmailCandidate{provider: provider, address: address, cloudMailProvider: cfg.CloudMailProvider}, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr":
 		if cfg.TempEmailService == nil {
 			return reusableEmailCandidate{}, false
 		}
@@ -1125,6 +1125,16 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		log.Println("[Kiro] PickMeMail 零配置邮箱模式")
 	} else if emailProvider == "maximail" {
 		log.Println("[Kiro] MaxiMail 零配置邮箱模式")
+	} else if emailProvider == "emlpro" {
+		log.Println("[Kiro] EmlPro 零配置邮箱模式")
+	} else if emailProvider == "freeml" {
+		log.Println("[Kiro] FreeML 零配置邮箱模式")
+	} else if emailProvider == "emlhub" {
+		log.Println("[Kiro] EmlHub 零配置邮箱模式")
+	} else if emailProvider == "emltmp" {
+		log.Println("[Kiro] EmlTmp 零配置邮箱模式")
+	} else if emailProvider == "mailpwr" {
+		log.Println("[Kiro] MailPwr 零配置邮箱模式")
 	}
 
 	// 预先准备 CloudMail 域名池
@@ -1733,6 +1743,76 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				address, err := createTempEmailWithRetry("MaxiMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MaxiMail", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "emlpro" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 EmlPro 邮箱", i+1, displayTotal)
+				service := email.NewEmlProService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("EmlPro", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("EmlPro", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "freeml" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 FreeML 邮箱", i+1, displayTotal)
+				service := email.NewFreeMLService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("FreeML", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("FreeML", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "emlhub" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 EmlHub 邮箱", i+1, displayTotal)
+				service := email.NewEmlHubService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("EmlHub", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("EmlHub", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "emltmp" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 EmlTmp 邮箱", i+1, displayTotal)
+				service := email.NewEmlTmpService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("EmlTmp", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("EmlTmp", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "mailpwr" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 MailPwr 邮箱", i+1, displayTotal)
+				service := email.NewMailPwrService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("MailPwr", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("MailPwr", err)
 					return
 				}
 				taskCfg.TempEmailService = service
@@ -3195,7 +3275,7 @@ func shouldStopForOutlookOTPTimeout(useOutlook bool, success bool, failReason st
 
 func isTemporaryEmailProvider(emailProvider string) bool {
 	switch emailProvider {
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr":
 		return true
 	default:
 		return false

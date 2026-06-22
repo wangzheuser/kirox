@@ -15,6 +15,11 @@ const providers = [
   ['mail2me', 'mail2Me', 'Mail2Me'],
   ['pickmemail', 'pickMeMail', 'PickMeMail'],
   ['maximail', 'maxiMail', 'MaxiMail'],
+  ['emlpro', 'emlPro', 'EmlPro'],
+  ['freeml', 'freeML', 'FreeML'],
+  ['emlhub', 'emlHub', 'EmlHub'],
+  ['emltmp', 'emlTmp', 'EmlTmp'],
+  ['mailpwr', 'mailPwr', 'MailPwr'],
 ];
 
 test('registration page exposes new zero-config providers', () => {

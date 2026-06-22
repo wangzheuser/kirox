@@ -30,6 +30,17 @@ var (
 		"maximail.vip",
 		"emlpro.com",
 		"freeml.net",
+		"emlhub.com",
+		"emltmp.com",
+		"mailpwr.com",
+		"10mail.info",
+		"10mail.org",
+		"10mail.xyz",
+		"dropmail.me",
+		"mimimail.me",
+		"pickmail.org",
+		"spymail.one",
+		"yomail.info",
 	}
 )
 
