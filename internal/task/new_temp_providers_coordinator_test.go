@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewZeroConfigProvidersDoNotRequireOutlookAccounts(t *testing.T) {
-	for _, provider := range []string{"mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail"} {
+	for _, provider := range []string{"mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip"} {
 		t.Run(provider, func(t *testing.T) {
 			Manager.mu.Lock()
 			Manager.running = false
@@ -24,7 +24,7 @@ func TestNewZeroConfigProvidersDoNotRequireOutlookAccounts(t *testing.T) {
 }
 
 func TestReusableEmailSupportsNewZeroConfigProviders(t *testing.T) {
-	for _, provider := range []string{"mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail"} {
+	for _, provider := range []string{"mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip"} {
 		t.Run(provider, func(t *testing.T) {
 			pool := reusableEmailPool{}
 			service := &taskFakeTempEmailService{address: "reuse@example.test"}

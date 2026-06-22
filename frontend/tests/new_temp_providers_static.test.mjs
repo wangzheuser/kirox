@@ -26,6 +26,10 @@ const providers = [
   ['pickmail', 'pickMail', 'PickMail'],
   ['spymail', 'spyMail', 'SpyMail'],
   ['yomail', 'yoMail', 'YoMail'],
+  ['tmio_bltiwd', 'tmioBltiwd', 'TempMailIO bltiwd'],
+  ['tmio_wnbaldwy', 'tmioWnbaldwy', 'TempMailIO wnbaldwy'],
+  ['tmio_bwmyga', 'tmioBwmyga', 'TempMailIO bwmyga'],
+  ['tmio_ozsaip', 'tmioOzsaip', 'TempMailIO ozsaip'],
 ];
 
 test('registration page exposes new zero-config providers', () => {

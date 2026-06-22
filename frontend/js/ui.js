@@ -166,7 +166,7 @@ function selectEmailProvider(provider, options) {
   selectedEmailProvider = provider;
 
   // 更新按钮样式
-  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail'].forEach(function(name) {
+  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip'].forEach(function(name) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
     if (!btn) return;
     const active = provider === name;
@@ -294,6 +294,22 @@ function selectEmailProvider(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.yoMailHint', '使用 YoMail 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.yoMailHint');
+  } else if (provider === 'tmio_bltiwd') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.tmioBltiwdHint', '使用 TempMailIO bltiwd.com 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.tmioBltiwdHint');
+  } else if (provider === 'tmio_wnbaldwy') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.tmioWnbaldwyHint', '使用 TempMailIO wnbaldwy.com 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.tmioWnbaldwyHint');
+  } else if (provider === 'tmio_bwmyga') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.tmioBwmygaHint', '使用 TempMailIO bwmyga.com 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.tmioBwmygaHint');
+  } else if (provider === 'tmio_ozsaip') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.tmioOzsaipHint', '使用 TempMailIO ozsaip.com 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.tmioOzsaipHint');
   } else if (provider === 'cloudmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');
