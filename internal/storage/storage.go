@@ -60,6 +60,12 @@ const (
 	RegistrationEmailProviderEmlHub         = "emlhub"
 	RegistrationEmailProviderEmlTmp         = "emltmp"
 	RegistrationEmailProviderMailPwr        = "mailpwr"
+	RegistrationEmailProviderTenMail        = "tenmail"
+	RegistrationEmailProviderDropMailMe     = "dropmail_me"
+	RegistrationEmailProviderMimiMail       = "mimimail"
+	RegistrationEmailProviderPickMail       = "pickmail"
+	RegistrationEmailProviderSpyMail        = "spymail"
+	RegistrationEmailProviderYoMail         = "yomail"
 
 	MoeMailDomainModeRandom = "random"
 	MoeMailDomainModeAll    = "all"
@@ -1048,6 +1054,18 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderEmlTmp
 	case RegistrationEmailProviderMailPwr:
 		return RegistrationEmailProviderMailPwr
+	case RegistrationEmailProviderTenMail:
+		return RegistrationEmailProviderTenMail
+	case RegistrationEmailProviderDropMailMe:
+		return RegistrationEmailProviderDropMailMe
+	case RegistrationEmailProviderMimiMail:
+		return RegistrationEmailProviderMimiMail
+	case RegistrationEmailProviderPickMail:
+		return RegistrationEmailProviderPickMail
+	case RegistrationEmailProviderSpyMail:
+		return RegistrationEmailProviderSpyMail
+	case RegistrationEmailProviderYoMail:
+		return RegistrationEmailProviderYoMail
 	default:
 		return ""
 	}

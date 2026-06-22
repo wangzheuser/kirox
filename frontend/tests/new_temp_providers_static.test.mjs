@@ -20,6 +20,12 @@ const providers = [
   ['emlhub', 'emlHub', 'EmlHub'],
   ['emltmp', 'emlTmp', 'EmlTmp'],
   ['mailpwr', 'mailPwr', 'MailPwr'],
+  ['tenmail', 'tenMail', '10Mail'],
+  ['dropmail_me', 'dropMailMe', 'DropMail.me'],
+  ['mimimail', 'mimiMail', 'MimiMail'],
+  ['pickmail', 'pickMail', 'PickMail'],
+  ['spymail', 'spyMail', 'SpyMail'],
+  ['yomail', 'yoMail', 'YoMail'],
 ];
 
 test('registration page exposes new zero-config providers', () => {

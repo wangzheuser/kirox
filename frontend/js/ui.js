@@ -166,7 +166,7 @@ function selectEmailProvider(provider, options) {
   selectedEmailProvider = provider;
 
   // 更新按钮样式
-  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr'].forEach(function(name) {
+  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail'].forEach(function(name) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
     if (!btn) return;
     const active = provider === name;
@@ -270,6 +270,30 @@ function selectEmailProvider(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.mailPwrHint', '使用 MailPwr 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.mailPwrHint');
+  } else if (provider === 'tenmail') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.tenMailHint', '使用 10Mail 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.tenMailHint');
+  } else if (provider === 'dropmail_me') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.dropMailMeHint', '使用 DropMail.me 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.dropMailMeHint');
+  } else if (provider === 'mimimail') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.mimiMailHint', '使用 MimiMail 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.mimiMailHint');
+  } else if (provider === 'pickmail') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.pickMailHint', '使用 PickMail 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.pickMailHint');
+  } else if (provider === 'spymail') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.spyMailHint', '使用 SpyMail 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.spyMailHint');
+  } else if (provider === 'yomail') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.yoMailHint', '使用 YoMail 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.yoMailHint');
   } else if (provider === 'cloudmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');
