@@ -34,20 +34,24 @@ const (
 	DefaultRegistrationConcurrency   = 1
 	DefaultRegistrationDelay         = 1
 
-	RegistrationEmailProviderOutlook      = "outlook"
-	RegistrationEmailProviderMoeMail      = "moemail"
-	RegistrationEmailProviderMailporary   = "mailporary"
-	RegistrationEmailProviderEmailnator   = "emailnator"
-	RegistrationEmailProviderMailGW       = "mailgw"
-	RegistrationEmailProviderMailTM       = "mailtm"
-	RegistrationEmailProviderTempMailLOL  = "tempmail_lol"
-	RegistrationEmailProviderGuerrilla    = "guerrillamail"
-	RegistrationEmailProviderMailTemp     = "mailtemp"
-	RegistrationEmailProviderTempMailPlus = "tempmail_plus"
-	RegistrationEmailProviderInboxKitten  = "inboxkitten"
-	RegistrationEmailProviderInboxes      = "inboxes"
-	RegistrationEmailProviderFreeCustom   = "freecustom"
-	RegistrationEmailProviderDropMail     = "dropmail"
+	RegistrationEmailProviderOutlook        = "outlook"
+	RegistrationEmailProviderMoeMail        = "moemail"
+	RegistrationEmailProviderMailporary     = "mailporary"
+	RegistrationEmailProviderEmailnator     = "emailnator"
+	RegistrationEmailProviderMailGW         = "mailgw"
+	RegistrationEmailProviderMailTM         = "mailtm"
+	RegistrationEmailProviderTempMailLOL    = "tempmail_lol"
+	RegistrationEmailProviderGuerrilla      = "guerrillamail"
+	RegistrationEmailProviderMailTemp       = "mailtemp"
+	RegistrationEmailProviderTempMailPlus   = "tempmail_plus"
+	RegistrationEmailProviderInboxKitten    = "inboxkitten"
+	RegistrationEmailProviderInboxes        = "inboxes"
+	RegistrationEmailProviderFreeCustom     = "freecustom"
+	RegistrationEmailProviderDropMail       = "dropmail"
+	RegistrationEmailProviderMailCatch      = "mailcatch"
+	RegistrationEmailProviderTempMailo      = "tempmailo"
+	RegistrationEmailProviderGeneratorEmail = "generator_email"
+	RegistrationEmailProviderMailToWin      = "mailtowin"
 
 	MoeMailDomainModeRandom = "random"
 	MoeMailDomainModeAll    = "all"
@@ -1012,6 +1016,14 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderFreeCustom
 	case RegistrationEmailProviderDropMail:
 		return RegistrationEmailProviderDropMail
+	case RegistrationEmailProviderMailCatch:
+		return RegistrationEmailProviderMailCatch
+	case RegistrationEmailProviderTempMailo:
+		return RegistrationEmailProviderTempMailo
+	case RegistrationEmailProviderGeneratorEmail:
+		return RegistrationEmailProviderGeneratorEmail
+	case RegistrationEmailProviderMailToWin:
+		return RegistrationEmailProviderMailToWin
 	default:
 		return ""
 	}

@@ -166,7 +166,7 @@ function selectEmailProvider(provider, options) {
   selectedEmailProvider = provider;
 
   // 更新按钮样式
-  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail'].forEach(function(name) {
+  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin'].forEach(function(name) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
     if (!btn) return;
     const active = provider === name;
@@ -222,6 +222,22 @@ function selectEmailProvider(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.dropMailHint', '使用 DropMail 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.dropMailHint');
+  } else if (provider === 'mailcatch') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.mailCatchHint', '使用 MailCatch 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.mailCatchHint');
+  } else if (provider === 'tempmailo') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.tempMailoHint', '使用 TempMailo 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.tempMailoHint');
+  } else if (provider === 'generator_email') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.generatorEmailHint', '使用 Generator.Email 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.generatorEmailHint');
+  } else if (provider === 'mailtowin') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.mailToWinHint', '使用 MailToWin 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.mailToWinHint');
   } else if (provider === 'cloudmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');
