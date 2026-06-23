@@ -202,6 +202,29 @@ func sortedDiagnosticTopItems(counts map[string]int, n int) []DiagnosticTopItem 
 	return items[:n]
 }
 
+func recordEmailProviderOTPStat(provider string, result map[string]interface{}) {
+	if result == nil {
+		return
+	}
+	received, _ := result["otpReceived"].(bool)
+	if !received {
+		return
+	}
+	if err := storage.RecordEmailProviderOTPReceived(provider); err != nil {
+		log.Printf("[Kiro] 记录邮箱渠道收码统计失败: provider=%s err=%v", provider, err)
+	}
+}
+
+func recordEmailProviderSuccessStat(provider string, result map[string]interface{}) {
+	if result == nil || result["status"] != "success" {
+		return
+	}
+	emailAddr, _ := result["email"].(string)
+	if err := storage.RecordEmailProviderRegistrationSuccess(provider, emailAddr); err != nil {
+		log.Printf("[Kiro] 记录邮箱渠道注册成功统计失败: provider=%s email=%s err=%v", provider, emailAddr, err)
+	}
+}
+
 func (s *runtimeTaskStats) ProgressSummary(completed, success, failed, topN int) string {
 	if topN <= 0 {
 		topN = 3
@@ -2123,6 +2146,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			if resultEmail, _ := result["email"].(string); resultEmail != "" {
 				currentEmail = resultEmail
 			}
+			recordEmailProviderOTPStat(emailProvider, result)
 
 			if result["status"] == "success" {
 				if currentClashAssisted && currentClashNode != "" {
@@ -2418,6 +2442,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		if shouldStopForOTPTimeouts {
 			requestTaskStop("[Kiro] 连续验证码超时达到 5 次，停止本批任务；请检查 Outlook Graph 收信、别名投递或邮箱代理")
 		}
+		recordEmailProviderSuccessStat(emailProvider, result)
 
 		recycleErrorMsg, _ := result["error"].(string)
 		if candidate, ok := recycleReusableFailedEmail(req, &reusableEmails, emailProvider, &taskCfg, result, shouldForceStopTaskForMode(recycleErrorMsg, emailProvider, killSwitchEnabled, successTargetMode)); ok {

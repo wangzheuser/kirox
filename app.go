@@ -568,6 +568,19 @@ func (a *App) SetRegistrationConfig(config storage.RegistrationConfig) map[strin
 	return map[string]interface{}{"success": true, "config": storage.GetRegistrationConfig()}
 }
 
+// GetEmailProviderStats 获取邮箱渠道累计统计。
+func (a *App) GetEmailProviderStats() []storage.EmailProviderStat {
+	return storage.GetEmailProviderStats()
+}
+
+// ResetEmailProviderStats 清空邮箱渠道累计统计。
+func (a *App) ResetEmailProviderStats() map[string]interface{} {
+	if err := storage.ResetEmailProviderStats(); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true}
+}
+
 // GetLanguage 获取当前界面语言代码，空字符串表示未设置（前端应回落到 OS 语言）
 func (a *App) GetLanguage() string {
 	return storage.GetLanguage()

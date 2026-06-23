@@ -86,6 +86,10 @@ export function GetEmailProxy() {
   return window['go']['main']['App']['GetEmailProxy']();
 }
 
+export function GetEmailProviderStats() {
+  return window['go']['main']['App']['GetEmailProviderStats']();
+}
+
 export function GetKillSwitchEnabled() {
   return window['go']['main']['App']['GetKillSwitchEnabled']();
 }
@@ -204,6 +208,10 @@ export function ResetDataDir() {
 
 export function ResetEmailProxy() {
   return window['go']['main']['App']['ResetEmailProxy']();
+}
+
+export function ResetEmailProviderStats() {
+  return window['go']['main']['App']['ResetEmailProviderStats']();
 }
 
 export function ResetFingerprintCache() {

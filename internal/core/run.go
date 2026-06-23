@@ -207,25 +207,26 @@ func (r *Registrar) Run() map[string]interface{} {
 			log.Printf("%s %s", prefix, friendlyErr)
 			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email}
 		}
+		r.OTPReceived = true
 
 		// Step 11: 创建身份
 		if r.ctxCancelled() {
-			return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email}
+			return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "otpReceived": true}
 		}
 		if err := r.Step11CreateIdentity(otp); err != nil {
 			friendlyErr := r.formatError("CreateIdentity", err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email}
+			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "otpReceived": true}
 		}
 
 		// Step 12: 设置密码（只有这一步成功后，邮箱才算真正被消耗）
 		if r.ctxCancelled() {
-			return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email}
+			return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "otpReceived": true}
 		}
 		if err := r.Step12SetPassword(); err != nil {
 			friendlyErr := r.formatError("SetPassword", err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email}
+			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "otpReceived": true}
 		}
 	} else {
 		if r.Cfg.UseOutlook {
@@ -239,7 +240,7 @@ func (r *Registrar) Run() map[string]interface{} {
 	// ========== 到达此处说明 SetPassword 已成功，邮箱已被消耗 ==========
 
 	if r.ctxCancelled() {
-		return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true}
+		return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
 	}
 
 	finalSteps := []struct {
@@ -252,7 +253,7 @@ func (r *Registrar) Run() map[string]interface{} {
 		if err := s.fn(); err != nil {
 			friendlyErr := r.formatError(s.name, err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true}
+			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
 		}
 	}
 
@@ -260,7 +261,7 @@ func (r *Registrar) Run() map[string]interface{} {
 	if r.Ctx != nil {
 		select {
 		case <-r.Ctx.Done():
-			return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true}
+			return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
 		case <-time.After(2 * time.Second):
 		}
 	} else {
@@ -286,12 +287,12 @@ func (r *Registrar) Run() map[string]interface{} {
 		if attempt == 2 {
 			friendlyErr := r.formatError("SSOToken", err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true}
+			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
 		}
 	}
 
 	if r.ctxCancelled() {
-		return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true}
+		return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
 	}
 
 	// Step14: Kiro 授权（最多重试3次）
@@ -308,7 +309,7 @@ func (r *Registrar) Run() map[string]interface{} {
 		if attempt == 2 {
 			friendlyErr := r.formatError("KiroAuthorize", err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true}
+			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
 		}
 	}
 
@@ -326,7 +327,7 @@ func (r *Registrar) Run() map[string]interface{} {
 		if attempt == 2 {
 			friendlyErr := r.formatError("KiroExchange", err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true}
+			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
 		}
 	}
 
@@ -390,6 +391,7 @@ func basePostPasswordRegistrationResult(r *Registrar, awsToken, kiroTokens map[s
 		"password":      password,
 		"status":        "success",
 		"passwordSet":   true,
+		"otpReceived":   r != nil && r.OTPReceived,
 		"client_id":     clientID,
 		"client_secret": clientSecret,
 		"device_code":   deviceCode,

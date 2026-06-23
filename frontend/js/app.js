@@ -41,6 +41,9 @@ function switchPage(pageId) {
   if (pageId === 'account-pool') {
     loadAccountPool();
   }
+  if (pageId === 'register' && typeof loadEmailProviderStats === 'function') {
+    loadEmailProviderStats();
+  }
 }
 
 // 标签页切换
@@ -1012,6 +1015,119 @@ async function loadRegistrationConfig() {
   }
 }
 
+function getEmailProviderDisplayName(provider) {
+  var map = {
+    outlook: '微软邮箱',
+    moemail: 'MoeMail',
+    cloudmail: 'Cloud-Mail',
+    mailporary: 'Mailporary',
+    emailnator: 'Emailnator',
+    mailgw: 'mail.gw',
+    mailtm: 'mail.tm',
+    tempmail_lol: 'TempMail.lol',
+    guerrillamail: 'GuerrillaMail',
+    mailtemp: 'MailTemp',
+    tempmail_plus: 'TempMail.plus',
+    inboxkitten: 'InboxKitten',
+    inboxes: 'Inboxes',
+    freecustom: 'FreeCustom.Email',
+    dropmail: 'DropMail',
+    mailcatch: 'MailCatch',
+    tempmailo: 'TempMailo',
+    generator_email: 'Generator.Email',
+    mailtowin: 'MailToWin',
+    mail2me: 'Mail2Me',
+    pickmemail: 'PickMeMail',
+    maximail: 'MaxiMail',
+    emlpro: 'EmlPro',
+    freeml: 'FreeML',
+    emlhub: 'EmlHub',
+    emltmp: 'EmlTmp',
+    mailpwr: 'MailPwr',
+    tenmail: '10Mail',
+    dropmail_me: 'DropMail.me',
+    mimimail: 'MimiMail',
+    pickmail: 'PickMail',
+    spymail: 'SpyMail',
+    yomail: 'YoMail',
+    tmio_bltiwd: 'TempMailIO bltiwd',
+    tmio_wnbaldwy: 'TempMailIO wnbaldwy',
+    tmio_bwmyga: 'TempMailIO bwmyga',
+    tmio_ozsaip: 'TempMailIO ozsaip'
+  };
+  return map[provider] || provider || '-';
+}
+
+function formatEmailProviderSuccessDomains(domains) {
+  domains = domains || {};
+  var items = Object.keys(domains).map(function(domain) {
+    return { domain: domain, count: parseInt(domains[domain], 10) || 0 };
+  }).filter(function(item) {
+    return item.domain && item.count > 0;
+  });
+  items.sort(function(a, b) {
+    if (a.count === b.count) return a.domain.localeCompare(b.domain);
+    return b.count - a.count;
+  });
+  if (!items.length) return '<span style="color:var(--text-muted);">-</span>';
+  return items.map(function(item) {
+    return '<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 6px;border-radius:999px;background:var(--bg-subtle);border:1px solid var(--border);font-family:var(--font-mono);">' +
+      _escapeHtml(item.domain) + '(' + item.count + ')' +
+      '</span>';
+  }).join('');
+}
+
+function _escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function loadEmailProviderStats() {
+  var body = document.getElementById('email-provider-stats-body');
+  if (!body || !window.go || !window.go.main || !window.go.main.App) return;
+  try {
+    var stats = await window.go.main.App.GetEmailProviderStats();
+    stats = Array.isArray(stats) ? stats : [];
+    if (!stats.length) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px;">暂无统计</td></tr>';
+      return;
+    }
+    body.innerHTML = stats.map(function(stat) {
+      var provider = stat.provider || stat.Provider || '';
+      var otpCount = stat.otpReceivedCount != null ? stat.otpReceivedCount : stat.OTPReceivedCount;
+      var successCount = stat.registrationSuccessCount != null ? stat.registrationSuccessCount : stat.RegistrationSuccessCount;
+      var domains = stat.successDomains || stat.SuccessDomains || {};
+      return '<tr>' +
+        '<td style="white-space:nowrap;font-weight:700;">' + _escapeHtml(getEmailProviderDisplayName(provider)) + '</td>' +
+        '<td style="text-align:right;font-family:var(--font-mono);">' + (parseInt(otpCount, 10) || 0) + '</td>' +
+        '<td style="text-align:right;font-family:var(--font-mono);">' + (parseInt(successCount, 10) || 0) + '</td>' +
+        '<td style="min-width:220px;">' + formatEmailProviderSuccessDomains(domains) + '</td>' +
+        '</tr>';
+    }).join('');
+  } catch(e) {
+    body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--danger);padding:12px;">加载失败: ' + _escapeHtml(e.message || e) + '</td></tr>';
+  }
+}
+
+async function resetEmailProviderStats() {
+  if (!window.go || !window.go.main || !window.go.main.App) return;
+  try {
+    var result = await window.go.main.App.ResetEmailProviderStats();
+    if (result && result.error) {
+      showToast(result.error, 'error');
+      return;
+    }
+    await loadEmailProviderStats();
+    showToast('邮箱渠道统计已重置');
+  } catch(e) {
+    showToast('重置统计失败: ' + (e.message || e), 'error');
+  }
+}
+
 // 自动保存
 ['cfg-count', 'cfg-success-target', 'cfg-concurrency', 'cfg-delay', 'cfg-retry-count', 'cfg-otp-timeout'].forEach(function(id) {
   var el = document.getElementById(id);
@@ -1123,6 +1239,7 @@ async function loadConfig() {
   }
   
   await loadRegistrationConfig();
+  loadEmailProviderStats();
   loadOutlookAccountsList();
   loadDataDir();
   loadResultOutputDir();

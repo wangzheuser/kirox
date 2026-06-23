@@ -47,6 +47,8 @@ export function GetDataDir():Promise<string>;
 
 export function GetEmailProxy():Promise<string>;
 
+export function GetEmailProviderStats():Promise<Array<storage.EmailProviderStat>>;
+
 export function GetKillSwitchEnabled():Promise<boolean>;
 
 export function GetKiroRSConfig():Promise<Record<string, any>>;
@@ -106,6 +108,8 @@ export function OpenURL(arg1:string):Promise<void>;
 export function ResetDataDir():Promise<Record<string, any>>;
 
 export function ResetEmailProxy():Promise<Record<string, any>>;
+
+export function ResetEmailProviderStats():Promise<Record<string, any>>;
 
 export function ResetFingerprintCache():Promise<Record<string, any>>;
 

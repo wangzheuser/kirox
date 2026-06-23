@@ -551,6 +551,7 @@ setInterval(async function() {
     // 检测任务完成
     if (_prevRunning && !s.running && s.completed > 0) {
       notifyTaskComplete('Kiro', s.success, s.failed, s.completed);
+      if (typeof loadEmailProviderStats === 'function') loadEmailProviderStats();
     }
     _prevRunning = s.running;
     // 状态指示灯

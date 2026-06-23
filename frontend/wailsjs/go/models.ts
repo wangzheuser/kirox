@@ -142,6 +142,26 @@ export namespace proxy {
 
 export namespace storage {
 	
+	export class EmailProviderStat {
+	    provider: string;
+	    otpReceivedCount: number;
+	    registrationSuccessCount: number;
+	    successDomains: Record<string, number>;
+	    updatedAt: string;
+
+	    static createFrom(source: any = {}) {
+	        return new EmailProviderStat(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.provider = source["provider"];
+	        this.otpReceivedCount = source["otpReceivedCount"];
+	        this.registrationSuccessCount = source["registrationSuccessCount"];
+	        this.successDomains = source["successDomains"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
 	export class RegistrationConfig {
 	    count: number;
 	    successTarget: number;

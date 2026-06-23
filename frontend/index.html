@@ -1267,6 +1267,32 @@
             </div>
           </div>
 
+          <!-- 邮箱渠道累计统计 -->
+          <div id="email-provider-stats-card" class="card" style="margin-bottom:16px;padding:14px 16px;background:var(--bg-subtle);border:1px solid var(--border);box-shadow:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
+              <div>
+                <div style="font-size:13px;font-weight:800;color:var(--text);">邮箱渠道累计统计</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">只会持续累计；点击重置按钮才会清空。</div>
+              </div>
+              <button id="btn-reset-email-provider-stats" type="button" onclick="resetEmailProviderStats()" class="btn btn-secondary btn-sm" style="flex-shrink:0;">重置统计</button>
+            </div>
+            <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--card);">
+              <table style="margin:0;width:100%;font-size:12px;">
+                <thead>
+                  <tr>
+                    <th style="white-space:nowrap;">渠道</th>
+                    <th style="white-space:nowrap;text-align:right;">验证码收码次数</th>
+                    <th style="white-space:nowrap;text-align:right;">注册成功数</th>
+                    <th>注册成功域名统计</th>
+                  </tr>
+                </thead>
+                <tbody id="email-provider-stats-body">
+                  <tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px;">加载中...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- MoeMail 域名选择 -->
           <div id="moemail-config-select" style="display:none;margin-bottom:16px;">
             <div class="form-group" style="margin-bottom:0;">
