@@ -227,6 +227,23 @@ func TestRegistrationConfigAcceptsMultipleEmailProviders(t *testing.T) {
 	}
 }
 
+func TestRegistrationConfigAcceptsCloudMailProvider(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	if err := SetRegistrationConfig(RegistrationConfig{
+		Count:          1,
+		Concurrency:    1,
+		Delay:          0,
+		EmailProviders: []string{"cloudmail"},
+	}); err != nil {
+		t.Fatalf("cloudmail provider should be accepted: %v", err)
+	}
+
+	if got := GetRegistrationConfig(); strings.Join(got.EmailProviders, ",") != "cloudmail" {
+		t.Fatalf("EmailProviders = %#v, want cloudmail", got.EmailProviders)
+	}
+}
+
 func TestRegistrationConfigIgnoresDeprecatedSingleEmailProviderKey(t *testing.T) {
 	withTempStorageConfig(t, "registration_email_provider=moemail\n")
 

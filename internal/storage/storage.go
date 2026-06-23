@@ -36,6 +36,7 @@ const (
 
 	RegistrationEmailProviderOutlook        = "outlook"
 	RegistrationEmailProviderMoeMail        = "moemail"
+	RegistrationEmailProviderCloudMail      = "cloudmail"
 	RegistrationEmailProviderMailporary     = "mailporary"
 	RegistrationEmailProviderEmailnator     = "emailnator"
 	RegistrationEmailProviderMailGW         = "mailgw"
@@ -1032,6 +1033,8 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderOutlook
 	case RegistrationEmailProviderMoeMail:
 		return RegistrationEmailProviderMoeMail
+	case RegistrationEmailProviderCloudMail:
+		return RegistrationEmailProviderCloudMail
 	case RegistrationEmailProviderMailporary:
 		return RegistrationEmailProviderMailporary
 	case RegistrationEmailProviderEmailnator:
