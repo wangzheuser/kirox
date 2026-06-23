@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,9 +17,10 @@ import (
 const tempMailPlusPollInterval = 3
 
 var (
-	tempMailPlusBaseURL  = "https://tempmail.plus"
-	tempMailPlusDomains  = []string{"fextemp.com", "fexbox.org", "merepost.com", "rover.info", "fexpost.com", "mailto.plus"}
-	tempMailPlusDomainIx int
+	tempMailPlusBaseURL     = "https://tempmail.plus"
+	tempMailPlusDomains     = []string{"fextemp.com", "fexbox.org", "merepost.com", "rover.info", "fexpost.com", "mailto.plus"}
+	tempMailPlusDomainIx    int
+	tempMailPlusDomainBtnRe = regexp.MustCompile(`(?is)<button[^>]*class=["'][^"']*dropdown-item[^"']*["'][^>]*>\s*([^<\s]+)\s*</button>`)
 )
 
 // TempMailPlusService 提供 TempMail.plus 零配置临时邮箱能力。
@@ -51,7 +53,8 @@ func (s *TempMailPlusService) Create() string {
 
 // CreateWithError 生成一个 TempMail.plus 地址并探测邮箱 API。
 func (s *TempMailPlusService) CreateWithError() (string, error) {
-	domains := nextTempMailPlusDomains()
+	domains := appendUniqueDomains(nil, s.discoverDomains()...)
+	domains = appendUniqueDomains(domains, nextTempMailPlusDomains()...)
 	var lastErr error
 	for _, domain := range domains {
 		address := strings.ToLower(fmt.Sprintf("%s@%s", GenerateEmailName(time.Now().Nanosecond()), domain))
@@ -120,6 +123,23 @@ func (s *TempMailPlusService) WaitForCode(timeoutSec, intervalSec int) (string, 
 // GetAddress 获取当前邮箱地址。
 func (s *TempMailPlusService) GetAddress() string {
 	return s.address
+}
+
+func (s *TempMailPlusService) discoverDomains() []string {
+	body, status, err := s.get(strings.TrimRight(s.baseURL, "/") + "/")
+	if err != nil || status != http.StatusOK {
+		if err != nil {
+			log.Printf("[TempMail.plus] 动态获取域名失败，使用内置域名: %v", err)
+		} else {
+			log.Printf("[TempMail.plus] 动态获取域名 HTTP %d，使用内置域名", status)
+		}
+		return nil
+	}
+	domains := extractTempMailPlusDomains(string(body))
+	if len(domains) > 0 {
+		log.Printf("[TempMail.plus] 动态获取到 %d 个域名", len(domains))
+	}
+	return domains
 }
 
 func (s *TempMailPlusService) listMessagesFor(address string) ([]map[string]interface{}, error) {
@@ -205,6 +225,16 @@ func normalizeTempMailPlusMessages(payload interface{}) []map[string]interface{}
 		}
 	}
 	return nil
+}
+
+func extractTempMailPlusDomains(html string) []string {
+	domains := []string{}
+	for _, match := range tempMailPlusDomainBtnRe.FindAllStringSubmatch(html, -1) {
+		if len(match) > 1 {
+			domains = appendUniqueDomains(domains, match[1])
+		}
+	}
+	return domains
 }
 
 func tempMailPlusMapItems(items []interface{}) []map[string]interface{} {

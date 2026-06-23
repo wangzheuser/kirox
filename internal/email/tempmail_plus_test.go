@@ -28,13 +28,19 @@ func TestTempMailPlusCreateUsesSupportedDomain(t *testing.T) {
 	})
 
 	withTempMailPlusTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/mails" {
+		switch r.URL.Path {
+		case "/":
+			_, _ = w.Write([]byte(`<html><body>No dynamic domains in this fixture</body></html>`))
+			return
+		case "/api/mails":
+			if !strings.Contains(r.URL.Query().Get("email"), "@fexpost.com") {
+				t.Fatalf("email=%q, want fexpost.com", r.URL.Query().Get("email"))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": true, "mail_list": []interface{}{}})
+			return
+		default:
 			t.Fatalf("path=%q, want /api/mails", r.URL.Path)
 		}
-		if !strings.Contains(r.URL.Query().Get("email"), "@fexpost.com") {
-			t.Fatalf("email=%q, want fexpost.com", r.URL.Query().Get("email"))
-		}
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": true, "mail_list": []interface{}{}})
 	})
 
 	service := NewTempMailPlusService("")
@@ -58,6 +64,13 @@ func TestTempMailPlusCreateFallsBackToNextDomainWhenFirstDomainFails(t *testing.
 	})
 
 	withTempMailPlusTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			_, _ = w.Write([]byte(`<html><body>No dynamic domains in this fixture</body></html>`))
+			return
+		}
+		if r.URL.Path != "/api/mails" {
+			t.Fatalf("path=%q, want /api/mails", r.URL.Path)
+		}
 		email := r.URL.Query().Get("email")
 		if strings.HasSuffix(email, "@fexpost.com") {
 			http.Error(w, "blocked", http.StatusBadRequest)
@@ -76,6 +89,41 @@ func TestTempMailPlusCreateFallsBackToNextDomainWhenFirstDomainFails(t *testing.
 	}
 	if !strings.HasSuffix(address, "@fextemp.com") {
 		t.Fatalf("address=%q, want fallback fextemp.com", address)
+	}
+}
+
+func TestTempMailPlusCreateUsesHomepageDomainsBeforeFallback(t *testing.T) {
+	oldDomains := tempMailPlusDomains
+	oldIx := tempMailPlusDomainIx
+	tempMailPlusDomains = []string{"fallback-plus.com"}
+	tempMailPlusDomainIx = 0
+	t.Cleanup(func() {
+		tempMailPlusDomains = oldDomains
+		tempMailPlusDomainIx = oldIx
+	})
+
+	withTempMailPlusTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			_, _ = w.Write([]byte(`<button type="button" class="dropdown-item">dynamic-plus.com</button>`))
+		case "/api/mails":
+			email := r.URL.Query().Get("email")
+			if !strings.HasSuffix(email, "@dynamic-plus.com") {
+				t.Fatalf("email=%q, want dynamic-plus.com", email)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"result": true, "mail_list": []interface{}{}})
+		default:
+			t.Fatalf("unexpected path=%q", r.URL.Path)
+		}
+	})
+
+	service := NewTempMailPlusService("")
+	address, err := service.CreateWithError()
+	if err != nil {
+		t.Fatalf("CreateWithError returned error: %v", err)
+	}
+	if !strings.HasSuffix(address, "@dynamic-plus.com") {
+		t.Fatalf("address=%q, want dynamic-plus.com", address)
 	}
 }
 

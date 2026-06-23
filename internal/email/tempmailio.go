@@ -42,6 +42,15 @@ type tempMailIONewEmailResponse struct {
 	Token string `json:"token"`
 }
 
+type tempMailIODomain struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type tempMailIODomainsResponse struct {
+	Domains []tempMailIODomain `json:"domains"`
+}
+
 type tempMailIOMessage struct {
 	ID        string `json:"id"`
 	From      string `json:"from"`
@@ -98,9 +107,20 @@ func (s *TempMailIOService) Create() string {
 
 // CreateWithError 创建固定域名的 temp-mail.io 临时邮箱。
 func (s *TempMailIOService) CreateWithError() (string, error) {
-	domain := strings.ToLower(strings.TrimSpace(s.domain))
+	preferredDomain := normalizeEmailDomain(s.domain)
+	remoteDomains, err := s.getDomains()
+	if err != nil {
+		log.Printf("[TempMailIO] 动态获取域名失败，使用内置域名: %v", err)
+	}
+	domain := chooseTempMailIODomain(preferredDomain, remoteDomains)
 	if domain == "" {
+		domain = preferredDomain
+	}
+	if domain == "" && len(tempMailIODomains) > 0 {
 		domain = tempMailIODomains[0]
+	}
+	if domain == "" {
+		return "", fmt.Errorf("TempMailIO 没有可用域名")
 	}
 	name := strings.ToLower(strings.TrimSpace(s.nameGenerator()))
 	if name == "" {
@@ -190,6 +210,35 @@ func (s *TempMailIOService) WaitForCode(timeoutSec, intervalSec int) (string, er
 // GetAddress 获取当前邮箱地址。
 func (s *TempMailIOService) GetAddress() string { return s.address }
 
+func (s *TempMailIOService) getDomains() ([]string, error) {
+	endpoint := strings.TrimRight(s.baseURL, "/") + "/domains"
+	req, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", mailTempUserAgent)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Referer", "https://temp-mail.io/")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("TempMailIO 获取域名 HTTP %d: %s", resp.StatusCode, shortMailGWBody(string(body), 300))
+	}
+	domains := extractTempMailIODomains(body)
+	if len(domains) == 0 {
+		return nil, fmt.Errorf("TempMailIO 域名接口未返回可用域名")
+	}
+	log.Printf("[TempMailIO] 动态获取到 %d 个域名", len(domains))
+	return domains, nil
+}
+
 func (s *TempMailIOService) listMessages() ([]tempMailIOMessage, error) {
 	endpoint := strings.TrimRight(s.baseURL, "/") + "/email/" + url.PathEscape(s.address) + "/messages"
 	req, err := http.NewRequest("GET", endpoint, nil)
@@ -229,4 +278,60 @@ func randomTempMailIOName() string {
 		b.WriteByte(alphabet[int(v)%len(alphabet)])
 	}
 	return b.String()
+}
+
+func extractTempMailIODomains(body []byte) []string {
+	var typed tempMailIODomainsResponse
+	if err := json.Unmarshal(body, &typed); err == nil && len(typed.Domains) > 0 {
+		domains := []string{}
+		for _, item := range typed.Domains {
+			domains = appendUniqueDomains(domains, item.Name)
+		}
+		return domains
+	}
+	var payload interface{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil
+	}
+	return extractTempMailIODomainsFromValue(payload)
+}
+
+func extractTempMailIODomainsFromValue(value interface{}) []string {
+	domains := []string{}
+	switch v := value.(type) {
+	case []interface{}:
+		for _, item := range v {
+			domains = appendUniqueDomains(domains, extractTempMailIODomainsFromValue(item)...)
+		}
+	case map[string]interface{}:
+		if name, ok := v["name"].(string); ok {
+			domains = appendUniqueDomains(domains, name)
+		}
+		for _, key := range []string{"domains", "data", "items"} {
+			if nested, ok := v[key]; ok {
+				domains = appendUniqueDomains(domains, extractTempMailIODomainsFromValue(nested)...)
+			}
+		}
+	case string:
+		domains = appendUniqueDomains(domains, v)
+	}
+	return domains
+}
+
+func chooseTempMailIODomain(preferred string, remoteDomains []string) string {
+	preferred = normalizeEmailDomain(preferred)
+	if len(remoteDomains) > 0 {
+		for _, domain := range remoteDomains {
+			normalized := normalizeEmailDomain(domain)
+			if normalized != "" && normalized == preferred {
+				return normalized
+			}
+		}
+		for _, domain := range remoteDomains {
+			if normalized := normalizeEmailDomain(domain); normalized != "" {
+				return normalized
+			}
+		}
+	}
+	return preferred
 }

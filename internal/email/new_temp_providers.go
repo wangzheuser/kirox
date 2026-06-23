@@ -34,6 +34,8 @@ var (
 
 	generatorEmailBaseURL   = "https://generator.email"
 	generatorEmailAddressRe = regexp.MustCompile(`(?is)id=["']email_ch_text["'][^>]*>\s*([^<\s]+@[^<\s]+)\s*<`)
+	generatorEmailDomainPRe = regexp.MustCompile(`(?is)<p[^>]+id=["']([^"']+)["'][^>]*>`)
+	generatorEmailInputRe   = regexp.MustCompile(`(?is)id=["']domainName2["'][^>]*value=["']([^"']+)["']`)
 	generatorEmailDomains   = []string{"gmaill.click", "mnvr.site", "shortweb.live", "email-temp.com", "jiangwy.one", "nanopools.info"}
 )
 
@@ -341,9 +343,10 @@ func (s *GeneratorEmailService) CreateWithError() (string, error) {
 	if local == "" {
 		return "", fmt.Errorf("Generator.Email 本地邮箱名为空")
 	}
-	domains := s.domains
+	domains := appendUniqueDomains(nil, s.discoverDomains()...)
+	domains = appendUniqueDomains(domains, s.domains...)
 	if len(domains) == 0 {
-		domains = generatorEmailDomains
+		domains = appendUniqueDomains(domains, generatorEmailDomains...)
 	}
 	var lastErr error
 	for _, domain := range domains {
@@ -418,6 +421,23 @@ func (s *GeneratorEmailService) WaitForCode(timeoutSec, intervalSec int) (string
 }
 
 func (s *GeneratorEmailService) GetAddress() string { return s.address }
+
+func (s *GeneratorEmailService) discoverDomains() []string {
+	body, status, err := s.get("/")
+	if err != nil || status != http.StatusOK {
+		if err != nil {
+			log.Printf("[Generator.Email] 动态获取域名失败，使用内置域名: %v", err)
+		} else {
+			log.Printf("[Generator.Email] 动态获取域名 HTTP %d，使用内置域名", status)
+		}
+		return nil
+	}
+	domains := extractGeneratorEmailDomains(body)
+	if len(domains) > 0 {
+		log.Printf("[Generator.Email] 动态获取到 %d 个域名", len(domains))
+	}
+	return domains
+}
 
 func (s *GeneratorEmailService) validateAddress(local, domain string) (bool, error) {
 	form := url.Values{}
@@ -546,6 +566,21 @@ func extractGeneratorEmailAddress(html string) string {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(match[1]))
+}
+
+func extractGeneratorEmailDomains(html string) []string {
+	domains := []string{}
+	for _, match := range generatorEmailInputRe.FindAllStringSubmatch(html, -1) {
+		if len(match) > 1 {
+			domains = appendUniqueDomains(domains, match[1])
+		}
+	}
+	for _, match := range generatorEmailDomainPRe.FindAllStringSubmatch(html, -1) {
+		if len(match) > 1 {
+			domains = appendUniqueDomains(domains, match[1])
+		}
+	}
+	return domains
 }
 
 func codeFromProviderText(text string) string {

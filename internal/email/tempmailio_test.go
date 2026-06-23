@@ -11,8 +11,14 @@ import (
 func TestTempMailIOCreateUsesPreferredDomain(t *testing.T) {
 	var posted map[string]string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/email/new" {
-			t.Fatalf("path=%s, want /email/new", r.URL.Path)
+		switch r.URL.Path {
+		case "/domains":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"domains":[{"name":"bltiwd.com","type":"public"},{"name":"dynamic-tmio.com","type":"public"}]}`))
+			return
+		case "/email/new":
+		default:
+			t.Fatalf("path=%s, want /domains or /email/new", r.URL.Path)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&posted); err != nil {
 			t.Fatalf("decode request: %v", err)
@@ -35,6 +41,41 @@ func TestTempMailIOCreateUsesPreferredDomain(t *testing.T) {
 	}
 	if posted["name"] != "codexname" || posted["domain"] != "bltiwd.com" {
 		t.Fatalf("posted=%v, want name/domain", posted)
+	}
+}
+
+func TestTempMailIOCreateUsesRemoteDomainsWhenNoPreferredDomain(t *testing.T) {
+	var posted map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/domains":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"domains":[{"name":"dynamic-tmio.com","type":"public"}]}`))
+		case "/email/new":
+			if err := json.NewDecoder(r.Body).Decode(&posted); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if posted["domain"] != "dynamic-tmio.com" {
+				t.Fatalf("posted domain=%q, want dynamic-tmio.com", posted["domain"])
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"email":"codexname@dynamic-tmio.com","token":"tok"}`))
+		default:
+			t.Fatalf("path=%s, want domains or email/new", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	service := NewTempMailIOService("", "")
+	service.baseURL = server.URL
+	service.nameGenerator = func() string { return "codexname" }
+
+	address, err := service.CreateWithError()
+	if err != nil {
+		t.Fatalf("CreateWithError error: %v", err)
+	}
+	if address != "codexname@dynamic-tmio.com" {
+		t.Fatalf("address=%q, want dynamic domain", address)
 	}
 }
 

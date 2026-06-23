@@ -97,6 +97,8 @@ func TestTempMailoCreatesWithAntiforgeryTokenAndReadsInbox(t *testing.T) {
 func TestGeneratorEmailCreateAndWaitForCode(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.URL.Path == "/":
+			_, _ = w.Write([]byte(`<html><body>No dynamic domains in this fixture</body></html>`))
 		case r.URL.Path == "/check_adres_validation3.php":
 			_, _ = w.Write([]byte(`{"status":"good","uptime":"100"}`))
 		case strings.Contains(r.URL.Path, "kiroprobe@email-temp.com") || strings.Contains(r.URL.Path, "/email-temp.com/kiroprobe"):
@@ -125,5 +127,42 @@ func TestGeneratorEmailCreateAndWaitForCode(t *testing.T) {
 	}
 	if code != "345678" {
 		t.Fatalf("code=%q, want 345678", code)
+	}
+}
+
+func TestGeneratorEmailCreateUsesDynamicHomeDomainsBeforeFallback(t *testing.T) {
+	var validatedDomain string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/":
+			_, _ = w.Write([]byte(`<div class="tt-suggestion"><p onclick="change_dropdown_list(this.innerHTML)" id="dynamic-mail.com">dynamic-mail.com</p></div>`))
+		case r.URL.Path == "/check_adres_validation3.php":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse form: %v", err)
+			}
+			validatedDomain = r.Form.Get("dmn")
+			if validatedDomain != "dynamic-mail.com" {
+				t.Fatalf("validated domain=%q, want dynamic-mail.com", validatedDomain)
+			}
+			_, _ = w.Write([]byte(`{"status":"good"}`))
+		case strings.Contains(r.URL.Path, "kirodyn@dynamic-mail.com"):
+			_, _ = w.Write([]byte(`<span id="email_ch_text">kirodyn@dynamic-mail.com</span>`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	service := NewGeneratorEmailService("")
+	service.baseURL = server.URL
+	service.localGenerator = func() string { return "kirodyn" }
+	service.domains = []string{"fallback-mail.com"}
+
+	address, err := service.CreateWithError()
+	if err != nil {
+		t.Fatalf("CreateWithError error: %v", err)
+	}
+	if address != "kirodyn@dynamic-mail.com" {
+		t.Fatalf("address=%q, want dynamic domain", address)
 	}
 }
