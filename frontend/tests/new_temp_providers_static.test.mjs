@@ -34,7 +34,7 @@ const providers = [
 
 test('registration page exposes new zero-config providers', () => {
   for (const [value, key, label] of providers) {
-    assert.match(html, new RegExp(`selectEmailProvider\\('${value}'\\)`));
+    assert.match(html, new RegExp(`toggleEmailProvider\\('${value}'\\)`));
     assert.match(html, new RegExp(`value="${value}"`));
     assert.match(html, new RegExp(`register\\.${key}`));
     assert.match(i18nJs, new RegExp(`${key}:\\s*'${label.replace('.', '\\.')}'`));
@@ -51,6 +51,6 @@ test('provider selection styles and hints include new providers', () => {
 
 test('new providers are zero-config in start payload', () => {
   for (const [value] of providers) {
-    assert.doesNotMatch(appJs, new RegExp(`config\\.emailProvider === '${value}'[\\s\\S]{0,500}throw new Error`));
+    assert.doesNotMatch(appJs, new RegExp(`config\\.emailProviders\\.includes\\('${value}'\\)[\\s\\S]{0,500}throw new Error`));
   }
 });

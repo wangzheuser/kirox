@@ -887,15 +887,15 @@
           <div class="form-group" style="margin-bottom:16px;">
             <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;display:block;" data-i18n="register.emailProvider">邮箱提供商</label>
             <div class="email-provider-grid">
-              <label class="email-provider-card" onclick="selectEmailProvider('outlook')">
-                <input type="radio" name="email-provider" value="outlook" checked style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('outlook'); return false;">
+                <input type="checkbox" name="email-provider" value="outlook" checked style="display:none;">
                 <div id="provider-outlook" class="email-provider-content">
                   <img src="assets/outlook.png" style="width:20px;height:20px;border-radius:4px;">
                   <span data-i18n="register.outlook">微软邮箱</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('moemail')">
-                <input type="radio" name="email-provider" value="moemail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('moemail'); return false;">
+                <input type="checkbox" name="email-provider" value="moemail" style="display:none;">
                 <div id="provider-moemail" class="email-provider-content">
                   <svg viewBox="0 0 32 32" width="20" height="20" fill="none" style="color:#8b5cf6;">
                     <path d="M4 8h24v16H4V8z" fill="currentColor" opacity="0.2"/>
@@ -908,8 +908,8 @@
                   <span>MoeMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('mailporary')">
-                <input type="radio" name="email-provider" value="mailporary" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('mailporary'); return false;">
+                <input type="checkbox" name="email-provider" value="mailporary" style="display:none;">
                 <div id="provider-mailporary" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#8b5cf6;">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -920,8 +920,8 @@
                   <span>Mailporary</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('cloudmail')">
-                <input type="radio" name="email-provider" value="cloudmail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('cloudmail'); return false;">
+                <input type="checkbox" name="email-provider" value="cloudmail" style="display:none;">
                 <div id="provider-cloudmail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/>
@@ -929,8 +929,8 @@
                   <span data-i18n="register.cloudmail">Cloud-Mail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('mailgw')">
-                <input type="radio" name="email-provider" value="mailgw" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('mailgw'); return false;">
+                <input type="checkbox" name="email-provider" value="mailgw" style="display:none;">
                 <div id="provider-mailgw" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -941,8 +941,8 @@
                   <span data-i18n="register.mailgw">mail.gw</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('mailtm')">
-                <input type="radio" name="email-provider" value="mailtm" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('mailtm'); return false;">
+                <input type="checkbox" name="email-provider" value="mailtm" style="display:none;">
                 <div id="provider-mailtm" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -953,8 +953,8 @@
                   <span data-i18n="register.mailtm">mail.tm</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('tempmail_lol')">
-                <input type="radio" name="email-provider" value="tempmail_lol" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('tempmail_lol'); return false;">
+                <input type="checkbox" name="email-provider" value="tempmail_lol" style="display:none;">
                 <div id="provider-tempmail_lol" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -964,8 +964,8 @@
                   <span data-i18n="register.tempmailLol">TempMail.lol</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('emailnator')">
-                <input type="radio" name="email-provider" value="emailnator" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('emailnator'); return false;">
+                <input type="checkbox" name="email-provider" value="emailnator" style="display:none;">
                 <div id="provider-emailnator" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ea4335" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -976,8 +976,8 @@
                   <span data-i18n="register.emailnator">Emailnator</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('guerrillamail')">
-                <input type="radio" name="email-provider" value="guerrillamail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('guerrillamail'); return false;">
+                <input type="checkbox" name="email-provider" value="guerrillamail" style="display:none;">
                 <div id="provider-guerrillamail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -987,8 +987,8 @@
                   <span data-i18n="register.guerrillaMail">GuerrillaMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('inboxkitten')">
-                <input type="radio" name="email-provider" value="inboxkitten" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('inboxkitten'); return false;">
+                <input type="checkbox" name="email-provider" value="inboxkitten" style="display:none;">
                 <div id="provider-inboxkitten" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -998,8 +998,8 @@
                   <span data-i18n="register.inboxKitten">InboxKitten</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('freecustom')">
-                <input type="radio" name="email-provider" value="freecustom" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('freecustom'); return false;">
+                <input type="checkbox" name="email-provider" value="freecustom" style="display:none;">
                 <div id="provider-freecustom" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1010,8 +1010,8 @@
                   <span data-i18n="register.freeCustom">FreeCustom.Email</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('dropmail')">
-                <input type="radio" name="email-provider" value="dropmail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('dropmail'); return false;">
+                <input type="checkbox" name="email-provider" value="dropmail" style="display:none;">
                 <div id="provider-dropmail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1022,8 +1022,8 @@
                   <span data-i18n="register.dropMail">DropMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('mailcatch')">
-                <input type="radio" name="email-provider" value="mailcatch" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('mailcatch'); return false;">
+                <input type="checkbox" name="email-provider" value="mailcatch" style="display:none;">
                 <div id="provider-mailcatch" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1033,8 +1033,8 @@
                   <span data-i18n="register.mailCatch">MailCatch</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('tempmailo')">
-                <input type="radio" name="email-provider" value="tempmailo" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('tempmailo'); return false;">
+                <input type="checkbox" name="email-provider" value="tempmailo" style="display:none;">
                 <div id="provider-tempmailo" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a855f7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1044,8 +1044,8 @@
                   <span data-i18n="register.tempMailo">TempMailo</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('generator_email')">
-                <input type="radio" name="email-provider" value="generator_email" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('generator_email'); return false;">
+                <input type="checkbox" name="email-provider" value="generator_email" style="display:none;">
                 <div id="provider-generator_email" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1055,8 +1055,8 @@
                   <span data-i18n="register.generatorEmail">Generator.Email</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('mailtowin')">
-                <input type="radio" name="email-provider" value="mailtowin" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('mailtowin'); return false;">
+                <input type="checkbox" name="email-provider" value="mailtowin" style="display:none;">
                 <div id="provider-mailtowin" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1066,8 +1066,8 @@
                   <span data-i18n="register.mailToWin">MailToWin</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('mail2me')">
-                <input type="radio" name="email-provider" value="mail2me" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('mail2me'); return false;">
+                <input type="checkbox" name="email-provider" value="mail2me" style="display:none;">
                 <div id="provider-mail2me" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1077,8 +1077,8 @@
                   <span data-i18n="register.mail2Me">Mail2Me</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('pickmemail')">
-                <input type="radio" name="email-provider" value="pickmemail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('pickmemail'); return false;">
+                <input type="checkbox" name="email-provider" value="pickmemail" style="display:none;">
                 <div id="provider-pickmemail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1088,8 +1088,8 @@
                   <span data-i18n="register.pickMeMail">PickMeMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('maximail')">
-                <input type="radio" name="email-provider" value="maximail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('maximail'); return false;">
+                <input type="checkbox" name="email-provider" value="maximail" style="display:none;">
                 <div id="provider-maximail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1099,8 +1099,8 @@
                   <span data-i18n="register.maxiMail">MaxiMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('emlpro')">
-                <input type="radio" name="email-provider" value="emlpro" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('emlpro'); return false;">
+                <input type="checkbox" name="email-provider" value="emlpro" style="display:none;">
                 <div id="provider-emlpro" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1110,8 +1110,8 @@
                   <span data-i18n="register.emlPro">EmlPro</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('freeml')">
-                <input type="radio" name="email-provider" value="freeml" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('freeml'); return false;">
+                <input type="checkbox" name="email-provider" value="freeml" style="display:none;">
                 <div id="provider-freeml" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1121,8 +1121,8 @@
                   <span data-i18n="register.freeML">FreeML</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('emlhub')">
-                <input type="radio" name="email-provider" value="emlhub" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('emlhub'); return false;">
+                <input type="checkbox" name="email-provider" value="emlhub" style="display:none;">
                 <div id="provider-emlhub" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1132,8 +1132,8 @@
                   <span data-i18n="register.emlHub">EmlHub</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('emltmp')">
-                <input type="radio" name="email-provider" value="emltmp" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('emltmp'); return false;">
+                <input type="checkbox" name="email-provider" value="emltmp" style="display:none;">
                 <div id="provider-emltmp" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1143,8 +1143,8 @@
                   <span data-i18n="register.emlTmp">EmlTmp</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('mailpwr')">
-                <input type="radio" name="email-provider" value="mailpwr" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('mailpwr'); return false;">
+                <input type="checkbox" name="email-provider" value="mailpwr" style="display:none;">
                 <div id="provider-mailpwr" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ec4899" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1154,8 +1154,8 @@
                   <span data-i18n="register.mailPwr">MailPwr</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('tenmail')">
-                <input type="radio" name="email-provider" value="tenmail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('tenmail'); return false;">
+                <input type="checkbox" name="email-provider" value="tenmail" style="display:none;">
                 <div id="provider-tenmail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1165,8 +1165,8 @@
                   <span data-i18n="register.tenMail">10Mail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('dropmail_me')">
-                <input type="radio" name="email-provider" value="dropmail_me" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('dropmail_me'); return false;">
+                <input type="checkbox" name="email-provider" value="dropmail_me" style="display:none;">
                 <div id="provider-dropmail_me" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1176,8 +1176,8 @@
                   <span data-i18n="register.dropMailMe">DropMail.me</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('mimimail')">
-                <input type="radio" name="email-provider" value="mimimail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('mimimail'); return false;">
+                <input type="checkbox" name="email-provider" value="mimimail" style="display:none;">
                 <div id="provider-mimimail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1187,8 +1187,8 @@
                   <span data-i18n="register.mimiMail">MimiMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('pickmail')">
-                <input type="radio" name="email-provider" value="pickmail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('pickmail'); return false;">
+                <input type="checkbox" name="email-provider" value="pickmail" style="display:none;">
                 <div id="provider-pickmail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1198,8 +1198,8 @@
                   <span data-i18n="register.pickMail">PickMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('spymail')">
-                <input type="radio" name="email-provider" value="spymail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('spymail'); return false;">
+                <input type="checkbox" name="email-provider" value="spymail" style="display:none;">
                 <div id="provider-spymail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1209,8 +1209,8 @@
                   <span data-i18n="register.spyMail">SpyMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('yomail')">
-                <input type="radio" name="email-provider" value="yomail" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('yomail'); return false;">
+                <input type="checkbox" name="email-provider" value="yomail" style="display:none;">
                 <div id="provider-yomail" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#14b8a6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1220,8 +1220,8 @@
                   <span data-i18n="register.yoMail">YoMail</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('tmio_bltiwd')">
-                <input type="radio" name="email-provider" value="tmio_bltiwd" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('tmio_bltiwd'); return false;">
+                <input type="checkbox" name="email-provider" value="tmio_bltiwd" style="display:none;">
                 <div id="provider-tmio_bltiwd" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1231,8 +1231,8 @@
                   <span data-i18n="register.tmioBltiwd">TempMailIO bltiwd</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('tmio_wnbaldwy')">
-                <input type="radio" name="email-provider" value="tmio_wnbaldwy" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('tmio_wnbaldwy'); return false;">
+                <input type="checkbox" name="email-provider" value="tmio_wnbaldwy" style="display:none;">
                 <div id="provider-tmio_wnbaldwy" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1242,8 +1242,8 @@
                   <span data-i18n="register.tmioWnbaldwy">TempMailIO wnbaldwy</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('tmio_bwmyga')">
-                <input type="radio" name="email-provider" value="tmio_bwmyga" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('tmio_bwmyga'); return false;">
+                <input type="checkbox" name="email-provider" value="tmio_bwmyga" style="display:none;">
                 <div id="provider-tmio_bwmyga" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>
@@ -1253,8 +1253,8 @@
                   <span data-i18n="register.tmioBwmyga">TempMailIO bwmyga</span>
                 </div>
               </label>
-              <label class="email-provider-card" onclick="selectEmailProvider('tmio_ozsaip')">
-                <input type="radio" name="email-provider" value="tmio_ozsaip" style="display:none;">
+              <label class="email-provider-card" onclick="toggleEmailProvider('tmio_ozsaip'); return false;">
+                <input type="checkbox" name="email-provider" value="tmio_ozsaip" style="display:none;">
                 <div id="provider-tmio_ozsaip" class="email-provider-content">
                   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#db2777" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2"></rect>

@@ -854,7 +854,7 @@ function getRegistrationConfigPayload() {
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
-    emailProvider: selectedEmailProvider || 'outlook',
+    emailProviders: getSelectedEmailProviders(),
     moemailDomainMode: selection.moemailDomainMode,
     moemailDomains: selection.moemailDomains
   };
@@ -880,8 +880,8 @@ function applyRegistrationConfig(cfg) {
   writeIntegerInput('cfg-otp-timeout', cfg.otpTimeout, 60);
   writeCheckboxInput('cfg-reuse-failed-email', cfg.reuseFailedEmail);
   selectedMoeMailDomains = moeMailSelectionFromConfig(cfg);
-  if (typeof selectEmailProvider === 'function') {
-    selectEmailProvider(cfg.emailProvider || 'outlook', {
+  if (typeof setEmailProviders === 'function') {
+    setEmailProviders(cfg.emailProviders || ['outlook'], {
       skipSave: true,
       moemailSelection: selectedMoeMailDomains
     });
@@ -899,11 +899,14 @@ function getFormConfig() {
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
-    emailProvider: selectedEmailProvider || 'outlook'
+    emailProviders: getSelectedEmailProviders()
   };
+  if (!config.emailProviders.length) {
+    throw new Error('请至少选择一个邮箱渠道');
+  }
 
   // 如果选择了 MoeMail，添加域名信息和前缀配置
-  if (config.emailProvider === 'moemail') {
+  if (config.emailProviders.includes('moemail')) {
     if (!selectedMoeMailDomains || selectedMoeMailDomains.length === 0) {
       throw new Error('请选择至少一个域名或选择随机/全部');
     }
@@ -932,7 +935,7 @@ function getFormConfig() {
   }
 
   // 如果选择了 Cloud-Mail，添加域名信息和配置
-  if (config.emailProvider === 'cloudmail') {
+  if (config.emailProviders.includes('cloudmail')) {
     if (!selectedCloudMailDomains || selectedCloudMailDomains.length === 0) {
       throw new Error('请选择至少一个 Cloud-Mail 域名');
     }
@@ -988,52 +991,9 @@ function scheduleRegistrationConfigSave() {
   }, 300);
 }
 
-async function migrateLegacyRegistrationConfigIfNeeded(cfg) {
-  if (cfg && cfg.saved) return cfg;
-  var savedConfig = null;
-  try {
-    savedConfig = localStorage.getItem('kiro-config');
-  } catch(e) {}
-  if (!savedConfig) return cfg;
-  try {
-    var legacy = JSON.parse(savedConfig);
-    var payload = {
-      count: Number.isFinite(parseInt(legacy.count, 10)) ? parseInt(legacy.count, 10) : 1,
-      successTarget: 0,
-      concurrency: Number.isFinite(parseInt(legacy.concurrency, 10)) ? parseInt(legacy.concurrency, 10) : 1,
-      delay: legacy.delay === 0 ? 0 : (Number.isFinite(parseInt(legacy.delay, 10)) ? parseInt(legacy.delay, 10) : 1),
-      reuseFailedEmail: false,
-      emailProvider: legacy.emailProvider || 'outlook',
-      moemailDomainMode: 'random',
-      moemailDomains: []
-    };
-    if (Array.isArray(legacy.moemailDomains)) {
-      if (legacy.moemailDomains.includes('__all__')) {
-        payload.moemailDomainMode = 'all';
-      } else if (legacy.moemailDomains.includes('__random__')) {
-        payload.moemailDomainMode = 'random';
-      } else if (legacy.moemailDomains.length) {
-        payload.moemailDomainMode = 'custom';
-        payload.moemailDomains = legacy.moemailDomains;
-      }
-    }
-    var result = await window.go.main.App.SetRegistrationConfig(payload);
-    if (!result || result.error) {
-      console.error('[启动] 迁移旧注册配置失败:', result && result.error);
-      return cfg;
-    }
-    localStorage.removeItem('kiro-config');
-    return result.config || payload;
-  } catch(e) {
-    console.error('[启动] 迁移旧注册配置失败:', e);
-    return cfg;
-  }
-}
-
 async function loadRegistrationConfig() {
   try {
     var cfg = await window.go.main.App.GetRegistrationConfig();
-    cfg = await migrateLegacyRegistrationConfigIfNeeded(cfg);
     applyRegistrationConfig(cfg);
   } catch(e) {
     console.error('[启动] 加载注册配置失败:', e);
@@ -1045,7 +1005,7 @@ async function loadRegistrationConfig() {
       retryCount: 1,
       otpTimeout: 60,
       reuseFailedEmail: false,
-      emailProvider: 'outlook',
+      emailProviders: ['outlook'],
       moemailDomainMode: 'random',
       moemailDomains: []
     });

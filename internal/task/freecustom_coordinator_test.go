@@ -12,7 +12,7 @@ func TestFreeCustomDoesNotRequireOutlookAccounts(t *testing.T) {
 	Manager.running = false
 	Manager.mu.Unlock()
 
-	result := StartTask(StartTaskRequest{Count: 1, EmailProvider: "freecustom"})
+	result := StartTask(StartTaskRequest{Count: 1, EmailProviders: []string{"freecustom"}})
 	if errText, _ := result["error"].(string); strings.Contains(errText, "微软邮箱") || strings.Contains(errText, "Outlook") {
 		t.Fatalf("freecustom should not require Outlook accounts, got error %q", errText)
 	}

@@ -12,7 +12,7 @@ func TestInboxKittenDoesNotRequireOutlookAccounts(t *testing.T) {
 	Manager.running = false
 	Manager.mu.Unlock()
 
-	result := StartTask(StartTaskRequest{Count: 1, EmailProvider: "inboxkitten"})
+	result := StartTask(StartTaskRequest{Count: 1, EmailProviders: []string{"inboxkitten"}})
 	if errText, _ := result["error"].(string); strings.Contains(errText, "微软邮箱") || strings.Contains(errText, "Outlook") {
 		t.Fatalf("inboxkitten should not require Outlook accounts, got error %q", errText)
 	}

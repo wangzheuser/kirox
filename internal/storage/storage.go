@@ -101,7 +101,7 @@ const (
 	keyRegistrationDelay            = "registration_delay"
 	keyRegistrationRetryCount       = "registration_retry_count"
 	keyRegistrationOTPTimeout       = "registration_otp_timeout"
-	keyRegistrationEmailProvider    = "registration_email_provider"
+	keyRegistrationEmailProviders   = "registration_email_providers"
 	keyRegistrationMoeMailMode      = "registration_moemail_domain_mode"
 	keyRegistrationMoeMailDomains   = "registration_moemail_domains"
 	keyRegistrationReuseFailedEmail = "registration_reuse_failed_email"
@@ -118,7 +118,7 @@ type RegistrationConfig struct {
 	Delay             int      `json:"delay"`
 	RetryCount        int      `json:"retryCount"`
 	OTPTimeout        int      `json:"otpTimeout"`
-	EmailProvider     string   `json:"emailProvider"`
+	EmailProviders    []string `json:"emailProviders"`
 	MoeMailDomainMode string   `json:"moemailDomainMode"`
 	MoeMailDomains    []string `json:"moemailDomains"`
 	ReuseFailedEmail  bool     `json:"reuseFailedEmail"`
@@ -171,7 +171,7 @@ var configKeyOrder = []string{
 	keyRegistrationDelay,
 	keyRegistrationRetryCount,
 	keyRegistrationOTPTimeout,
-	keyRegistrationEmailProvider,
+	keyRegistrationEmailProviders,
 	keyRegistrationMoeMailMode,
 	keyRegistrationMoeMailDomains,
 	keyRegistrationReuseFailedEmail,
@@ -829,11 +829,9 @@ func GetRegistrationConfig() RegistrationConfig {
 			cfg.Saved = true
 		}
 	}
-	if raw := strings.TrimSpace(m[keyRegistrationEmailProvider]); raw != "" {
-		if provider := normalizeRegistrationEmailProvider(raw); provider != "" {
-			cfg.EmailProvider = provider
-			cfg.Saved = true
-		}
+	if providers := decodeRawStringList(m[keyRegistrationEmailProviders]); len(providers) > 0 {
+		cfg.EmailProviders = providers
+		cfg.Saved = true
 	}
 	if raw := strings.TrimSpace(m[keyRegistrationMoeMailMode]); raw != "" {
 		if mode := normalizeMoeMailDomainMode(raw); mode != "" {
@@ -875,7 +873,8 @@ func SetRegistrationConfig(cfg RegistrationConfig) error {
 		m[keyRegistrationDelay] = strconv.Itoa(normalized.Delay)
 		m[keyRegistrationRetryCount] = strconv.Itoa(normalized.RetryCount)
 		m[keyRegistrationOTPTimeout] = strconv.Itoa(normalized.OTPTimeout)
-		m[keyRegistrationEmailProvider] = normalized.EmailProvider
+		delete(m, "registration_email_provider")
+		m[keyRegistrationEmailProviders] = encodeStringList(normalized.EmailProviders)
 		m[keyRegistrationMoeMailMode] = normalized.MoeMailDomainMode
 		m[keyRegistrationReuseFailedEmail] = strconv.FormatBool(normalized.ReuseFailedEmail)
 		if len(normalized.MoeMailDomains) == 0 {
@@ -946,7 +945,7 @@ func defaultRegistrationConfig() RegistrationConfig {
 		Delay:             DefaultRegistrationDelay,
 		RetryCount:        1,
 		OTPTimeout:        60,
-		EmailProvider:     RegistrationEmailProviderOutlook,
+		EmailProviders:    []string{RegistrationEmailProviderOutlook},
 		MoeMailDomainMode: MoeMailDomainModeRandom,
 		MoeMailDomains:    []string{},
 		Saved:             false,
@@ -977,11 +976,11 @@ func normalizeRegistrationConfig(cfg RegistrationConfig) (RegistrationConfig, er
 		out.OTPTimeout = 600
 	}
 
-	provider := normalizeRegistrationEmailProvider(out.EmailProvider)
-	if provider == "" {
-		return RegistrationConfig{}, fmt.Errorf("未知邮箱提供商")
+	providers, err := NormalizeRegistrationEmailProviders(out.EmailProviders)
+	if err != nil {
+		return RegistrationConfig{}, err
 	}
-	out.EmailProvider = provider
+	out.EmailProviders = providers
 
 	domains, sentinelMode := normalizeMoeMailDomains(out.MoeMailDomains)
 	mode := normalizeMoeMailDomainMode(out.MoeMailDomainMode)
@@ -1000,6 +999,29 @@ func normalizeRegistrationConfig(cfg RegistrationConfig) (RegistrationConfig, er
 		out.MoeMailDomains = domains
 	} else {
 		out.MoeMailDomains = []string{}
+	}
+	return out, nil
+}
+
+func NormalizeRegistrationEmailProviders(providers []string) ([]string, error) {
+	out := make([]string, 0, len(providers))
+	seen := make(map[string]bool, len(providers))
+	for _, raw := range providers {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		provider := normalizeRegistrationEmailProvider(raw)
+		if provider == "" {
+			return nil, fmt.Errorf("未知邮箱提供商: %s", strings.TrimSpace(raw))
+		}
+		if seen[provider] {
+			continue
+		}
+		seen[provider] = true
+		out = append(out, provider)
+	}
+	if len(out) == 0 {
+		out = append(out, RegistrationEmailProviderOutlook)
 	}
 	return out, nil
 }
@@ -1127,6 +1149,18 @@ func encodeStringList(items []string) string {
 		return ""
 	}
 	return string(data)
+}
+
+func decodeRawStringList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var items []string
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil
+	}
+	return items
 }
 
 func decodeStringList(raw string) []string {

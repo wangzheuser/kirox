@@ -140,8 +140,9 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-// 当前选中的邮箱提供商
-var selectedEmailProvider = 'outlook';
+// 当前选中的邮箱提供商（多选）
+var selectedEmailProviders = ['outlook'];
+var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip'];
 var selectedMoeMailDomains = [];
 var allMoeMailDomains = []; // 存储所有可用域名及其配置映射
 var selectedCloudMailDomains = [];
@@ -157,35 +158,83 @@ function escapeHtml(text) {
 // 初始化邮箱提供商选择（页面加载时调用）
 function initEmailProviderSelection() {
   if (typeof registrationConfigLoaded !== 'undefined' && registrationConfigLoaded) return;
-  selectEmailProvider('outlook', { skipSave: true });
+  setEmailProviders(['outlook'], { skipSave: true });
 }
 
-// 选择邮箱提供商
-function selectEmailProvider(provider, options) {
+function normalizeEmailProviders(providers) {
+  const input = Array.isArray(providers) ? providers : [providers];
+  const out = [];
+  input.forEach(function(provider) {
+    provider = String(provider || '').trim();
+    if (!provider || !emailProviderNames.includes(provider) || out.includes(provider)) return;
+    out.push(provider);
+  });
+  return out.length ? out : ['outlook'];
+}
+
+function getSelectedEmailProviders() {
+  return normalizeEmailProviders(selectedEmailProviders).slice();
+}
+
+function setEmailProviders(providers, options) {
   options = options || {};
-  selectedEmailProvider = provider;
+  selectedEmailProviders = normalizeEmailProviders(providers);
 
   // 更新按钮样式
-  ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip'].forEach(function(name) {
+  emailProviderNames.forEach(function(name) {
     const btn = document.querySelector('label[onclick*="' + name + '"]');
+    const input = document.querySelector('input[name="email-provider"][value="' + name + '"]');
     if (!btn) return;
-    const active = provider === name;
+    const active = selectedEmailProviders.includes(name);
     btn.classList.toggle('is-active', active);
+    if (input) input.checked = active;
   });
 
   // 显示/隐藏配置块
   const moemailConfigDiv = document.getElementById('moemail-config-select');
   const cloudmailConfigDiv = document.getElementById('cloudmail-config-select');
-  const hintDiv = document.getElementById('email-provider-hint');
 
-  if (moemailConfigDiv) moemailConfigDiv.style.display = (provider === 'moemail') ? 'block' : 'none';
-  if (cloudmailConfigDiv) cloudmailConfigDiv.style.display = (provider === 'cloudmail') ? 'block' : 'none';
+  if (moemailConfigDiv) moemailConfigDiv.style.display = selectedEmailProviders.includes('moemail') ? 'block' : 'none';
+  if (cloudmailConfigDiv) cloudmailConfigDiv.style.display = selectedEmailProviders.includes('cloudmail') ? 'block' : 'none';
+  if (selectedEmailProviders.includes('moemail')) {
+    loadMoeMailDomainsToList(options.moemailSelection);
+  }
+  if (selectedEmailProviders.includes('cloudmail')) {
+    loadCloudMailDomainsToList();
+  }
+  updateEmailProviderHint(selectedEmailProviders[selectedEmailProviders.length - 1], options);
+  if (!options.skipSave && typeof scheduleRegistrationConfigSave === 'function') {
+    scheduleRegistrationConfigSave();
+  }
+}
+
+function toggleEmailProvider(provider, options) {
+  options = options || {};
+  const current = getSelectedEmailProviders();
+  const exists = current.includes(provider);
+  if (exists && current.length === 1) {
+    if (typeof showToast === 'function') showToast('至少选择一个邮箱渠道', 'error');
+    setEmailProviders(current, { skipSave: true });
+    return;
+  }
+  const next = exists ? current.filter(item => item !== provider) : current.concat(provider);
+  setEmailProviders(next, options);
+}
+
+function updateEmailProviderHint(provider, options) {
+  options = options || {};
+  const hintDiv = document.getElementById('email-provider-hint');
+  if (!hintDiv) return;
+  if (selectedEmailProviders.length > 1) {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = '已选择 ' + selectedEmailProviders.length + ' 个邮箱渠道，注册时会按渠道轮询。';
+    return;
+  }
 
   if (provider === 'moemail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.moemailHint', '使用 MoeMail 临时邮箱进行注册，每次任务会自动生成新邮箱。');
     hintDiv.setAttribute('data-i18n', 'register.moemailHint');
-    loadMoeMailDomainsToList(options.moemailSelection);
   } else if (provider === 'mailporary') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.mailporaryHint', '使用 Mailporary 零配置临时邮箱进行注册。');
@@ -314,16 +363,12 @@ function selectEmailProvider(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');
     hintDiv.setAttribute('data-i18n', 'register.cloudmailHint');
-    loadCloudMailDomainsToList();
   } else {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.outlookHintFull', '使用微软邮箱进行注册，代理配置请在设置页设置。');
     hintDiv.setAttribute('data-i18n', 'register.outlookHintFull');
   }
 
-  if (!options.skipSave && typeof scheduleRegistrationConfigSave === 'function') {
-    scheduleRegistrationConfigSave();
-  }
 }
 
 function _uiT(key, fallback) {

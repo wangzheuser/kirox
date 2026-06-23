@@ -17,7 +17,7 @@ test('email provider options use a uniform grid layout', () => {
 
 test('every email provider is rendered as a non-wrapping card', () => {
   for (const provider of providers) {
-    assert.match(html, new RegExp(`class="email-provider-card"[^>]+selectEmailProvider\\('${provider}'\\)`));
+    assert.match(html, new RegExp(`class="email-provider-card"[^>]+toggleEmailProvider\\('${provider}'\\)`));
     assert.match(html, new RegExp(`id="provider-${provider}" class="email-provider-content"`));
   }
   assert.match(componentsCss, /\.email-provider-card\s*\{/);

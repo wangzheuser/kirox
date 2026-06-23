@@ -8,7 +8,7 @@ const uiJs = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
 const i18nJs = fs.readFileSync(new URL('../js/i18n.js', import.meta.url), 'utf8');
 
 test('registration page exposes FreeCustom.Email provider', () => {
-  assert.match(html, /selectEmailProvider\('freecustom'\)/);
+  assert.match(html, /toggleEmailProvider\('freecustom'\)/);
   assert.match(html, /value="freecustom"/);
   assert.match(html, />FreeCustom\.Email</);
 });
@@ -20,9 +20,9 @@ test('provider selection styles and hints include FreeCustom.Email', () => {
 });
 
 test('FreeCustom.Email is a zero-config provider in start payload', () => {
-  assert.match(appJs, /config\.emailProvider === 'moemail'/);
-  assert.match(appJs, /config\.emailProvider === 'cloudmail'/);
-  assert.doesNotMatch(appJs, /config\.emailProvider === 'freecustom'[\s\S]{0,500}throw new Error/);
+  assert.match(appJs, /config\.emailProviders\.includes\('moemail'\)/);
+  assert.match(appJs, /config\.emailProviders\.includes\('cloudmail'\)/);
+  assert.doesNotMatch(appJs, /config\.emailProviders\.includes\('freecustom'\)[\s\S]{0,500}throw new Error/);
 });
 
 test('FreeCustom.Email translations exist', () => {

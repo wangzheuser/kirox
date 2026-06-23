@@ -8,7 +8,7 @@ const uiJs = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
 const i18nJs = fs.readFileSync(new URL('../js/i18n.js', import.meta.url), 'utf8');
 
 test('registration page exposes DropMail provider', () => {
-  assert.match(html, /selectEmailProvider\('dropmail'\)/);
+  assert.match(html, /toggleEmailProvider\('dropmail'\)/);
   assert.match(html, /value="dropmail"/);
   assert.match(html, />DropMail</);
 });
@@ -20,9 +20,9 @@ test('provider selection styles and hints include DropMail', () => {
 });
 
 test('DropMail is a zero-config provider in start payload', () => {
-  assert.match(appJs, /config\.emailProvider === 'moemail'/);
-  assert.match(appJs, /config\.emailProvider === 'cloudmail'/);
-  assert.doesNotMatch(appJs, /config\.emailProvider === 'dropmail'[\s\S]{0,500}throw new Error/);
+  assert.match(appJs, /config\.emailProviders\.includes\('moemail'\)/);
+  assert.match(appJs, /config\.emailProviders\.includes\('cloudmail'\)/);
+  assert.doesNotMatch(appJs, /config\.emailProviders\.includes\('dropmail'\)[\s\S]{0,500}throw new Error/);
 });
 
 test('DropMail translations exist', () => {

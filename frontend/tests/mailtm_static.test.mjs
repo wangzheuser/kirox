@@ -8,7 +8,7 @@ const uiJs = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
 const i18nJs = fs.readFileSync(new URL('../js/i18n.js', import.meta.url), 'utf8');
 
 test('registration page exposes mail.tm provider', () => {
-  assert.match(html, /selectEmailProvider\('mailtm'\)/);
+  assert.match(html, /toggleEmailProvider\('mailtm'\)/);
   assert.match(html, /value="mailtm"/);
   assert.match(html, />mail\.tm</);
 });
@@ -20,9 +20,9 @@ test('provider selection styles and hints include mail.tm', () => {
 });
 
 test('mail.tm is a zero-config provider in start payload', () => {
-  assert.match(appJs, /config\.emailProvider === 'moemail'/);
-  assert.match(appJs, /config\.emailProvider === 'cloudmail'/);
-  assert.doesNotMatch(appJs, /config\.emailProvider === 'mailtm'[\s\S]{0,500}throw new Error/);
+  assert.match(appJs, /config\.emailProviders\.includes\('moemail'\)/);
+  assert.match(appJs, /config\.emailProviders\.includes\('cloudmail'\)/);
+  assert.doesNotMatch(appJs, /config\.emailProviders\.includes\('mailtm'\)[\s\S]{0,500}throw new Error/);
 });
 
 test('mail.tm translations exist', () => {

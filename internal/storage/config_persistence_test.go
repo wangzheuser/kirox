@@ -60,7 +60,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 		SuccessTarget:     5,
 		Concurrency:       3,
 		Delay:             0,
-		EmailProvider:     "moemail",
+		EmailProviders:    []string{"moemail", "emailnator", "moemail"},
 		MoeMailDomainMode: "custom",
 		MoeMailDomains:    []string{"alpha.example", "beta.example"},
 		ReuseFailedEmail:  true,
@@ -101,7 +101,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if got := GetVerifyModelsEnabled(); !got {
 		t.Fatalf("verify models true should persist")
 	}
-	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || got.EmailProvider != "moemail" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.ReuseFailedEmail || !got.Saved {
+	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || strings.Join(got.EmailProviders, ",") != "moemail,emailnator" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.ReuseFailedEmail || !got.Saved {
 		t.Fatalf("registration config round-trip failed: got %+v", got)
 	}
 
@@ -111,6 +111,12 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	}
 	if _, ok := saved["outlook_register_domain_override"]; ok {
 		t.Fatalf("deprecated outlook_register_domain_override should not be written back")
+	}
+	if _, ok := saved["registration_email_provider"]; ok {
+		t.Fatalf("deprecated registration_email_provider should not be written back")
+	}
+	if got := saved[keyRegistrationEmailProviders]; got != `["moemail","emailnator"]` {
+		t.Fatalf("email providers should be persisted as ordered list, got %q", got)
 	}
 }
 
@@ -183,60 +189,67 @@ func TestRegistrationConfigDefaultsAndValidation(t *testing.T) {
 	withTempStorageConfig(t, "")
 
 	defaults := GetRegistrationConfig()
-	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || defaults.EmailProvider != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.ReuseFailedEmail || defaults.Saved {
+	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || strings.Join(defaults.EmailProviders, ",") != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.ReuseFailedEmail || defaults.Saved {
 		t.Fatalf("registration defaults mismatch: got %+v", defaults)
 	}
 
-	if err := SetRegistrationConfig(RegistrationConfig{Count: 0, Concurrency: 1, Delay: 0, EmailProvider: "outlook"}); err == nil {
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 0, Concurrency: 1, Delay: 0, EmailProviders: []string{"outlook"}}); err == nil {
 		t.Fatalf("count < 1 should be rejected")
 	}
-	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, SuccessTarget: -1, Concurrency: 1, Delay: 0, EmailProvider: "outlook"}); err == nil {
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, SuccessTarget: -1, Concurrency: 1, Delay: 0, EmailProviders: []string{"outlook"}}); err == nil {
 		t.Fatalf("success target < 0 should be rejected")
 	}
-	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 0, Delay: 0, EmailProvider: "outlook"}); err == nil {
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 0, Delay: 0, EmailProviders: []string{"outlook"}}); err == nil {
 		t.Fatalf("concurrency < 1 should be rejected")
 	}
-	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: -1, EmailProvider: "outlook"}); err == nil {
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: -1, EmailProviders: []string{"outlook"}}); err == nil {
 		t.Fatalf("negative delay should be rejected")
 	}
-	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: 0, EmailProvider: "invalid"}); err == nil {
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: 0, EmailProviders: []string{"invalid"}}); err == nil {
 		t.Fatalf("invalid email provider should be rejected")
 	}
 }
 
-func TestRegistrationConfigAcceptsEmailnatorProvider(t *testing.T) {
+func TestRegistrationConfigAcceptsMultipleEmailProviders(t *testing.T) {
 	withTempStorageConfig(t, "")
 
 	if err := SetRegistrationConfig(RegistrationConfig{
-		Count:         1,
-		Concurrency:   1,
-		Delay:         0,
-		EmailProvider: "emailnator",
+		Count:          1,
+		Concurrency:    1,
+		Delay:          0,
+		EmailProviders: []string{" emailnator ", "mailgw", "emailnator"},
 	}); err != nil {
-		t.Fatalf("emailnator provider should be accepted: %v", err)
+		t.Fatalf("multiple providers should be accepted: %v", err)
 	}
 
-	if got := GetRegistrationConfig(); got.EmailProvider != "emailnator" {
-		t.Fatalf("EmailProvider = %q, want emailnator", got.EmailProvider)
+	if got := GetRegistrationConfig(); strings.Join(got.EmailProviders, ",") != "emailnator,mailgw" {
+		t.Fatalf("EmailProviders = %#v, want emailnator,mailgw", got.EmailProviders)
 	}
 }
 
-func TestRegistrationConfigAcceptsMailGWProvider(t *testing.T) {
+func TestRegistrationConfigIgnoresDeprecatedSingleEmailProviderKey(t *testing.T) {
+	withTempStorageConfig(t, "registration_email_provider=moemail\n")
+
+	if got := GetRegistrationConfig(); strings.Join(got.EmailProviders, ",") != "outlook" || got.Saved {
+		t.Fatalf("deprecated single provider key should be ignored, got %+v", got)
+	}
+}
+
+func TestRegistrationConfigEmptyEmailProviderListDefaultsOutlook(t *testing.T) {
 	withTempStorageConfig(t, "")
 
-	cfg := RegistrationConfig{
-		Count:         1,
-		SuccessTarget: 1,
-		Concurrency:   1,
-		Delay:         0,
-		RetryCount:    0,
-		OTPTimeout:    120,
-		EmailProvider: "mailgw",
+	if err := SetRegistrationConfig(RegistrationConfig{
+		Count:          1,
+		SuccessTarget:  1,
+		Concurrency:    1,
+		Delay:          0,
+		RetryCount:     0,
+		OTPTimeout:     120,
+		EmailProviders: []string{"", "  "},
+	}); err != nil {
+		t.Fatalf("empty provider list should fall back to outlook: %v", err)
 	}
-	if err := SetRegistrationConfig(cfg); err != nil {
-		t.Fatalf("SetRegistrationConfig(mailgw) error: %v", err)
-	}
-	if got := GetRegistrationConfig(); got.EmailProvider != "mailgw" {
-		t.Fatalf("EmailProvider=%q, want mailgw", got.EmailProvider)
+	if got := GetRegistrationConfig(); strings.Join(got.EmailProviders, ",") != "outlook" {
+		t.Fatalf("EmailProviders=%#v, want outlook", got.EmailProviders)
 	}
 }

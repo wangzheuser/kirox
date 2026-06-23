@@ -8,7 +8,7 @@ const uiJs = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
 const i18nJs = fs.readFileSync(new URL('../js/i18n.js', import.meta.url), 'utf8');
 
 test('registration page exposes mail.gw provider', () => {
-  assert.match(html, /selectEmailProvider\('mailgw'\)/);
+  assert.match(html, /toggleEmailProvider\('mailgw'\)/);
   assert.match(html, /value="mailgw"/);
   assert.match(html, />mail\.gw</);
 });
@@ -20,9 +20,9 @@ test('provider selection styles and hints include mail.gw', () => {
 });
 
 test('mail.gw is a zero-config provider in start payload', () => {
-  assert.match(appJs, /config\.emailProvider === 'moemail'/);
-  assert.match(appJs, /config\.emailProvider === 'cloudmail'/);
-  assert.doesNotMatch(appJs, /config\.emailProvider === 'mailgw'[\s\S]{0,500}throw new Error/);
+  assert.match(appJs, /config\.emailProviders\.includes\('moemail'\)/);
+  assert.match(appJs, /config\.emailProviders\.includes\('cloudmail'\)/);
+  assert.doesNotMatch(appJs, /config\.emailProviders\.includes\('mailgw'\)[\s\S]{0,500}throw new Error/);
 });
 
 test('mail.gw translations exist', () => {

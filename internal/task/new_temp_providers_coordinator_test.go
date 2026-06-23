@@ -14,7 +14,7 @@ func TestNewZeroConfigProvidersDoNotRequireOutlookAccounts(t *testing.T) {
 			Manager.running = false
 			Manager.mu.Unlock()
 
-			result := StartTask(StartTaskRequest{Count: 1, EmailProvider: provider})
+			result := StartTask(StartTaskRequest{Count: 1, EmailProviders: []string{provider}})
 			if errText, _ := result["error"].(string); strings.Contains(errText, "微软邮箱") || strings.Contains(errText, "Outlook") {
 				t.Fatalf("%s should not require Outlook accounts, got error %q", provider, errText)
 			}

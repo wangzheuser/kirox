@@ -25,13 +25,28 @@ test('registration form is persisted through backend APIs instead of long-term l
   assert.match(appJs, /SetRegistrationConfig\(/);
   assert.match(appJs, /successTarget:\s*readIntegerInput\(['"]cfg-success-target['"]/);
   assert.match(appJs, /reuseFailedEmail:\s*readCheckboxInput\(['"]cfg-reuse-failed-email['"]/);
+  assert.match(appJs, /emailProviders:\s*getSelectedEmailProviders\(\)/);
+  assert.doesNotMatch(appJs, /emailProvider:\s*selectedEmailProvider/);
   assert.match(appJs, /writeIntegerInput\(['"]cfg-success-target['"]\s*,\s*cfg\.successTarget/);
   assert.match(appJs, /writeCheckboxInput\(['"]cfg-reuse-failed-email['"]\s*,\s*cfg\.reuseFailedEmail/);
   assert.match(appJs, /\['cfg-count',\s*'cfg-success-target'/);
   assert.match(appJs, /\['cfg-reuse-failed-email'\]/);
   assert.doesNotMatch(appJs, /localStorage\.setItem\(['"]kiro-config['"]/);
   assert.doesNotMatch(appJs, /cfg\.delay\s*\|\|/);
-  assert.match(appJs, /localStorage\.removeItem\(['"]kiro-config['"]\)/);
+  assert.doesNotMatch(appJs, /migrateLegacyRegistrationConfigIfNeeded/);
+});
+
+test('registration email providers are multi-select only', () => {
+  assert.doesNotMatch(html, /type="radio"\s+name="email-provider"/);
+  assert.match(html, /type="checkbox"\s+name="email-provider"/);
+  assert.match(html, /onclick="toggleEmailProvider\('outlook'\);\s*return false;"/);
+  assert.match(uiJs, /var selectedEmailProviders = \['outlook'\]/);
+  assert.match(uiJs, /function setEmailProviders\(providers, options\)/);
+  assert.match(uiJs, /function toggleEmailProvider\(provider, options\)/);
+  assert.match(uiJs, /selectedEmailProviders\.includes\('moemail'\)/);
+  assert.match(uiJs, /selectedEmailProviders\.includes\('cloudmail'\)/);
+  assert.match(appJs, /cfg\.emailProviders/);
+  assert.doesNotMatch(appJs, /cfg\.emailProvider\b/);
 });
 
 test('wails wrappers expose persistent config APIs', () => {

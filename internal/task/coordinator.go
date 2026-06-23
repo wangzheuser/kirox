@@ -363,7 +363,7 @@ type StartTaskRequest struct {
 	OTPTimeout        int                              `json:"otpTimeout"`
 	ReuseFailedEmail  bool                             `json:"reuseFailedEmail"`
 	OutputPath        string                           `json:"outputPath"`
-	EmailProvider     string                           `json:"emailProvider"`     // "outlook"、"moemail"、"mailporary"、"emailnator"、"mailgw"、"mailtm"、"tempmail_lol"、"guerrillamail"、"mailtemp"、"tempmail_plus"、"inboxkitten"、"inboxes"、"freecustom"、"dropmail" 或 "cloudmail"
+	EmailProviders    []string                         `json:"emailProviders"`    // 多邮箱渠道，按注册 attempt 轮询
 	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
 	MoeMailConfigs    map[string][]email.MoeMailConfig `json:"moemailConfigs"`    // 域名 -> 配置列表映射
 	MoeMailRandomMode bool                             `json:"moemailRandomMode"` // 是否为随机模式
@@ -371,6 +371,51 @@ type StartTaskRequest struct {
 	CloudMailDomains    []string                           `json:"cloudmailDomains"`
 	CloudMailConfigs    map[string][]email.CloudMailConfig `json:"cloudmailConfigs"`
 	CloudMailRandomMode bool                               `json:"cloudmailRandomMode"`
+}
+
+type emailProviderSelector struct {
+	mu        sync.Mutex
+	providers []string
+	next      int
+}
+
+func newEmailProviderSelector(providers []string) *emailProviderSelector {
+	return &emailProviderSelector{providers: append([]string(nil), providers...)}
+}
+
+func (s *emailProviderSelector) Next() string {
+	if s == nil {
+		return "outlook"
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.providers) == 0 {
+		return "outlook"
+	}
+	provider := s.providers[s.next%len(s.providers)]
+	s.next++
+	return provider
+}
+
+func normalizeStartEmailProviders(providers []string) ([]string, error) {
+	return storage.NormalizeRegistrationEmailProviders(providers)
+}
+
+func startRequestUsesProvider(req StartTaskRequest, provider string) bool {
+	providers, err := normalizeStartEmailProviders(req.EmailProviders)
+	if err != nil {
+		return false
+	}
+	return emailProviderListContains(providers, provider)
+}
+
+func emailProviderListContains(providers []string, provider string) bool {
+	for _, item := range providers {
+		if item == provider {
+			return true
+		}
+	}
+	return false
 }
 
 type reusableEmailCandidate struct {
@@ -749,7 +794,7 @@ func logOutlookGraphRegistrationChoice(imported, primary, registration, mode str
 }
 
 func prepareMoeMailStartRequest(req StartTaskRequest, loadSavedConfigs func() []email.MoeMailConfig) StartTaskRequest {
-	if strings.TrimSpace(req.EmailProvider) != "moemail" || len(req.MoeMailDomains) == 0 || loadSavedConfigs == nil {
+	if !startRequestUsesProvider(req, "moemail") || len(req.MoeMailDomains) == 0 || loadSavedConfigs == nil {
 		return req
 	}
 
@@ -789,7 +834,7 @@ func prepareMoeMailStartRequest(req StartTaskRequest, loadSavedConfigs func() []
 }
 
 func validateMoeMailDeliverability(req StartTaskRequest, hasMX func(string) (bool, error)) error {
-	if strings.TrimSpace(req.EmailProvider) != "moemail" || hasMX == nil {
+	if !startRequestUsesProvider(req, "moemail") || hasMX == nil {
 		return nil
 	}
 	for _, domain := range req.MoeMailDomains {
@@ -826,16 +871,17 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 
 	req = prepareMoeMailStartRequest(req, email.GetMoeMailConfigs)
 
-	// 根据邮箱提供商类型处理
-	emailProvider := req.EmailProvider
-	if emailProvider == "" {
-		emailProvider = "outlook" // 默认使用 Outlook
+	emailProviders, err := normalizeStartEmailProviders(req.EmailProviders)
+	if err != nil {
+		Manager.mu.Unlock()
+		return map[string]interface{}{"error": err.Error()}
 	}
+	req.EmailProviders = emailProviders
 	effectiveTarget := effectiveSuccessTarget(req)
 
 	var outlookAccounts []email.OutlookAccount
 
-	if emailProvider == "moemail" {
+	if startRequestUsesProvider(req, "moemail") {
 		// MoeMail 模式：验证域名和配置
 		if len(req.MoeMailDomains) == 0 {
 			Manager.mu.Unlock()
@@ -850,9 +896,8 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 			return map[string]interface{}{"error": err.Error()}
 		}
 		// MoeMail 不需要预先加载账号，每次任务动态生成
-	} else if isTemporaryEmailProvider(emailProvider) {
-		// Mailporary / Emailnator / mail.gw / mail.tm / TempMail.lol / InboxKitten / Inboxes 为零配置临时邮箱，不需要预加载账号或域名配置。
-	} else if emailProvider == "cloudmail" {
+	}
+	if startRequestUsesProvider(req, "cloudmail") {
 		if len(req.CloudMailDomains) == 0 {
 			Manager.mu.Unlock()
 			return map[string]interface{}{"error": "请选择至少一个 cloud-mail 域名"}
@@ -861,10 +906,12 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 			Manager.mu.Unlock()
 			return map[string]interface{}{"error": "cloud-mail 配置缺失"}
 		}
-	} else {
+	}
+	if startRequestUsesProvider(req, "outlook") {
 		// Outlook 模式：加载账号列表
 		storedAccounts := storage.GetAccountsCached()
-		if len(storedAccounts) == 0 {
+		onlyOutlook := len(emailProviders) == 1
+		if len(storedAccounts) == 0 && onlyOutlook {
 			Manager.mu.Unlock()
 			return map[string]interface{}{"error": "请先添加微软邮箱账号"}
 		}
@@ -873,12 +920,12 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 		// 避免每次启动都卡在同一个已知被目标拒绝的邮箱/域组合。
 		outlookAccounts = buildAvailableOutlookAccounts(storedAccounts)
 
-		if len(outlookAccounts) == 0 {
+		if len(outlookAccounts) == 0 && onlyOutlook {
 			Manager.mu.Unlock()
 			return map[string]interface{}{"error": "没有可用的 Outlook 账号（所有账号已注册成功）"}
 		}
 
-		if len(outlookAccounts) < effectiveTarget {
+		if onlyOutlook && len(outlookAccounts) < effectiveTarget {
 			Manager.mu.Unlock()
 			// 返回确认类型响应，由前端弹窗让用户选择是否继续
 			return map[string]interface{}{
@@ -909,7 +956,7 @@ func startTask(req StartTaskRequest) map[string]interface{} {
 	Manager.logsMu.Unlock()
 
 	// 后台执行
-	go runBatch(req, emailProvider, outlookAccounts)
+	go runBatch(req, outlookAccounts)
 
 	return map[string]interface{}{"status": "started"}
 }
@@ -940,7 +987,7 @@ func StopTask(force bool) map[string]interface{} {
 }
 
 // runBatch 执行批量注册
-func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []email.OutlookAccount) {
+func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 	// 创建可取消的 context，停止时立即中断所有 HTTP 请求
 	taskCtx, taskCancel := context.WithCancel(context.Background())
 	defer taskCancel()
@@ -969,6 +1016,20 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		}
 	}()
 
+	emailProviders, err := normalizeStartEmailProviders(req.EmailProviders)
+	if err != nil {
+		log.Printf("[Kiro] 邮箱渠道配置无效: %v", err)
+		Manager.mu.Lock()
+		Manager.completed = successTarget
+		Manager.failed = successTarget
+		Manager.mu.Unlock()
+		return
+	}
+	req.EmailProviders = emailProviders
+	providerSelector := newEmailProviderSelector(emailProviders)
+	onlyOutlookProvider := len(emailProviders) == 1 && emailProviders[0] == "outlook"
+	log.Printf("[Kiro] 邮箱渠道轮询: %s", strings.Join(emailProviders, ","))
+
 	outDir := req.OutputPath
 	if outDir == "" {
 		outDir = storage.GetResultOutputDir()
@@ -981,7 +1042,6 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	}
 
 	taskConfig := core.NewConfig()
-	taskConfig.EmailProvider = emailProvider
 	taskConfig.EmailProxy = storage.GetEmailProxy()
 	taskConfig.OutlookScope = storage.GetOutlookScope()
 	taskConfig.VerifyModelsEnabled = storage.GetVerifyModelsEnabled()
@@ -1070,8 +1130,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 	// 预先准备 MoeMail 域名池
 	var moemailDomainPool []string
 	var moemailDomainConfigs map[string][]email.MoeMailConfig
-	if emailProvider == "moemail" {
-		taskConfig.UseMoeMail = true
+	if emailProviderListContains(emailProviders, "moemail") {
 		moemailDomainPool = req.MoeMailDomains
 		moemailDomainConfigs = req.MoeMailConfigs
 
@@ -1084,84 +1143,20 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		}
 
 		log.Printf("[Kiro] MoeMail 域名池: %v (共 %d 个域名)", moemailDomainPool, len(moemailDomainPool))
-	} else if emailProvider == "outlook" {
-		taskConfig.UseOutlook = true
+	}
+	if emailProviderListContains(emailProviders, "outlook") {
 		log.Printf("[Kiro] Outlook 读取方式: %s", taskConfig.OutlookScope)
-	} else if emailProvider == "mailporary" {
-		log.Println("[Kiro] Mailporary 零配置邮箱模式")
-	} else if emailProvider == "emailnator" {
-		log.Println("[Kiro] Emailnator 零配置邮箱模式")
-	} else if emailProvider == "mailgw" {
-		log.Println("[Kiro] mail.gw 零配置邮箱模式")
-	} else if emailProvider == "mailtm" {
-		log.Println("[Kiro] mail.tm 零配置邮箱模式")
-	} else if emailProvider == "tempmail_lol" {
-		log.Println("[Kiro] TempMail.lol 零配置邮箱模式")
-	} else if emailProvider == "guerrillamail" {
-		log.Println("[Kiro] GuerrillaMail 零配置邮箱模式")
-	} else if emailProvider == "mailtemp" {
-		log.Println("[Kiro] MailTemp 零配置邮箱模式")
-	} else if emailProvider == "tempmail_plus" {
-		log.Println("[Kiro] TempMail.plus 零配置邮箱模式")
-	} else if emailProvider == "inboxkitten" {
-		log.Println("[Kiro] InboxKitten 零配置邮箱模式")
-	} else if emailProvider == "inboxes" {
-		log.Println("[Kiro] Inboxes 零配置邮箱模式")
-	} else if emailProvider == "freecustom" {
-		log.Println("[Kiro] FreeCustom.Email 零配置邮箱模式")
-	} else if emailProvider == "dropmail" {
-		log.Println("[Kiro] DropMail 零配置邮箱模式")
-	} else if emailProvider == "mailcatch" {
-		log.Println("[Kiro] MailCatch 零配置邮箱模式")
-	} else if emailProvider == "tempmailo" {
-		log.Println("[Kiro] TempMailo 零配置邮箱模式")
-	} else if emailProvider == "generator_email" {
-		log.Println("[Kiro] Generator.Email 零配置邮箱模式")
-	} else if emailProvider == "mailtowin" {
-		log.Println("[Kiro] MailToWin 零配置邮箱模式")
-	} else if emailProvider == "mail2me" {
-		log.Println("[Kiro] Mail2Me 零配置邮箱模式")
-	} else if emailProvider == "pickmemail" {
-		log.Println("[Kiro] PickMeMail 零配置邮箱模式")
-	} else if emailProvider == "maximail" {
-		log.Println("[Kiro] MaxiMail 零配置邮箱模式")
-	} else if emailProvider == "emlpro" {
-		log.Println("[Kiro] EmlPro 零配置邮箱模式")
-	} else if emailProvider == "freeml" {
-		log.Println("[Kiro] FreeML 零配置邮箱模式")
-	} else if emailProvider == "emlhub" {
-		log.Println("[Kiro] EmlHub 零配置邮箱模式")
-	} else if emailProvider == "emltmp" {
-		log.Println("[Kiro] EmlTmp 零配置邮箱模式")
-	} else if emailProvider == "mailpwr" {
-		log.Println("[Kiro] MailPwr 零配置邮箱模式")
-	} else if emailProvider == "tenmail" {
-		log.Println("[Kiro] 10Mail 零配置邮箱模式")
-	} else if emailProvider == "dropmail_me" {
-		log.Println("[Kiro] DropMail.me 零配置邮箱模式")
-	} else if emailProvider == "mimimail" {
-		log.Println("[Kiro] MimiMail 零配置邮箱模式")
-	} else if emailProvider == "pickmail" {
-		log.Println("[Kiro] PickMail 零配置邮箱模式")
-	} else if emailProvider == "spymail" {
-		log.Println("[Kiro] SpyMail 零配置邮箱模式")
-	} else if emailProvider == "yomail" {
-		log.Println("[Kiro] YoMail 零配置邮箱模式")
-	} else if emailProvider == "tmio_bltiwd" {
-		log.Println("[Kiro] TempMailIO bltiwd.com 零配置邮箱模式")
-	} else if emailProvider == "tmio_wnbaldwy" {
-		log.Println("[Kiro] TempMailIO wnbaldwy.com 零配置邮箱模式")
-	} else if emailProvider == "tmio_bwmyga" {
-		log.Println("[Kiro] TempMailIO bwmyga.com 零配置邮箱模式")
-	} else if emailProvider == "tmio_ozsaip" {
-		log.Println("[Kiro] TempMailIO ozsaip.com 零配置邮箱模式")
+	}
+	for _, provider := range emailProviders {
+		if isTemporaryEmailProvider(provider) {
+			log.Printf("[Kiro] %s 零配置邮箱模式", emailProviderDisplayName(provider))
+		}
 	}
 
 	// 预先准备 CloudMail 域名池
 	var cloudmailDomainPool []string
 	var cloudmailDomainConfigs map[string][]email.CloudMailConfig
-	if emailProvider == "cloudmail" {
-		taskConfig.UseCloudMail = true
+	if emailProviderListContains(emailProviders, "cloudmail") {
 		cloudmailDomainPool = req.CloudMailDomains
 		cloudmailDomainConfigs = req.CloudMailConfigs
 
@@ -1326,7 +1321,13 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 		}
 
 		taskCfg := *taskConfig
+		emailProvider := providerSelector.Next()
+		taskCfg.EmailProvider = emailProvider
+		taskCfg.UseOutlook = emailProvider == "outlook"
+		taskCfg.UseMoeMail = emailProvider == "moemail"
+		taskCfg.UseCloudMail = emailProvider == "cloudmail"
 		taskCfg.Password = core.GenPassword()
+		log.Printf("[Kiro][%d/%d] 本次邮箱渠道: %s", i+1, displayTotal, emailProviderDisplayName(emailProvider))
 		var accountEmail string
 		if proxyMode == storage.ProxyModePool {
 			// 多代理池作为独立模式：仅在 pool 模式下按权重为本次注册选择代理。
@@ -1443,7 +1444,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				Manager.completed++
 				Manager.failed++
 				Manager.mu.Unlock()
-				if successTargetMode {
+				if successTargetMode && onlyOutlookProvider {
 					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止成功目标模式")
 				}
 				return
@@ -2175,7 +2176,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				}
 			}
 
-			if currentClashAssisted && isModelVerificationAccessDeniedError(errorMsg) && !shouldRotateOutlookAfterPostPasswordModelFailure(taskConfig.UseOutlook, result) && proxySwitches < maxProxySwitches {
+			if currentClashAssisted && isModelVerificationAccessDeniedError(errorMsg) && !shouldRotateOutlookAfterPostPasswordModelFailure(taskCfg.UseOutlook, result) && proxySwitches < maxProxySwitches {
 				if currentClashFingerprintPrefix == "" {
 					currentClashFingerprintPrefix = clashFingerprintPrefix
 				}
@@ -2260,7 +2261,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			}
 
 			// 邮箱已注册：标记当前账号，换号重来（重置 attempt）
-			if taskConfig.UseOutlook && strings.Contains(errorMsg, "邮箱已注册过") {
+			if taskCfg.UseOutlook && strings.Contains(errorMsg, "邮箱已注册过") {
 				log.Printf("[Kiro][%d/%d] %s 已注册，标记并换号", i+1, displayTotal, currentEmail)
 				statsMu.Lock()
 				runtimeStats.RecordRegisteredSkip()
@@ -2277,7 +2278,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				}
 				// 账号池耗尽
 				log.Printf("[Kiro][%d/%d] 账号池已耗尽", i+1, displayTotal)
-				if successTargetMode {
+				if successTargetMode && onlyOutlookProvider {
 					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止成功目标模式")
 				}
 				break
@@ -2285,7 +2286,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 			// Outlook Graph refresh_token 失效/风控账号：send-otp 已发出，但该邮箱不可收信，
 			// 标记异常并立即换下一个 Outlook 账号，避免卡在同一坏账号上等待/重试。
-			if taskConfig.UseOutlook && shouldRotateOutlookAccountAfterFailure(errorMsg) {
+			if taskCfg.UseOutlook && shouldRotateOutlookAccountAfterFailure(errorMsg) {
 				failReason := classifyError(errorMsg)
 				log.Printf("[Kiro][%d/%d] Outlook 账号异常，标记并换号: %s (%s)", i+1, displayTotal, currentEmail, failReason)
 				email.UpdateAccountStatus(accountEmail, true, false, failReason)
@@ -2295,7 +2296,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 					continue retryLoop
 				}
 				log.Printf("[Kiro][%d/%d] Outlook 账号池已耗尽", i+1, displayTotal)
-				if successTargetMode {
+				if successTargetMode && onlyOutlookProvider {
 					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止成功目标模式")
 				}
 				break
@@ -2304,7 +2305,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 			// models 403 发生在 SetPassword 之后：邮箱已被消耗，但该账号无法正常拉模型。
 			// 对 Outlook 账号池而言，这类账号应标记为已注册失败并换下一个账号补齐当前序号，
 			// 避免 Count=3 时因为账号级模型权限未放行而直接变成 0/3 或 2/3。
-			if shouldRotateOutlookAfterPostPasswordAccountFailure(taskConfig.UseOutlook, result) {
+			if shouldRotateOutlookAfterPostPasswordAccountFailure(taskCfg.UseOutlook, result) {
 				failReason := classifyError(errorMsg)
 				log.Printf("[Kiro][%d/%d] Outlook 账号注册后不可用，标记并换号补齐: %s (%s)", i+1, displayTotal, currentEmail, failReason)
 				if currentClashAssisted && currentClashNode != "" && isPostPasswordSuspendedAccountFailure(errorMsg) {
@@ -2330,7 +2331,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 					continue retryLoop
 				}
 				log.Printf("[Kiro][%d/%d] Outlook 账号池已耗尽", i+1, displayTotal)
-				if successTargetMode {
+				if successTargetMode && onlyOutlookProvider {
 					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止成功目标模式")
 				}
 				break
@@ -2404,7 +2405,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 				sendOTPDiagnostics = append(sendOTPDiagnostics, diag)
 			}
 		}
-		shouldStopForOTPTimeouts := shouldStopForOutlookOTPTimeout(taskConfig.UseOutlook, success, failReason, successTargetMode, &otpTimeoutStreak)
+		shouldStopForOTPTimeouts := shouldStopForOutlookOTPTimeout(taskCfg.UseOutlook, success, failReason, successTargetMode, &otpTimeoutStreak)
 		if success || (!success && failReason != "验证码超时") {
 			otpTimeoutStreak.Record(failReason)
 		}
@@ -2437,7 +2438,7 @@ func runBatch(req StartTaskRequest, emailProvider string, outlookAccounts []emai
 
 		// 邮箱状态标记：registered 仍仅在设密码后置为 true（保持可重试语义不变），
 		// 但失败原因 failReason 无论失败发生在哪个阶段都记录，供前端按类型筛选。
-		if taskConfig.UseOutlook && accountEmail != "" {
+		if taskCfg.UseOutlook && accountEmail != "" {
 			passwordSet, _ := result["passwordSet"].(bool)
 			if passwordSet {
 				// 已走到设密码步骤：正式标记 registered，成功则清除失败原因
@@ -3431,6 +3432,87 @@ func shouldStopForOutlookOTPTimeout(useOutlook bool, success bool, failReason st
 	}
 	shouldStop := streak.Record(failReason)
 	return shouldStop && !successTargetMode
+}
+
+func emailProviderDisplayName(emailProvider string) string {
+	switch emailProvider {
+	case "outlook":
+		return "Outlook"
+	case "moemail":
+		return "MoeMail"
+	case "cloudmail":
+		return "cloud-mail"
+	case "mailporary":
+		return "Mailporary"
+	case "emailnator":
+		return "Emailnator"
+	case "mailgw":
+		return "mail.gw"
+	case "mailtm":
+		return "mail.tm"
+	case "tempmail_lol":
+		return "TempMail.lol"
+	case "guerrillamail":
+		return "GuerrillaMail"
+	case "mailtemp":
+		return "MailTemp"
+	case "tempmail_plus":
+		return "TempMail.plus"
+	case "inboxkitten":
+		return "InboxKitten"
+	case "inboxes":
+		return "Inboxes"
+	case "freecustom":
+		return "FreeCustom.Email"
+	case "dropmail":
+		return "DropMail"
+	case "mailcatch":
+		return "MailCatch"
+	case "tempmailo":
+		return "TempMailo"
+	case "generator_email":
+		return "Generator.Email"
+	case "mailtowin":
+		return "MailToWin"
+	case "mail2me":
+		return "Mail2Me"
+	case "pickmemail":
+		return "PickMeMail"
+	case "maximail":
+		return "MaxiMail"
+	case "emlpro":
+		return "EmlPro"
+	case "freeml":
+		return "FreeML"
+	case "emlhub":
+		return "EmlHub"
+	case "emltmp":
+		return "EmlTmp"
+	case "mailpwr":
+		return "MailPwr"
+	case "tenmail":
+		return "10Mail"
+	case "dropmail_me":
+		return "DropMail.me"
+	case "mimimail":
+		return "MimiMail"
+	case "pickmail":
+		return "PickMail"
+	case "spymail":
+		return "SpyMail"
+	case "yomail":
+		return "YoMail"
+	case "tmio_bltiwd":
+		return "TempMailIO bltiwd.com"
+	case "tmio_wnbaldwy":
+		return "TempMailIO wnbaldwy.com"
+	case "tmio_bwmyga":
+		return "TempMailIO bwmyga.com"
+	case "tmio_ozsaip":
+		return "TempMailIO ozsaip.com"
+	default:
+		return emailProvider
+	}
 }
 
 func isTemporaryEmailProvider(emailProvider string) bool {

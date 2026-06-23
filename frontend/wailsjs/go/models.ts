@@ -149,7 +149,7 @@ export namespace storage {
 	    delay: number;
 	    retryCount: number;
 	    otpTimeout: number;
-	    emailProvider: string;
+	    emailProviders: string[];
 	    moemailDomainMode: string;
 	    moemailDomains: string[];
 	    reuseFailedEmail: boolean;
@@ -167,7 +167,7 @@ export namespace storage {
 	        this.delay = source["delay"];
 	        this.retryCount = source["retryCount"];
 	        this.otpTimeout = source["otpTimeout"];
-	        this.emailProvider = source["emailProvider"];
+	        this.emailProviders = source["emailProviders"];
 	        this.moemailDomainMode = source["moemailDomainMode"];
 	        this.moemailDomains = source["moemailDomains"];
 	        this.reuseFailedEmail = source["reuseFailedEmail"];
@@ -188,7 +188,7 @@ export namespace task {
 	    otpTimeout: number;
 	    reuseFailedEmail: boolean;
 	    outputPath: string;
-	    emailProvider: string;
+	    emailProviders: string[];
 	    moemailDomains: string[];
 	    moemailConfigs: Record<string, Array<email.MoeMailConfig>>;
 	    moemailRandomMode: boolean;
@@ -210,7 +210,7 @@ export namespace task {
 	        this.otpTimeout = source["otpTimeout"];
 	        this.reuseFailedEmail = source["reuseFailedEmail"];
 	        this.outputPath = source["outputPath"];
-	        this.emailProvider = source["emailProvider"];
+	        this.emailProviders = source["emailProviders"];
 	        this.moemailDomains = source["moemailDomains"];
 	        this.moemailConfigs = this.convertValues(source["moemailConfigs"], Array<email.MoeMailConfig>, true);
 	        this.moemailRandomMode = source["moemailRandomMode"];
@@ -239,4 +239,3 @@ export namespace task {
 	}
 
 }
-

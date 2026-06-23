@@ -7,12 +7,12 @@ func TestRegistrationConfigPersistsNewZeroConfigProviders(t *testing.T) {
 	for _, provider := range providers {
 		t.Run(provider, func(t *testing.T) {
 			withTempStorageConfig(t, "")
-			cfg := RegistrationConfig{Count: 1, SuccessTarget: 1, Concurrency: 1, Delay: 0, EmailProvider: provider}
+			cfg := RegistrationConfig{Count: 1, SuccessTarget: 1, Concurrency: 1, Delay: 0, EmailProviders: []string{provider}}
 			if err := SetRegistrationConfig(cfg); err != nil {
 				t.Fatalf("SetRegistrationConfig(%s) error: %v", provider, err)
 			}
-			if got := GetRegistrationConfig(); got.EmailProvider != provider {
-				t.Fatalf("EmailProvider=%q, want %s", got.EmailProvider, provider)
+			if got := GetRegistrationConfig(); len(got.EmailProviders) != 1 || got.EmailProviders[0] != provider {
+				t.Fatalf("EmailProviders=%#v, want %s", got.EmailProviders, provider)
 			}
 		})
 	}

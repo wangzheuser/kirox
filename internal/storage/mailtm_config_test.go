@@ -6,19 +6,19 @@ func TestRegistrationConfigAcceptsMailTMProvider(t *testing.T) {
 	withTempStorageConfig(t, "")
 
 	cfg := RegistrationConfig{
-		Count:         1,
-		SuccessTarget: 1,
-		Concurrency:   1,
-		Delay:         0,
-		RetryCount:    0,
-		OTPTimeout:    120,
-		EmailProvider: "mailtm",
+		Count:          1,
+		SuccessTarget:  1,
+		Concurrency:    1,
+		Delay:          0,
+		RetryCount:     0,
+		OTPTimeout:     120,
+		EmailProviders: []string{"mailtm"},
 	}
 	if err := SetRegistrationConfig(cfg); err != nil {
 		t.Fatalf("SetRegistrationConfig(mailtm) error: %v", err)
 	}
-	if got := GetRegistrationConfig(); got.EmailProvider != "mailtm" {
-		t.Fatalf("EmailProvider=%q, want mailtm", got.EmailProvider)
+	if got := GetRegistrationConfig(); len(got.EmailProviders) != 1 || got.EmailProviders[0] != "mailtm" {
+		t.Fatalf("EmailProviders=%#v, want mailtm", got.EmailProviders)
 	}
 }
 

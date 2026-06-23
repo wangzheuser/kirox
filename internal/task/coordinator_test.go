@@ -308,7 +308,7 @@ func TestMailGWDoesNotRequireOutlookAccounts(t *testing.T) {
 	Manager.running = false
 	Manager.mu.Unlock()
 
-	result := StartTask(StartTaskRequest{Count: 1, EmailProvider: "mailgw"})
+	result := StartTask(StartTaskRequest{Count: 1, EmailProviders: []string{"mailgw"}})
 	if errText, _ := result["error"].(string); strings.Contains(errText, "微软邮箱") || strings.Contains(errText, "Outlook") {
 		t.Fatalf("mailgw should not require Outlook accounts, got error %q", errText)
 	}
@@ -317,7 +317,7 @@ func TestMailGWDoesNotRequireOutlookAccounts(t *testing.T) {
 
 func TestPrepareMoeMailStartRequestBackfillsMissingConfigsFromSavedList(t *testing.T) {
 	req := StartTaskRequest{
-		EmailProvider:  "moemail",
+		EmailProviders: []string{"moemail"},
 		MoeMailDomains: []string{"wqpnode.filegear-sg.me"},
 	}
 	calls := 0
@@ -342,7 +342,7 @@ func TestPrepareMoeMailStartRequestBackfillsMissingConfigsFromSavedList(t *testi
 
 func TestValidateMoeMailDeliverabilityRejectsDomainWithoutMX(t *testing.T) {
 	err := validateMoeMailDeliverability(StartTaskRequest{
-		EmailProvider:  "moemail",
+		EmailProviders: []string{"moemail"},
 		MoeMailDomains: []string{"wqpnode.filegear-sg.me"},
 	}, func(domain string) (bool, error) {
 		if domain != "wqpnode.filegear-sg.me" {
@@ -357,7 +357,7 @@ func TestValidateMoeMailDeliverabilityRejectsDomainWithoutMX(t *testing.T) {
 
 func TestValidateMoeMailDeliverabilityAllowsDomainWithMX(t *testing.T) {
 	err := validateMoeMailDeliverability(StartTaskRequest{
-		EmailProvider:  "moemail",
+		EmailProviders: []string{"moemail"},
 		MoeMailDomains: []string{"codeai.de5.net"},
 	}, func(domain string) (bool, error) {
 		return true, nil
