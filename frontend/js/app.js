@@ -1113,6 +1113,27 @@ async function loadEmailProviderStats() {
   }
 }
 
+async function selectEmailProvidersFromStats() {
+  if (!window.go || !window.go.main || !window.go.main.App) return;
+  try {
+    var stats = await window.go.main.App.GetEmailProviderStats();
+    stats = Array.isArray(stats) ? stats : [];
+    var providers = stats.map(function(stat) {
+      return String((stat && (stat.provider || stat.Provider)) || '').trim();
+    }).filter(function(provider, index, list) {
+      return provider && list.indexOf(provider) === index;
+    });
+    if (!providers.length) {
+      showToast('暂无统计渠道可勾选', 'error');
+      return;
+    }
+    setEmailProviders(providers);
+    showToast('已按统计渠道覆盖当前邮箱渠道选择');
+  } catch(e) {
+    showToast('勾选统计渠道失败: ' + (e.message || e), 'error');
+  }
+}
+
 async function resetEmailProviderStats() {
   if (!window.go || !window.go.main || !window.go.main.App) return;
   try {

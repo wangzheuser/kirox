@@ -1274,7 +1274,10 @@
                 <div style="font-size:13px;font-weight:800;color:var(--text);">邮箱渠道累计统计</div>
                 <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">只会持续累计；点击重置按钮才会清空。</div>
               </div>
-              <button id="btn-reset-email-provider-stats" type="button" onclick="resetEmailProviderStats()" class="btn btn-secondary btn-sm" style="flex-shrink:0;">重置统计</button>
+              <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+                <button id="btn-select-email-provider-stats" type="button" onclick="selectEmailProvidersFromStats()" class="btn btn-secondary btn-sm">勾选所有邮箱渠道</button>
+                <button id="btn-reset-email-provider-stats" type="button" onclick="resetEmailProviderStats()" class="btn btn-secondary btn-sm">重置统计</button>
+              </div>
             </div>
             <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--card);">
               <table style="margin:0;width:100%;font-size:12px;">
