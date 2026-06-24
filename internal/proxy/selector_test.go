@@ -126,6 +126,18 @@ func TestMaskURLSupportsTemplateUserInfo(t *testing.T) {
 	}
 }
 
+func TestSanitizeErrorDoesNotLeakRuntimeProxyCredentials(t *testing.T) {
+	raw := "https://node.11111111222243338444555555555555:template-pass@proxy.example.test:443"
+	got := SanitizeError(errors.New("dial failed via "+raw), raw)
+
+	if strings.Contains(got, "template-pass") || strings.Contains(got, "11111111222243338444555555555555") {
+		t.Fatalf("代理错误脱敏后仍泄漏凭据或 UUID: %s", got)
+	}
+	if !strings.Contains(got, "https://node.<uuid>:***@proxy.example.test:443") {
+		t.Fatalf("代理错误应保留脱敏后的代理定位信息: %s", got)
+	}
+}
+
 func TestSelectRuntimeProxyDefaultUUIDHasNoHyphen(t *testing.T) {
 	_, err := SelectRuntimeProxy(context.Background(),
 		"https://node.{uuid}:template-pass@proxy.example.test:443",

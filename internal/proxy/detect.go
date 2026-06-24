@@ -59,14 +59,14 @@ func Detect(proxyURL string) Info {
 	go func() {
 		client, err := httputil.NewTLSClientWithTimeout(runtimeProxyURL, true, 8)
 		if err != nil {
-			result <- Info{Scheme: scheme, Error: simplifyProxyErr(err.Error()), Templated: templated}
+			result <- Info{Scheme: scheme, Error: simplifyProxyErr(SanitizeError(err, runtimeProxyURL)), Templated: templated}
 			return
 		}
 		req, _ := fhttp.NewRequest("GET", "http://ip-api.com/json/?lang=zh-CN&fields=status,message,country,regionName,city,isp,query", nil)
 		req.Header.Set("User-Agent", "kirox/proxy-check")
 		resp, err := client.Do(req)
 		if err != nil {
-			result <- Info{Scheme: scheme, Error: simplifyProxyErr(err.Error()), Templated: templated}
+			result <- Info{Scheme: scheme, Error: simplifyProxyErr(SanitizeError(err, runtimeProxyURL)), Templated: templated}
 			return
 		}
 		defer resp.Body.Close()

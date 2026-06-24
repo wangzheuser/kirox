@@ -35,7 +35,7 @@ func NewTempMailLOLService(proxyURL string) *TempMailLOLService {
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	client, err := httputil.NewTLSClientWithTimeout(runtimeProxyURL, true, int(emailRequestTimeout/time.Second))
 	if err != nil {
-		log.Printf("[TempMail.lol] 邮箱代理初始化失败: %v", err)
+		log.Printf("[TempMail.lol] 邮箱代理初始化失败: %s", proxy.SanitizeError(err, runtimeProxyURL))
 		client, _ = httputil.NewTLSClientWithTimeout("", true, int(emailRequestTimeout/time.Second))
 	}
 	return &TempMailLOLService{client: client, checkedIDs: make(map[string]struct{})}

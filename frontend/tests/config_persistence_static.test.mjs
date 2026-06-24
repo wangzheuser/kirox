@@ -6,16 +6,23 @@ const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const appJs = fs.readFileSync(new URL('../js/app.js', import.meta.url), 'utf8');
 const proxyPoolJs = fs.readFileSync(new URL('../js/proxy_pool.js', import.meta.url), 'utf8');
 const uiJs = fs.readFileSync(new URL('../js/ui.js', import.meta.url), 'utf8');
+const i18nJs = fs.readFileSync(new URL('../js/i18n.js', import.meta.url), 'utf8');
 const wailsAppJs = fs.readFileSync(new URL('../wailsjs/go/main/App.js', import.meta.url), 'utf8');
 const wailsAppDts = fs.readFileSync(new URL('../wailsjs/go/main/App.d.ts', import.meta.url), 'utf8');
 
 test('settings page sound switch is persisted through backend APIs', () => {
   assert.match(html, /id="cfg-sound"/);
-  assert.match(html, /id="cfg-verify-models"/);
   assert.match(appJs, /GetSoundEnabled\(\)/);
   assert.match(appJs, /SetSoundEnabled\(/);
   assert.doesNotMatch(appJs, /localStorage\.setItem\(['"]kiro-sound['"]/);
   assert.doesNotMatch(uiJs, /localStorage\.setItem\(['"]kiro-sound['"]/);
+});
+
+test('verify models setting and frontend API calls are removed', () => {
+  assert.doesNotMatch(html, /id="cfg-verify-models"/);
+  assert.doesNotMatch(html, /二次模型验活/);
+  assert.doesNotMatch(appJs, /loadVerifyModelsEnabled|saveVerifyModelsEnabled/);
+  assert.doesNotMatch(appJs, /GetVerifyModelsEnabled|SetVerifyModelsEnabled/);
 });
 
 test('registration form is persisted through backend APIs instead of long-term localStorage', () => {
@@ -50,9 +57,13 @@ test('registration email providers are multi-select only', () => {
 });
 
 test('wails wrappers expose persistent config APIs', () => {
-  for (const name of ['GetSoundEnabled', 'SetSoundEnabled', 'GetVerifyModelsEnabled', 'SetVerifyModelsEnabled', 'GetRegistrationConfig', 'SetRegistrationConfig', 'GetKiroRSConfig', 'SetKiroRSConfig', 'TestKiroRSConnection', 'GetOutlookGraphRegistrationEmailMode', 'SetOutlookGraphRegistrationEmailMode']) {
+  for (const name of ['GetSoundEnabled', 'SetSoundEnabled', 'GetRegistrationConfig', 'SetRegistrationConfig', 'GetKiroRSConfig', 'SetKiroRSConfig', 'TestKiroRSConnection', 'GetOutlookGraphRegistrationEmailMode', 'SetOutlookGraphRegistrationEmailMode']) {
     assert.match(wailsAppJs, new RegExp(`export function ${name}\\(`));
     assert.match(wailsAppDts, new RegExp(`export function ${name}\\(`));
+  }
+  for (const name of ['GetVerifyModelsEnabled', 'SetVerifyModelsEnabled']) {
+    assert.doesNotMatch(wailsAppJs, new RegExp(`export function ${name}\\(`));
+    assert.doesNotMatch(wailsAppDts, new RegExp(`export function ${name}\\(`));
   }
 });
 
@@ -84,7 +95,6 @@ test('settings cfg controls have backend persistence coverage or explicit non-se
     'cfg-proxy-mode-pool',
     'cfg-result-output-dir',
     'cfg-sound',
-    'cfg-verify-models',
   ];
   assert.deepEqual(cfgIds, expected);
 });
@@ -101,9 +111,7 @@ test('page stay settings and APIs are removed', () => {
 test('proxy pool is an independent proxy mode panel', () => {
   assert.match(html, /id="cfg-proxy-mode-pool"[^>]*value="pool"/);
   assert.match(html, /id="proxy-pool-panel"/);
-  assert.match(html, /https:\/\/Default\.\{uuid\}:admin2012@resin-proxy\.codeai\.de5\.net:443/);
   assert.match(appJs, /pool:\s*'多代理池'/);
-  assert.match(proxyPoolJs, /https:\/\/Default\.\{uuid\}:admin2012@resin-proxy\.codeai\.de5\.net:443/);
   assert.match(appJs, /mode === 'pool'/);
 
   const normalPanelStart = html.indexOf('id="proxy-normal-panel"');
@@ -114,6 +122,21 @@ test('proxy pool is an independent proxy mode panel', () => {
   assert.ok(clashPanelStart >= 0, 'proxy-clash-panel should exist');
   assert.ok(normalPanelStart < poolPanelStart, 'pool panel should follow normal panel');
   assert.ok(poolPanelStart < clashPanelStart, 'pool panel should be independent before clash panel');
+});
+
+test('proxy examples and visible proxy inputs are sanitized', () => {
+  for (const source of [html, proxyPoolJs, i18nJs]) {
+    assert.doesNotMatch(source, new RegExp('Default\\.\\{uuid\\}:admin' + '2012', 'i'));
+    assert.doesNotMatch(source, new RegExp('resin-' + 'proxy\\.codeai\\.de5\\.net', 'i'));
+    assert.doesNotMatch(source, /http:\/\/user:pass@/i);
+  }
+
+  assert.match(html, /<input(?=[^>]*id="cfg-proxy")(?=[^>]*type="password")[^>]*>/);
+  assert.match(html, /<input(?=[^>]*id="cfg-email-proxy")(?=[^>]*type="password")[^>]*>/);
+  assert.match(html, /<input(?=[^>]*id="cfg-clash-api-secret")(?=[^>]*type="password")[^>]*>/);
+  assert.match(html, /https:\/\/user\.\{uuid\}:\*\*\*@proxy\.example\.com:443/);
+  assert.match(proxyPoolJs, /https:\/\/user\.\{uuid\}:\*\*\*@proxy\.example\.com:443/);
+  assert.match(proxyPoolJs, /type="password" value="' \+ escapeProxyHtml\(p\.url\)/);
 });
 
 test('Outlook Graph registration email strategy is persisted through backend APIs', () => {

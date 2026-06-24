@@ -220,7 +220,8 @@ func maskProxyUsername(username string) string {
 	return "<user>"
 }
 
-func sanitizeProxyError(err error, proxyURL string) string {
+// SanitizeError 返回适合日志/UI 展示的代理错误，避免错误链中泄漏代理账号、密码或运行时 UUID。
+func SanitizeError(err error, proxyURL string) string {
 	if err == nil {
 		return ""
 	}
@@ -232,6 +233,10 @@ func sanitizeProxyError(err error, proxyURL string) string {
 		msg = msg[:120] + "..."
 	}
 	return msg
+}
+
+func sanitizeProxyError(err error, proxyURL string) string {
+	return SanitizeError(err, proxyURL)
 }
 
 func appendSelectorError(errs []string, msg string) []string {

@@ -89,18 +89,6 @@ func TestCheckEndpointResponseReasonJSONOnlySuspendsUsageEndpoint(t *testing.T) 
 	}
 }
 
-func TestShouldVerifyModelsFollowsConfigSwitch(t *testing.T) {
-	if shouldVerifyModels(nil) {
-		t.Fatalf("nil config should default ListAvailableModels verification off")
-	}
-	if shouldVerifyModels(&Config{}) {
-		t.Fatalf("zero-value config should default ListAvailableModels verification off")
-	}
-	if !shouldVerifyModels(&Config{VerifyModelsEnabled: true}) {
-		t.Fatalf("VerifyModelsEnabled=true should enable ListAvailableModels verification")
-	}
-}
-
 func TestEndpointBodySnippetTruncatesAndScrubs(t *testing.T) {
 	body := []byte(`{"message":"forbidden","url":"https://example.com/very/secret/path","padding":"` + strings.Repeat("x", 400) + `"}`)
 	got := endpointBodySnippet(body)
@@ -140,7 +128,7 @@ func TestVerifyAliveReturnsFailureWhenModels403(t *testing.T) {
 		})
 	}
 
-	res := (&Registrar{Cfg: &Config{VerifyModelsEnabled: true}, ClientID: "client", ClientSecret: "secret"}).VerifyAlive(map[string]interface{}{"refreshToken": "refresh"})
+	res := (&Registrar{Cfg: &Config{}, ClientID: "client", ClientSecret: "secret"}).VerifyAlive(map[string]interface{}{"refreshToken": "refresh"})
 
 	if alive, _ := res["alive"].(bool); alive {
 		t.Fatalf("models 403 should fail second verification: %#v", res)
@@ -166,6 +154,8 @@ func TestVerifyAliveUsesConfiguredOIDCAndQBase(t *testing.T) {
 				return verifyHTTPResponse(200, `{"accessToken":"access-token","expiresIn":3600}`), nil
 			case strings.Contains(req.URL.String(), "getUsageLimits"):
 				return verifyHTTPResponse(200, `{"userInfo":{"email":"user@example.com"},"subscriptionInfo":{"subscriptionTitle":"Free"},"usageBreakdownList":[]}`), nil
+			case strings.Contains(req.URL.String(), "ListAvailableModels"):
+				return verifyHTTPResponse(200, `{"models":[]}`), nil
 			default:
 				t.Fatalf("unexpected request URL: %s", req.URL.String())
 				return nil, nil
@@ -178,13 +168,16 @@ func TestVerifyAliveUsesConfiguredOIDCAndQBase(t *testing.T) {
 	if alive, _ := res["alive"].(bool); !alive {
 		t.Fatalf("expected local verification to pass: %#v", res)
 	}
-	if len(seen) < 2 {
-		t.Fatalf("expected token and usage requests, got %v", seen)
+	if len(seen) < 3 {
+		t.Fatalf("expected token, usage, and models requests, got %v", seen)
 	}
 	if !strings.HasPrefix(seen[0], "http://127.0.0.1:18080/oidc/token") {
 		t.Fatalf("token request did not use configured OIDCBase: %v", seen)
 	}
 	if !strings.HasPrefix(seen[1], "http://127.0.0.1:18080/q/getUsageLimits") {
 		t.Fatalf("usage request did not use configured QBase: %v", seen)
+	}
+	if !strings.HasPrefix(seen[2], "http://127.0.0.1:18080/q/ListAvailableModels") {
+		t.Fatalf("models request did not use configured QBase: %v", seen)
 	}
 }

@@ -82,12 +82,12 @@ export function GetDataDir() {
   return window['go']['main']['App']['GetDataDir']();
 }
 
-export function GetEmailProxy() {
-  return window['go']['main']['App']['GetEmailProxy']();
-}
-
 export function GetEmailProviderStats() {
   return window['go']['main']['App']['GetEmailProviderStats']();
+}
+
+export function GetEmailProxy() {
+  return window['go']['main']['App']['GetEmailProxy']();
 }
 
 export function GetKillSwitchEnabled() {
@@ -170,10 +170,6 @@ export function GetTaskStatus() {
   return window['go']['main']['App']['GetTaskStatus']();
 }
 
-export function GetVerifyModelsEnabled() {
-  return window['go']['main']['App']['GetVerifyModelsEnabled']();
-}
-
 export function ImportAccountPoolJSON(arg1) {
   return window['go']['main']['App']['ImportAccountPoolJSON'](arg1);
 }
@@ -206,12 +202,12 @@ export function ResetDataDir() {
   return window['go']['main']['App']['ResetDataDir']();
 }
 
-export function ResetEmailProxy() {
-  return window['go']['main']['App']['ResetEmailProxy']();
-}
-
 export function ResetEmailProviderStats() {
   return window['go']['main']['App']['ResetEmailProviderStats']();
+}
+
+export function ResetEmailProxy() {
+  return window['go']['main']['App']['ResetEmailProxy']();
 }
 
 export function ResetFingerprintCache() {
@@ -308,10 +304,6 @@ export function SetResultOutputDir(arg1) {
 
 export function SetSoundEnabled(arg1) {
   return window['go']['main']['App']['SetSoundEnabled'](arg1);
-}
-
-export function SetVerifyModelsEnabled(arg1) {
-  return window['go']['main']['App']['SetVerifyModelsEnabled'](arg1);
 }
 
 export function StartTask(arg1) {

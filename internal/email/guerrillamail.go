@@ -38,7 +38,7 @@ func NewGuerrillaMailService(proxyURL string) *GuerrillaMailService {
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	client, err := httputil.NewTLSClientWithTimeout(runtimeProxyURL, true, int(emailRequestTimeout/time.Second))
 	if err != nil {
-		log.Printf("[GuerrillaMail] 邮箱代理初始化失败: %v", err)
+		log.Printf("[GuerrillaMail] 邮箱代理初始化失败: %s", proxy.SanitizeError(err, runtimeProxyURL))
 		client, _ = httputil.NewTLSClientWithTimeout("", true, int(emailRequestTimeout/time.Second))
 	}
 	return &GuerrillaMailService{client: client, apiBaseURL: guerrillaMailAPIBaseURL, checkedIDs: make(map[string]struct{})}

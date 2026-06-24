@@ -46,7 +46,7 @@ function renderProxyPool() {
     var pct = (multi && totalSoft > 0) ? (Math.round(soft[idx] / totalSoft * 1000) / 10) : null;
     html += (
       '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">' +
-        '<input type="text" value="' + escapeProxyHtml(p.url) + '" placeholder="留空=直连" onchange="updateProxyEntryURL(\'' + p.id + '\', this.value)" class="form-input" style="flex:1;font-family:var(--font-mono);font-size:12px;">' +
+        '<input type="password" value="' + escapeProxyHtml(p.url) + '" placeholder="留空=直连" onchange="updateProxyEntryURL(\'' + p.id + '\', this.value)" class="form-input" style="flex:1;font-family:var(--font-mono);font-size:12px;">' +
         '<input type="number" min="1" max="100" value="' + (p.weight || 1) + '" title="权重 1-100" onchange="updateProxyEntry(\'' + p.id + '\', \'weight\', this.value)" style="width:54px;text-align:center;padding:4px;border:1px solid var(--border);border-radius:4px;background:var(--bg-subtle);font-size:12px;">' +
         (pct != null ? '<span style="font-size:11px;color:var(--text-muted);min-width:42px;text-align:right;">' + pct + '%</span>' : '') +
         '<button type="button" onclick="testProxyEntryByIdx(' + idx + ')" class="btn btn-secondary btn-sm">测试</button>' +
@@ -60,7 +60,7 @@ function renderProxyPool() {
     var rowIdx = j;
     html += (
       '<div data-pending-idx="' + rowIdx + '" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">' +
-        '<input type="text" placeholder="例如 https://Default.{uuid}:admin2012@resin-proxy.codeai.de5.net:443" onblur="savePendingProxyRow(' + rowIdx + ', this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" class="form-input" style="flex:1;font-family:var(--font-mono);font-size:12px;">' +
+        '<input type="password" placeholder="例如 https://user.{uuid}:***@proxy.example.com:443" onblur="savePendingProxyRow(' + rowIdx + ', this.value)" onkeydown="if(event.key===\'Enter\'){this.blur();}" class="form-input" style="flex:1;font-family:var(--font-mono);font-size:12px;">' +
         '<input type="number" min="1" max="100" value="1" data-pending-weight="' + rowIdx + '" title="权重 1-100" style="width:54px;text-align:center;padding:4px;border:1px solid var(--border);border-radius:4px;background:var(--bg-subtle);font-size:12px;">' +
         (proxyPool.length + pendingEmptyRows > 1
           ? '<button type="button" onclick="removePendingProxyRow(' + rowIdx + ')" class="btn btn-secondary btn-sm">移除</button>'

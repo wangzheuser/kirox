@@ -31,3 +31,20 @@ test('task shortcuts reference unique register and stop buttons', () => {
   assert.doesNotMatch(uiJs, /getElementById\('btn-start'\)/);
   assert.doesNotMatch(uiJs, /getElementById\('btn-stop'\)/);
 });
+
+test('starting registration switches to overview after task starts', () => {
+  assert.match(taskJs, /function switchToOverviewAfterTaskStart\(\)/);
+  assert.match(taskJs, /switchPage\('overview'\)/);
+
+  const startTaskBody = taskJs.slice(
+    taskJs.indexOf('async function startTask()'),
+    taskJs.indexOf('// 以指定配置启动任务')
+  );
+  const startTaskWithConfigBody = taskJs.slice(
+    taskJs.indexOf('async function startTaskWithConfig'),
+    taskJs.indexOf('var _confirmCallback')
+  );
+
+  assert.match(startTaskBody, /showToast\('任务已启动'\);\s*switchToOverviewAfterTaskStart\(\);/);
+  assert.match(startTaskWithConfigBody, /showToast\(_tkT\('toast\.taskStarted', '任务已启动'\)\);\s*switchToOverviewAfterTaskStart\(\);/);
+});

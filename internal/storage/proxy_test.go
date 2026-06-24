@@ -16,7 +16,7 @@ func TestNormalizeProxyAddressKeepsFullLocalURL(t *testing.T) {
 }
 
 func TestNormalizeProxyAddressKeepsFullHTTPSTemplateURL(t *testing.T) {
-	input := "https://Default.{uuid}:admin2012@resin-proxy.codeai.de5.net:443"
+	input := "https://user.{uuid}:password@example-proxy.test:443"
 
 	if got := NormalizeProxyAddress(input); got != input {
 		t.Fatalf("完整 HTTPS 模板代理 URL 不应被改写: got %q, want %q", got, input)
@@ -155,8 +155,6 @@ func withTempStorageConfig(t *testing.T, content string) {
 	_killSwitchOnce = sync.Once{}
 	_soundEnabled = false
 	_soundOnce = sync.Once{}
-	_verifyModelsEnabled = false
-	_verifyModelsOnce = sync.Once{}
 
 	path := getConfigFilePath()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

@@ -56,7 +56,7 @@ func NewMailGWService(proxyURL string) *MailGWService {
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	client, err := httputil.NewTLSClientWithTimeout(runtimeProxyURL, true, int(emailRequestTimeout/time.Second))
 	if err != nil {
-		log.Printf("[mail.gw] 邮箱代理初始化失败: %v", err)
+		log.Printf("[mail.gw] 邮箱代理初始化失败: %s", proxy.SanitizeError(err, runtimeProxyURL))
 		client, _ = httputil.NewTLSClientWithTimeout("", true, int(emailRequestTimeout/time.Second))
 	}
 	return &MailGWService{client: client, apiBaseURL: mailGWAPIBaseURL, displayName: "mail.gw", checkedIDs: make(map[string]struct{})}

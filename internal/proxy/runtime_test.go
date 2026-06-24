@@ -75,27 +75,27 @@ func TestRenderURLTemplateSupportsUserInfoTemplateWithoutHyphen(t *testing.T) {
 	}
 }
 
-func TestRenderURLTemplateSupportsDefaultSessionProxy(t *testing.T) {
+func TestRenderURLTemplateSupportsSessionProxy(t *testing.T) {
 	got := renderURLTemplate(
-		"https://Default.{uuid}:admin2012@resin-proxy.codeai.de5.net:443",
+		"https://user.{uuid}:password@example-proxy.test:443",
 		func() string {
 			return "ABCDEFAB-CDEF-4ABC-8DEF-ABCDEFABCDEF"
 		},
 	)
 	wantID := "abcdefabcdef4abc8defabcdefabcdef"
-	want := "https://Default." + wantID + ":admin2012@resin-proxy.codeai.de5.net:443"
+	want := "https://user." + wantID + ":password@example-proxy.test:443"
 	if got != want {
-		t.Fatalf("Default 会话代理模板渲染失败: got %q, want %q", got, want)
+		t.Fatalf("会话代理模板渲染失败: got %q, want %q", got, want)
 	}
 
 	parsed, err := url.Parse(got)
 	if err != nil {
-		t.Fatalf("渲染后的 Default 会话代理 URL 应可解析: %v", err)
+		t.Fatalf("渲染后的 会话代理 URL 应可解析: %v", err)
 	}
-	if parsed.User.Username() != "Default."+wantID || parsed.Host != "resin-proxy.codeai.de5.net:443" {
-		t.Fatalf("渲染后的 Default 会话代理 URL 结构异常: %q", got)
+	if parsed.User.Username() != "user."+wantID || parsed.Host != "example-proxy.test:443" {
+		t.Fatalf("渲染后的 会话代理 URL 结构异常: %q", got)
 	}
-	if pass, ok := parsed.User.Password(); !ok || pass != "admin2012" {
-		t.Fatalf("渲染后的 Default 会话代理密码异常: %q", got)
+	if pass, ok := parsed.User.Password(); !ok || pass != "password" {
+		t.Fatalf("渲染后的 会话代理密码异常: %q", got)
 	}
 }

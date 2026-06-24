@@ -40,8 +40,6 @@ type Config struct {
 	ProxyFromPool bool
 	// ProxySwitchable 表示当前代理背后可换节点，HTTP 传输错误应交给任务层切换节点。
 	ProxySwitchable bool
-	// VerifyModelsEnabled 表示注册验活时是否额外请求 ListAvailableModels；默认关闭。
-	VerifyModelsEnabled bool
 	// 浏览器地区指纹；Clash 模式会按真实节点名覆盖，避免 IP 地区与语言/时区冲突。
 	AcceptLanguage string
 	I18Next        string

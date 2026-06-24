@@ -1,16 +1,16 @@
 export namespace email {
-	
+
 	export class CloudMailConfig {
 	    name: string;
 	    url: string;
 	    email: string;
 	    password: string;
 	    domains: string[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CloudMailConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -24,11 +24,11 @@ export namespace email {
 	    name: string;
 	    url: string;
 	    apiKey: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new MoeMailConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -40,7 +40,7 @@ export namespace email {
 }
 
 export namespace proxy {
-	
+
 	export class ClashConfig {
 	    enabled: boolean;
 	    apiUrl: string;
@@ -49,11 +49,11 @@ export namespace proxy {
 	    testUrl: string;
 	    testTimeout: number;
 	    skipConnectivityTest: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ClashConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.enabled = source["enabled"];
@@ -87,11 +87,11 @@ export namespace proxy {
 	    clashNode?: string;
 	    clashDelayMs?: number;
 	    clashSkipped?: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new Info(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
@@ -123,11 +123,11 @@ export namespace proxy {
 	    url: string;
 	    weight: number;
 	    enabled: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new PoolEntry(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -141,7 +141,7 @@ export namespace proxy {
 }
 
 export namespace storage {
-	
+
 	export class EmailProviderStat {
 	    provider: string;
 	    otpReceivedCount: number;
@@ -174,11 +174,11 @@ export namespace storage {
 	    moemailDomains: string[];
 	    reuseFailedEmail: boolean;
 	    saved: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new RegistrationConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.count = source["count"];
@@ -198,7 +198,7 @@ export namespace storage {
 }
 
 export namespace task {
-	
+
 	export class StartTaskRequest {
 	    count: number;
 	    successTarget: number;
@@ -215,11 +215,11 @@ export namespace task {
 	    cloudmailDomains: string[];
 	    cloudmailConfigs: Record<string, Array<email.CloudMailConfig>>;
 	    cloudmailRandomMode: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new StartTaskRequest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.count = source["count"];
@@ -238,7 +238,7 @@ export namespace task {
 	        this.cloudmailConfigs = this.convertValues(source["cloudmailConfigs"], Array<email.CloudMailConfig>, true);
 	        this.cloudmailRandomMode = source["cloudmailRandomMode"];
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;

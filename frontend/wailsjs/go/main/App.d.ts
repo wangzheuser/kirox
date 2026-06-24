@@ -45,9 +45,9 @@ export function GetCloudMailConfigs():Promise<Array<email.CloudMailConfig>>;
 
 export function GetDataDir():Promise<string>;
 
-export function GetEmailProxy():Promise<string>;
-
 export function GetEmailProviderStats():Promise<Array<storage.EmailProviderStat>>;
+
+export function GetEmailProxy():Promise<string>;
 
 export function GetKillSwitchEnabled():Promise<boolean>;
 
@@ -89,8 +89,6 @@ export function GetSubscriptionPlans(arg1:string):Promise<Record<string, any>>;
 
 export function GetTaskStatus():Promise<Record<string, any>>;
 
-export function GetVerifyModelsEnabled():Promise<boolean>;
-
 export function ImportAccountPoolJSON(arg1:string):Promise<Record<string, any>>;
 
 export function ImportOutlookFile(arg1:string):Promise<Record<string, any>>;
@@ -107,9 +105,9 @@ export function OpenURL(arg1:string):Promise<void>;
 
 export function ResetDataDir():Promise<Record<string, any>>;
 
-export function ResetEmailProxy():Promise<Record<string, any>>;
-
 export function ResetEmailProviderStats():Promise<Record<string, any>>;
+
+export function ResetEmailProxy():Promise<Record<string, any>>;
 
 export function ResetFingerprintCache():Promise<Record<string, any>>;
 
@@ -158,8 +156,6 @@ export function SetRegistrationConfig(arg1:storage.RegistrationConfig):Promise<R
 export function SetResultOutputDir(arg1:string):Promise<Record<string, any>>;
 
 export function SetSoundEnabled(arg1:boolean):Promise<Record<string, any>>;
-
-export function SetVerifyModelsEnabled(arg1:boolean):Promise<Record<string, any>>;
 
 export function StartTask(arg1:task.StartTaskRequest):Promise<Record<string, any>>;
 

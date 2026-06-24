@@ -358,7 +358,7 @@ func TestValidateMoeMailDeliverabilityRejectsDomainWithoutMX(t *testing.T) {
 func TestValidateMoeMailDeliverabilityAllowsDomainWithMX(t *testing.T) {
 	err := validateMoeMailDeliverability(StartTaskRequest{
 		EmailProviders: []string{"moemail"},
-		MoeMailDomains: []string{"codeai.de5.net"},
+		MoeMailDomains: []string{"example-mail.test"},
 	}, func(domain string) (bool, error) {
 		return true, nil
 	})

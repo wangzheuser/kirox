@@ -24,13 +24,9 @@ var newVerifyHTTPClient = func(cfg *Config, chromeVer string) verifyHTTPClient {
 	return httputil.NewTLSClient(proxy, true, chromeVer)
 }
 
-// VerifyAlive 验活: 刷新 Token + 查用量；可选查模型
+// VerifyAlive 验活: 刷新 Token + 查用量 + 查模型
 func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]interface{} {
-	if shouldVerifyModels(r.Cfg) {
-		log.Println("[验活] 刷新 Token + 查用量 + 查模型")
-	} else {
-		log.Println("[验活] 刷新 Token + 查用量")
-	}
+	log.Println("[验活] 刷新 Token + 查用量 + 查模型")
 	chromeVer := ""
 	if r.Identity != nil {
 		chromeVer = r.Identity.ChromeVer
@@ -76,14 +72,12 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 		return map[string]interface{}{"alive": false, "error": "usage query failed"}
 	}
 
-	if shouldVerifyModels(r.Cfg) {
-		modelRes := queryGetEndpoint(client, access, verifyQEndpointURL(r.Cfg, "/ListAvailableModels?origin=AI_EDITOR"))
-		if modelRes.suspended {
-			return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
-		}
-		if !modelRes.ok {
-			return map[string]interface{}{"alive": false, "error": fmt.Sprintf("models query failed: %d", modelRes.statusCode)}
-		}
+	modelRes := queryGetEndpoint(client, access, verifyQEndpointURL(r.Cfg, "/ListAvailableModels?origin=AI_EDITOR"))
+	if modelRes.suspended {
+		return map[string]interface{}{"alive": false, "suspended": true, "error": "suspended"}
+	}
+	if !modelRes.ok {
+		return map[string]interface{}{"alive": false, "error": fmt.Sprintf("models query failed: %d", modelRes.statusCode)}
 	}
 
 	return r.parseUsage(usageRes.body)
@@ -106,10 +100,6 @@ func verifyQEndpointURL(cfg *Config, path string) string {
 		path = "/" + path
 	}
 	return strings.TrimRight(base, "/") + path
-}
-
-func shouldVerifyModels(cfg *Config) bool {
-	return cfg != nil && cfg.VerifyModelsEnabled
 }
 
 type endpointResult struct {

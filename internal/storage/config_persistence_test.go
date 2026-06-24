@@ -52,9 +52,6 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if err := SetSoundEnabled(false); err != nil {
 		t.Fatalf("SetSoundEnabled returned error: %v", err)
 	}
-	if err := SetVerifyModelsEnabled(true); err != nil {
-		t.Fatalf("SetVerifyModelsEnabled returned error: %v", err)
-	}
 	if err := SetRegistrationConfig(RegistrationConfig{
 		Count:             7,
 		SuccessTarget:     5,
@@ -98,9 +95,6 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if got := GetSoundEnabled(); got {
 		t.Fatalf("sound false should persist")
 	}
-	if got := GetVerifyModelsEnabled(); !got {
-		t.Fatalf("verify models true should persist")
-	}
 	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || strings.Join(got.EmailProviders, ",") != "moemail,emailnator" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.ReuseFailedEmail || !got.Saved {
 		t.Fatalf("registration config round-trip failed: got %+v", got)
 	}
@@ -124,7 +118,7 @@ func TestConfigStorageSerializesConcurrentSettersWithoutDroppingKeys(t *testing.
 	withTempStorageConfig(t, "")
 
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		if _, err := SetProxy("https://user:pass@example.com:443"); err != nil {
@@ -149,39 +143,13 @@ func TestConfigStorageSerializesConcurrentSettersWithoutDroppingKeys(t *testing.
 			t.Errorf("SetSoundEnabled returned error: %v", err)
 		}
 	}()
-	go func() {
-		defer wg.Done()
-		if err := SetVerifyModelsEnabled(true); err != nil {
-			t.Errorf("SetVerifyModelsEnabled returned error: %v", err)
-		}
-	}()
 	wg.Wait()
 
 	saved := loadConfigMap()
-	for _, key := range []string{keyProxy, keyOutlookScope, keyKillSwitchEnabled, keySoundEnabled, keyVerifyModelsEnabled} {
+	for _, key := range []string{keyProxy, keyOutlookScope, keyKillSwitchEnabled, keySoundEnabled} {
 		if _, ok := saved[key]; !ok {
 			t.Fatalf("concurrent setters dropped %s; saved config: %#v", key, saved)
 		}
-	}
-}
-
-func TestVerifyModelsEnabledDefaultsOffAndPersists(t *testing.T) {
-	withTempStorageConfig(t, "")
-
-	if got := GetVerifyModelsEnabled(); got {
-		t.Fatalf("二次模型验活默认应关闭")
-	}
-	if err := SetVerifyModelsEnabled(true); err != nil {
-		t.Fatalf("SetVerifyModelsEnabled(true) returned error: %v", err)
-	}
-	if got := GetVerifyModelsEnabled(); !got {
-		t.Fatalf("二次模型验活开启后应读取为 true")
-	}
-	if err := SetVerifyModelsEnabled(false); err != nil {
-		t.Fatalf("SetVerifyModelsEnabled(false) returned error: %v", err)
-	}
-	if got := GetVerifyModelsEnabled(); got {
-		t.Fatalf("二次模型验活关闭后应读取为 false")
 	}
 }
 

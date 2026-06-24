@@ -38,6 +38,10 @@ function formatTime(seconds) {
 function openKiroTaskModal() { switchPage('register'); }
 function closeKiroTaskModal() {}
 
+function switchToOverviewAfterTaskStart() {
+  if (typeof switchPage === 'function') switchPage('overview');
+}
+
 var updateInfo = null;
 var _prevRunning = false;
 window._kiroLogs = [];
@@ -387,6 +391,7 @@ async function startTask() {
     if (typeof setTaskActionState === 'function') setTaskActionState('running');
     else updateUIStatus(true);
     showToast('任务已启动');
+    switchToOverviewAfterTaskStart();
   } catch(e) {
     if (typeof setTaskActionState === 'function') setTaskActionState('idle');
     showToast('启动失败: ' + e.message, 'error');
@@ -406,6 +411,7 @@ async function startTaskWithConfig(cfg) {
     if (typeof setTaskActionState === 'function') setTaskActionState('running');
     else updateUIStatus(true);
     showToast(_tkT('toast.taskStarted', '任务已启动'));
+    switchToOverviewAfterTaskStart();
   } catch(e) {
     if (typeof setTaskActionState === 'function') setTaskActionState('idle');
     showToast(_tkT('toast.taskStartFailed', '启动失败') + ': ' + e.message, 'error');

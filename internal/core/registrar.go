@@ -18,6 +18,7 @@ import (
 	"reg_go/internal/crypto"
 	"reg_go/internal/email"
 	httputil "reg_go/internal/http"
+	"reg_go/internal/proxy"
 )
 
 var newEmailnatorTempEmailService = func(proxyURL string) email.TempEmailService {
@@ -97,7 +98,7 @@ func NewRegistrar(cfg *Config) *Registrar {
 
 	client, initErr := httputil.NewTLSClientWithTimeout(cfg.Proxy, true, 60, identity.ChromeVer)
 	if initErr != nil {
-		log.Printf("[代理] 客户端初始化失败: %v", initErr)
+		log.Printf("[代理] 客户端初始化失败: %s", proxy.SanitizeError(initErr, cfg.Proxy))
 		client, _ = httputil.NewTLSClientWithTimeout("", true, 60, identity.ChromeVer)
 	}
 	return &Registrar{

@@ -66,7 +66,7 @@
         outputDirPlaceholder: '默认：应用所在目录',
         proxy: '代理',
         proxyDesc: '所有注册请求走该代理；留空=直连。支持 http/https/socks5 完整 URL，也支持 host:port:user:pass、host:port、user:pass@host:port 等简写。',
-        proxyPlaceholder: '例如 http://user:pass@127.0.0.1:7890',
+        proxyPlaceholder: '例如 http://user:***@127.0.0.1:7890',
         sound: '提示音', soundDesc: '任务结束时播放提示音'
       },
       logs: { title: '运行日志', copyLog: '复制日志', empty: '暂无日志' },
@@ -357,7 +357,7 @@
         outputDirPlaceholder: 'Default: app directory',
         proxy: 'Proxy',
         proxyDesc: 'All requests use this proxy; empty = direct. Accepts http/https/socks5 URLs or shortcuts like host:port:user:pass.',
-        proxyPlaceholder: 'e.g. http://user:pass@127.0.0.1:7890',
+        proxyPlaceholder: 'e.g. http://user:***@127.0.0.1:7890',
         sound: 'Sound', soundDesc: 'Play a sound when a task ends'
       },
       logs: { title: 'Logs', copyLog: 'Copy logs', empty: 'No logs' },
@@ -648,7 +648,7 @@
         outputDirPlaceholder: 'デフォルト：アプリのあるディレクトリ',
         proxy: 'プロキシ',
         proxyDesc: 'すべてのリクエストでこのプロキシを使用。空欄=直接接続。http/https/socks5 のURL、または host:port:user:pass などの省略形式に対応。',
-        proxyPlaceholder: '例: http://user:pass@127.0.0.1:7890',
+        proxyPlaceholder: '例: http://user:***@127.0.0.1:7890',
         sound: '通知音', soundDesc: 'タスク終了時に通知音を鳴らす'
       },
       logs: { title: 'ログ', copyLog: 'ログをコピー', empty: 'ログなし' },

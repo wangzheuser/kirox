@@ -488,7 +488,7 @@
 
                   <div id="proxy-normal-panel" style="display:none;flex-direction:column;gap:8px;">
                     <div style="display:flex;gap:8px;">
-                      <input type="text" id="cfg-proxy" placeholder="例如 https://Default.{uuid}:admin2012@resin-proxy.codeai.de5.net:443" class="form-input" style="flex:1;">
+                      <input type="password" id="cfg-proxy" placeholder="例如 https://user.{uuid}:***@proxy.example.com:443" class="form-input" style="flex:1;">
                       <button onclick="saveProxy()" class="btn btn-secondary btn-sm">保存普通代理</button>
                       <button onclick="resetProxy()" class="btn btn-secondary btn-sm">清除</button>
                     </div>
@@ -505,7 +505,7 @@
                     <input type="text" id="cfg-clash-proxy" placeholder="Clash 本地代理，例如 http://127.0.0.1:7890" class="form-input">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
                       <input type="text" id="cfg-clash-api-url" placeholder="Clash API，例如 http://127.0.0.1:9097" class="form-input">
-                      <input type="text" id="cfg-clash-api-secret" placeholder="API 密钥（无则留空，明文显示）" class="form-input">
+                      <input type="password" id="cfg-clash-api-secret" placeholder="API 密钥（无则留空，已隐藏）" class="form-input">
                       <input type="text" id="cfg-clash-proxy-group" placeholder="代理组名称（留空自动检测）" class="form-input">
                       <input type="text" id="cfg-clash-test-url" placeholder="测试 URL，例如 https://oidc.us-east-1.amazonaws.com/ping" class="form-input">
                     </div>
@@ -534,7 +534,7 @@
               <div class="settings-item-action">
                 <div style="display:flex;flex-direction:column;gap:8px;width:100%;">
                   <div style="display:flex;gap:8px;">
-                    <input type="text" id="cfg-email-proxy" placeholder="留空直连，例如 http://127.0.0.1:7890" class="form-input" style="flex:1;">
+                    <input type="password" id="cfg-email-proxy" placeholder="留空直连，例如 http://127.0.0.1:7890" class="form-input" style="flex:1;">
                     <button onclick="saveEmailProxy()" class="btn btn-secondary btn-sm">保存邮箱代理</button>
                     <button onclick="resetEmailProxy()" class="btn btn-secondary btn-sm">清除</button>
                   </div>
@@ -558,20 +558,6 @@
               </div>
             </div>
 
-            <div class="settings-item">
-              <div class="settings-item-main">
-                <div class="settings-item-title">二次模型验活</div>
-                <div class="settings-item-desc">开启后注册完成验活会额外请求 ListAvailableModels；默认关闭，关闭时只通过 getUsageLimits 验活。</div>
-              </div>
-              <div class="settings-item-action">
-                <label style="cursor:pointer;">
-                  <div class="toggle-switch">
-                    <input type="checkbox" id="cfg-verify-models" onchange="saveVerifyModelsEnabled()">
-                    <span class="toggle-slider"></span>
-                  </div>
-                </label>
-              </div>
-            </div>
           </div>
         </div>
 
