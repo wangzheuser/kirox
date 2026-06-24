@@ -142,7 +142,7 @@ document.addEventListener('keydown', function(e) {
 
 // 当前选中的邮箱提供商（多选）
 var selectedEmailProviders = ['outlook'];
-var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip'];
+var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'fce_areueally', 'fce_junkstopper', 'fce_ditpay', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip'];
 var selectedMoeMailDomains = [];
 var allMoeMailDomains = []; // 存储所有可用域名及其配置映射
 var selectedCloudMailDomains = [];
@@ -267,6 +267,18 @@ function updateEmailProviderHint(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.freeCustomHint', '使用 FreeCustom.Email 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.freeCustomHint');
+  } else if (provider === 'fce_ditpay') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.fceDitpayHint', '使用 ditpay.info 固定域名的 FreeCustom.Email 临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.fceDitpayHint');
+  } else if (provider === 'fce_junkstopper') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.fceJunkstopperHint', '使用 junkstopper.info 固定域名的 FreeCustom.Email 临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.fceJunkstopperHint');
+  } else if (provider === 'fce_areueally') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.fceAreueallyHint', '使用 areueally.info 固定域名的 FreeCustom.Email 临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.fceAreueallyHint');
   } else if (provider === 'dropmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.dropMailHint', '使用 DropMail 零配置临时邮箱进行注册。');

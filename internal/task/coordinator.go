@@ -499,15 +499,16 @@ func applyReusableEmailCandidate(provider string, cfg *core.Config, candidate re
 		cfg.CloudMailProvider = candidate.cloudMailProvider
 		address := strings.TrimSpace(candidate.cloudMailProvider.GetAddress())
 		return address, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip":
+	default:
+		if !isTemporaryEmailProvider(provider) {
+			return "", false
+		}
 		if candidate.tempEmailService == nil {
 			return "", false
 		}
 		cfg.TempEmailService = candidate.tempEmailService
 		address := strings.TrimSpace(candidate.tempEmailService.GetAddress())
 		return address, address != ""
-	default:
-		return "", false
 	}
 }
 
@@ -529,14 +530,15 @@ func reusableEmailCandidateFromConfig(provider string, cfg *core.Config) (reusab
 		}
 		address := strings.TrimSpace(cfg.CloudMailProvider.GetAddress())
 		return reusableEmailCandidate{provider: provider, address: address, cloudMailProvider: cfg.CloudMailProvider}, address != ""
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip":
+	default:
+		if !isTemporaryEmailProvider(provider) {
+			return reusableEmailCandidate{}, false
+		}
 		if cfg.TempEmailService == nil {
 			return reusableEmailCandidate{}, false
 		}
 		address := strings.TrimSpace(cfg.TempEmailService.GetAddress())
 		return reusableEmailCandidate{provider: provider, address: address, tempEmailService: cfg.TempEmailService}, address != ""
-	default:
-		return reusableEmailCandidate{}, false
 	}
 }
 
@@ -1674,6 +1676,20 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				address, err := createTempEmailWithRetry("FreeCustom.Email", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("FreeCustom.Email", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if channel, ok := email.FreeCustomFixedDomainChannel(emailProvider); ok {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 %s 邮箱", i+1, displayTotal, channel.Label)
+				service := email.NewFreeCustomFixedDomainService(taskCfg.EmailProxy, channel.Domain)
+				address, err := createTempEmailWithRetry(channel.Label, service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure(channel.Label, err)
 					return
 				}
 				taskCfg.TempEmailService = service
@@ -3459,6 +3475,9 @@ func shouldStopForOutlookOTPTimeout(useOutlook bool, success bool, failReason st
 }
 
 func emailProviderDisplayName(emailProvider string) string {
+	if channel, ok := email.FreeCustomFixedDomainChannel(emailProvider); ok {
+		return channel.Label
+	}
 	switch emailProvider {
 	case "outlook":
 		return "Outlook"
@@ -3540,6 +3559,9 @@ func emailProviderDisplayName(emailProvider string) string {
 }
 
 func isTemporaryEmailProvider(emailProvider string) bool {
+	if _, ok := email.FreeCustomFixedDomainChannel(emailProvider); ok {
+		return true
+	}
 	switch emailProvider {
 	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip":
 		return true

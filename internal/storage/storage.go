@@ -48,6 +48,9 @@ const (
 	RegistrationEmailProviderInboxKitten    = "inboxkitten"
 	RegistrationEmailProviderInboxes        = "inboxes"
 	RegistrationEmailProviderFreeCustom     = "freecustom"
+	RegistrationEmailProviderFCEDitpay      = "fce_ditpay"
+	RegistrationEmailProviderFCEJunkstopper = "fce_junkstopper"
+	RegistrationEmailProviderFCEAreueally   = "fce_areueally"
 	RegistrationEmailProviderDropMail       = "dropmail"
 	RegistrationEmailProviderMailCatch      = "mailcatch"
 	RegistrationEmailProviderTempMailo      = "tempmailo"
@@ -1029,6 +1032,12 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderInboxes
 	case RegistrationEmailProviderFreeCustom:
 		return RegistrationEmailProviderFreeCustom
+	case RegistrationEmailProviderFCEDitpay:
+		return RegistrationEmailProviderFCEDitpay
+	case RegistrationEmailProviderFCEJunkstopper:
+		return RegistrationEmailProviderFCEJunkstopper
+	case RegistrationEmailProviderFCEAreueally:
+		return RegistrationEmailProviderFCEAreueally
 	case RegistrationEmailProviderDropMail:
 		return RegistrationEmailProviderDropMail
 	case RegistrationEmailProviderMailCatch:

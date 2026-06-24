@@ -33,13 +33,45 @@ var (
 	}
 )
 
+// FreeCustomDomainChannel 描述一个固定 FreeCustom.Email 域名渠道。
+type FreeCustomDomainChannel struct {
+	Provider string
+	Domain   string
+	Label    string
+}
+
+var freeCustomFixedDomainChannels = []FreeCustomDomainChannel{
+	{Provider: "fce_areueally", Domain: "areueally.info", Label: "FreeCustom areueally"},
+	{Provider: "fce_junkstopper", Domain: "junkstopper.info", Label: "FreeCustom junkstopper"},
+	{Provider: "fce_ditpay", Domain: "ditpay.info", Label: "FreeCustom ditpay"},
+}
+
+// FreeCustomFixedDomainChannels 返回当前接入的固定域名 FreeCustom.Email 渠道。
+func FreeCustomFixedDomainChannels() []FreeCustomDomainChannel {
+	out := make([]FreeCustomDomainChannel, len(freeCustomFixedDomainChannels))
+	copy(out, freeCustomFixedDomainChannels)
+	return out
+}
+
+// FreeCustomFixedDomainChannel 根据 provider 查询固定域名渠道。
+func FreeCustomFixedDomainChannel(provider string) (FreeCustomDomainChannel, bool) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	for _, channel := range freeCustomFixedDomainChannels {
+		if channel.Provider == provider {
+			return channel, true
+		}
+	}
+	return FreeCustomDomainChannel{}, false
+}
+
 // FreeCustomService 提供 FreeCustom.Email 零配置临时邮箱能力。
 type FreeCustomService struct {
-	client     *http.Client
-	baseURL    string
-	address    string
-	token      string
-	checkedIDs map[string]struct{}
+	client       *http.Client
+	baseURL      string
+	address      string
+	token        string
+	checkedIDs   map[string]struct{}
+	fixedDomains []string
 }
 
 // NewFreeCustomService 创建 FreeCustom.Email 临时邮箱服务。
@@ -50,6 +82,13 @@ func NewFreeCustomService(proxyURL string) *FreeCustomService {
 		baseURL:    freeCustomSiteBaseURL,
 		checkedIDs: make(map[string]struct{}),
 	}
+}
+
+// NewFreeCustomFixedDomainService 创建固定域名的 FreeCustom.Email 临时邮箱服务。
+func NewFreeCustomFixedDomainService(proxyURL, domain string) *FreeCustomService {
+	service := NewFreeCustomService(proxyURL)
+	service.fixedDomains = appendUniqueDomains(nil, domain)
+	return service
 }
 
 // Create 创建临时邮箱，兼容 TempEmailService 接口。
@@ -67,13 +106,17 @@ func (s *FreeCustomService) CreateWithError() (string, error) {
 	if err := s.ensureToken(); err != nil {
 		return "", err
 	}
-	domains, err := s.getDomains()
-	if err != nil {
-		log.Printf("[FreeCustom] 获取域名池失败，使用内置域名: %v", err)
-		domains = append([]string(nil), freeCustomFallbackDomains...)
-	}
+	domains := append([]string(nil), s.fixedDomains...)
 	if len(domains) == 0 {
-		domains = append([]string(nil), freeCustomFallbackDomains...)
+		var err error
+		domains, err = s.getDomains()
+		if err != nil {
+			log.Printf("[FreeCustom] 获取域名池失败，使用内置域名: %v", err)
+			domains = append([]string(nil), freeCustomFallbackDomains...)
+		}
+		if len(domains) == 0 {
+			domains = append([]string(nil), freeCustomFallbackDomains...)
+		}
 	}
 	domain := nextFreeCustomDomain(domains)
 	if domain == "" {
