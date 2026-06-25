@@ -1737,6 +1737,48 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
+		} else if emailProvider == "smailpro" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 SmailPro 邮箱", i+1, displayTotal)
+				service := email.NewSmailProService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("SmailPro", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("SmailPro", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "tempmailbox" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 TempMailbox 邮箱", i+1, displayTotal)
+				service := email.NewTempMailboxService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("TempMailbox", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("TempMailbox", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "minuteinbox" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 MinuteInbox 邮箱", i+1, displayTotal)
+				service := email.NewMinuteInboxService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("MinuteInbox", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("MinuteInbox", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
 		} else if emailProvider == "generator_email" {
 			if reusedEmail {
 				currentEmail = taskCfg.TempEmailService.GetAddress()
@@ -3513,6 +3555,12 @@ func emailProviderDisplayName(emailProvider string) string {
 		return "MailCatch"
 	case "tempmailo":
 		return "TempMailo"
+	case "smailpro":
+		return "SmailPro"
+	case "tempmailbox":
+		return "TempMailbox"
+	case "minuteinbox":
+		return "MinuteInbox"
 	case "generator_email":
 		return "Generator.Email"
 	case "mailtowin":
@@ -3563,7 +3611,7 @@ func isTemporaryEmailProvider(emailProvider string) bool {
 		return true
 	}
 	switch emailProvider {
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "smailpro", "tempmailbox", "minuteinbox", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip":
 		return true
 	default:
 		return false

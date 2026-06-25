@@ -10,6 +10,9 @@ const i18nJs = fs.readFileSync(new URL('../js/i18n.js', import.meta.url), 'utf8'
 const providers = [
   ['mailcatch', 'mailCatch', 'MailCatch'],
   ['tempmailo', 'tempMailo', 'TempMailo'],
+  ['minuteinbox', 'minuteInbox', 'MinuteInbox'],
+  ['smailpro', 'smailPro', 'SmailPro'],
+  ['tempmailbox', 'tempMailbox', 'TempMailbox'],
   ['generator_email', 'generatorEmail', 'Generator.Email'],
   ['mailtowin', 'mailToWin', 'MailToWin'],
   ['mail2me', 'mail2Me', 'Mail2Me'],

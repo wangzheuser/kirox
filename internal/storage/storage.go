@@ -54,6 +54,9 @@ const (
 	RegistrationEmailProviderDropMail       = "dropmail"
 	RegistrationEmailProviderMailCatch      = "mailcatch"
 	RegistrationEmailProviderTempMailo      = "tempmailo"
+	RegistrationEmailProviderSmailPro       = "smailpro"
+	RegistrationEmailProviderTempMailbox    = "tempmailbox"
+	RegistrationEmailProviderMinuteInbox    = "minuteinbox"
 	RegistrationEmailProviderGeneratorEmail = "generator_email"
 	RegistrationEmailProviderMailToWin      = "mailtowin"
 	RegistrationEmailProviderMail2Me        = "mail2me"
@@ -1044,6 +1047,12 @@ func normalizeRegistrationEmailProvider(provider string) string {
 		return RegistrationEmailProviderMailCatch
 	case RegistrationEmailProviderTempMailo:
 		return RegistrationEmailProviderTempMailo
+	case RegistrationEmailProviderSmailPro:
+		return RegistrationEmailProviderSmailPro
+	case RegistrationEmailProviderTempMailbox:
+		return RegistrationEmailProviderTempMailbox
+	case RegistrationEmailProviderMinuteInbox:
+		return RegistrationEmailProviderMinuteInbox
 	case RegistrationEmailProviderGeneratorEmail:
 		return RegistrationEmailProviderGeneratorEmail
 	case RegistrationEmailProviderMailToWin:

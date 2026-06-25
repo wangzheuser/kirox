@@ -142,7 +142,7 @@ document.addEventListener('keydown', function(e) {
 
 // 当前选中的邮箱提供商（多选）
 var selectedEmailProviders = ['outlook'];
-var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'fce_areueally', 'fce_junkstopper', 'fce_ditpay', 'dropmail', 'mailcatch', 'tempmailo', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip'];
+var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'fce_areueally', 'fce_junkstopper', 'fce_ditpay', 'dropmail', 'mailcatch', 'tempmailo', 'minuteinbox', 'smailpro', 'tempmailbox', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip'];
 var selectedMoeMailDomains = [];
 var allMoeMailDomains = []; // 存储所有可用域名及其配置映射
 var selectedCloudMailDomains = [];
@@ -291,6 +291,18 @@ function updateEmailProviderHint(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.tempMailoHint', '使用 TempMailo 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.tempMailoHint');
+  } else if (provider === 'minuteinbox') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.minuteInboxHint', '使用 MinuteInbox 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.minuteInboxHint');
+  } else if (provider === 'smailpro') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.smailProHint', '使用 SmailPro 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.smailProHint');
+  } else if (provider === 'tempmailbox') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.tempMailboxHint', '使用 TempMailbox 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.tempMailboxHint');
   } else if (provider === 'generator_email') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.generatorEmailHint', '使用 Generator.Email 零配置临时邮箱进行注册。');
