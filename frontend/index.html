@@ -488,7 +488,7 @@
 
                   <div id="proxy-normal-panel" style="display:none;flex-direction:column;gap:8px;">
                     <div style="display:flex;gap:8px;">
-                      <input type="password" id="cfg-proxy" placeholder="例如 https://user.{uuid}:***@proxy.example.com:443" class="form-input" style="flex:1;">
+                      <input type="text" id="cfg-proxy" placeholder="例如 https://user.{uuid}:***@proxy.example.com:443" class="form-input" style="flex:1;">
                       <button onclick="saveProxy()" class="btn btn-secondary btn-sm">保存普通代理</button>
                       <button onclick="resetProxy()" class="btn btn-secondary btn-sm">清除</button>
                     </div>
@@ -534,7 +534,7 @@
               <div class="settings-item-action">
                 <div style="display:flex;flex-direction:column;gap:8px;width:100%;">
                   <div style="display:flex;gap:8px;">
-                    <input type="password" id="cfg-email-proxy" placeholder="留空直连，例如 http://127.0.0.1:7890" class="form-input" style="flex:1;">
+                    <input type="text" id="cfg-email-proxy" placeholder="留空直连，例如 http://127.0.0.1:7890" class="form-input" style="flex:1;">
                     <button onclick="saveEmailProxy()" class="btn btn-secondary btn-sm">保存邮箱代理</button>
                     <button onclick="resetEmailProxy()" class="btn btn-secondary btn-sm">清除</button>
                   </div>

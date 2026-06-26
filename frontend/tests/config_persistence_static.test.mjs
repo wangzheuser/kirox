@@ -131,12 +131,12 @@ test('proxy examples and visible proxy inputs are sanitized', () => {
     assert.doesNotMatch(source, /http:\/\/user:pass@/i);
   }
 
-  assert.match(html, /<input(?=[^>]*id="cfg-proxy")(?=[^>]*type="password")[^>]*>/);
-  assert.match(html, /<input(?=[^>]*id="cfg-email-proxy")(?=[^>]*type="password")[^>]*>/);
+  assert.match(html, /<input(?=[^>]*id="cfg-proxy")(?=[^>]*type="text")[^>]*>/);
+  assert.match(html, /<input(?=[^>]*id="cfg-email-proxy")(?=[^>]*type="text")[^>]*>/);
   assert.match(html, /<input(?=[^>]*id="cfg-clash-api-secret")(?=[^>]*type="password")[^>]*>/);
   assert.match(html, /https:\/\/user\.\{uuid\}:\*\*\*@proxy\.example\.com:443/);
   assert.match(proxyPoolJs, /https:\/\/user\.\{uuid\}:\*\*\*@proxy\.example\.com:443/);
-  assert.match(proxyPoolJs, /type="password" value="' \+ escapeProxyHtml\(p\.url\)/);
+  assert.match(proxyPoolJs, /type="text" value="' \+ escapeProxyHtml\(p\.url\)/);
 });
 
 test('Outlook Graph registration email strategy is persisted through backend APIs', () => {
