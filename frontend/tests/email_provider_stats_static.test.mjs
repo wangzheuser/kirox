@@ -15,9 +15,13 @@ test('register page contains persistent email provider stats card', () => {
   assert.match(html, /注册成功数/);
   assert.match(html, /注册成功域名统计/);
   assert.match(html, /id="email-provider-stats-body"/);
+  assert.match(html, /id="btn-select-selected-email-provider-stats"[^>]*disabled/);
+  assert.match(html, /勾选所选邮箱渠道/);
   assert.match(html, /id="btn-select-email-provider-stats"/);
   assert.match(html, /勾选所有邮箱渠道/);
   assert.match(html, /id="btn-reset-email-provider-stats"/);
+  assert.match(html, /<th[^>]*>\s*<\/th>\s*<th[^>]*>\s*渠道\s*<\/th>/);
+  assert.match(html, /<td colspan="5"[^>]*>加载中\.\.\.<\/td>/);
 });
 
 test('frontend loads and resets email provider stats through dedicated api', () => {
@@ -34,6 +38,19 @@ test('frontend can replace selected providers with providers from stats', () => 
   assert.match(appJs, /selectEmailProvidersFromStats[\s\S]*setEmailProviders\s*\(\s*providers\s*\)/);
   assert.match(appJs, /暂无统计渠道可勾选/);
   assert.doesNotMatch(appJs, /selectEmailProvidersFromStats[\s\S]*toggleEmailProvider\s*\(/);
+});
+
+test('frontend can replace selected providers with checked stats rows only', () => {
+  assert.match(appJs, /var\s+selectedEmailProviderStatProviders\s*=\s*\[\]/);
+  assert.match(appJs, /function\s+toggleEmailProviderStatSelection\s*\(/);
+  assert.match(appJs, /function\s+updateSelectedEmailProviderStatsButtonState\s*\(/);
+  assert.match(appJs, /function\s+selectSelectedEmailProvidersFromStats\s*\(/);
+  assert.match(appJs, /selectSelectedEmailProvidersFromStats[\s\S]*setEmailProviders\s*\(\s*providers\s*\)/);
+  assert.match(appJs, /已按所选统计渠道覆盖当前邮箱渠道选择/);
+  assert.match(appJs, /暂无所选统计渠道可勾选/);
+  assert.match(appJs, /type="checkbox"[\s\S]*toggleEmailProviderStatSelection/);
+  assert.match(appJs, /data-provider="/);
+  assert.match(appJs, /btn-select-selected-email-provider-stats/);
 });
 
 test('task completion refreshes email provider stats', () => {

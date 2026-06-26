@@ -1063,6 +1063,55 @@ function _escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+function _escapeJsSingleQuoted(s) {
+  return String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
+}
+
+var selectedEmailProviderStatProviders = [];
+
+function getEmailProviderStatProvider(stat) {
+  return String((stat && (stat.provider || stat.Provider)) || '').trim();
+}
+
+function updateSelectedEmailProviderStatsButtonState() {
+  var btn = document.getElementById('btn-select-selected-email-provider-stats');
+  if (btn) btn.disabled = selectedEmailProviderStatProviders.length === 0;
+}
+
+function toggleEmailProviderStatSelection(provider, checked) {
+  provider = String(provider || '').trim();
+  if (!provider) {
+    updateSelectedEmailProviderStatsButtonState();
+    return;
+  }
+  var exists = selectedEmailProviderStatProviders.indexOf(provider) >= 0;
+  if (checked && !exists) {
+    selectedEmailProviderStatProviders.push(provider);
+  } else if (!checked && exists) {
+    selectedEmailProviderStatProviders = selectedEmailProviderStatProviders.filter(function(item) {
+      return item !== provider;
+    });
+  }
+  updateSelectedEmailProviderStatsButtonState();
+}
+
+function selectSelectedEmailProvidersFromStats() {
+  var providers = selectedEmailProviderStatProviders.filter(function(provider, index, list) {
+    return provider && list.indexOf(provider) === index;
+  });
+  if (!providers.length) {
+    updateSelectedEmailProviderStatsButtonState();
+    showToast('暂无所选统计渠道可勾选', 'error');
+    return;
+  }
+  setEmailProviders(providers);
+  showToast('已按所选统计渠道覆盖当前邮箱渠道选择');
+}
+
 async function loadEmailProviderStats() {
   var body = document.getElementById('email-provider-stats-body');
   if (!body || !window.go || !window.go.main || !window.go.main.App) return;
@@ -1070,23 +1119,39 @@ async function loadEmailProviderStats() {
     var stats = await window.go.main.App.GetEmailProviderStats();
     stats = Array.isArray(stats) ? stats : [];
     if (!stats.length) {
-      body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px;">暂无统计</td></tr>';
+      selectedEmailProviderStatProviders = [];
+      updateSelectedEmailProviderStatsButtonState();
+      body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:12px;">暂无统计</td></tr>';
       return;
     }
+    var availableProviders = stats.map(getEmailProviderStatProvider).filter(function(provider, index, list) {
+      return provider && list.indexOf(provider) === index;
+    });
+    selectedEmailProviderStatProviders = selectedEmailProviderStatProviders.filter(function(provider) {
+      return availableProviders.indexOf(provider) >= 0;
+    });
     body.innerHTML = stats.map(function(stat) {
-      var provider = stat.provider || stat.Provider || '';
+      var provider = getEmailProviderStatProvider(stat);
       var otpCount = stat.otpReceivedCount != null ? stat.otpReceivedCount : stat.OTPReceivedCount;
       var successCount = stat.registrationSuccessCount != null ? stat.registrationSuccessCount : stat.RegistrationSuccessCount;
       var domains = stat.successDomains || stat.SuccessDomains || {};
-      return '<tr>' +
+      var providerAttr = _escapeHtml(provider);
+      var checked = selectedEmailProviderStatProviders.indexOf(provider) >= 0 ? ' checked' : '';
+      return '<tr data-provider="' + providerAttr + '">' +
+        '<td style="width:34px;text-align:center;">' +
+          '<input type="checkbox" data-provider="' + providerAttr + '"' + checked + ' onchange="toggleEmailProviderStatSelection(\'' + _escapeJsSingleQuoted(provider) + '\', this.checked)">' +
+        '</td>' +
         '<td style="white-space:nowrap;font-weight:700;">' + _escapeHtml(getEmailProviderDisplayName(provider)) + '</td>' +
         '<td style="text-align:right;font-family:var(--font-mono);">' + (parseInt(otpCount, 10) || 0) + '</td>' +
         '<td style="text-align:right;font-family:var(--font-mono);">' + (parseInt(successCount, 10) || 0) + '</td>' +
         '<td style="min-width:220px;">' + formatEmailProviderSuccessDomains(domains) + '</td>' +
         '</tr>';
     }).join('');
+    updateSelectedEmailProviderStatsButtonState();
   } catch(e) {
-    body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--danger);padding:12px;">加载失败: ' + _escapeHtml(e.message || e) + '</td></tr>';
+    selectedEmailProviderStatProviders = [];
+    updateSelectedEmailProviderStatsButtonState();
+    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger);padding:12px;">加载失败: ' + _escapeHtml(e.message || e) + '</td></tr>';
   }
 }
 
@@ -1119,6 +1184,8 @@ async function resetEmailProviderStats() {
       showToast(result.error, 'error');
       return;
     }
+    selectedEmailProviderStatProviders = [];
+    updateSelectedEmailProviderStatsButtonState();
     await loadEmailProviderStats();
     showToast('邮箱渠道统计已重置');
   } catch(e) {
