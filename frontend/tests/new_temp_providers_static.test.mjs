@@ -33,6 +33,9 @@ const providers = [
   ['tmio_wnbaldwy', 'tmioWnbaldwy', 'TempMailIO wnbaldwy'],
   ['tmio_bwmyga', 'tmioBwmyga', 'TempMailIO bwmyga'],
   ['tmio_ozsaip', 'tmioOzsaip', 'TempMailIO ozsaip'],
+  ['gonebox', 'goneBox', 'GoneBox'],
+  ['openinbox', 'openInbox', 'OpenInbox'],
+  ['blinkbox', 'blinkBox', 'BlinkBoxApp'],
 ];
 
 test('registration page exposes new zero-config providers', () => {

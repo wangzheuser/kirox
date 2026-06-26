@@ -2059,6 +2059,48 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
+		} else if emailProvider == "gonebox" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 GoneBox 邮箱", i+1, displayTotal)
+				service := email.NewGoneBoxService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("GoneBox", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("GoneBox", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "openinbox" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 OpenInbox 邮箱", i+1, displayTotal)
+				service := email.NewOpenInboxService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("OpenInbox", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("OpenInbox", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
+		} else if emailProvider == "blinkbox" {
+			if reusedEmail {
+				currentEmail = taskCfg.TempEmailService.GetAddress()
+			} else {
+				log.Printf("[Kiro][%d/%d] 创建 BlinkBoxApp 邮箱", i+1, displayTotal)
+				service := email.NewBlinkBoxService(taskCfg.EmailProxy)
+				address, err := createTempEmailWithRetry("BlinkBoxApp", service.CreateWithError)
+				if err != nil {
+					recordEmailCreateFailure("BlinkBoxApp", err)
+					return
+				}
+				taskCfg.TempEmailService = service
+				currentEmail = address
+			}
 		}
 
 		log.Printf("[Kiro][%d/%d] 开始注册", i+1, displayTotal)
@@ -3601,6 +3643,12 @@ func emailProviderDisplayName(emailProvider string) string {
 		return "TempMailIO bwmyga.com"
 	case "tmio_ozsaip":
 		return "TempMailIO ozsaip.com"
+	case "gonebox":
+		return "GoneBox"
+	case "openinbox":
+		return "OpenInbox"
+	case "blinkbox":
+		return "BlinkBoxApp"
 	default:
 		return emailProvider
 	}
@@ -3611,7 +3659,7 @@ func isTemporaryEmailProvider(emailProvider string) bool {
 		return true
 	}
 	switch emailProvider {
-	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "smailpro", "tempmailbox", "minuteinbox", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip":
+	case "mailporary", "emailnator", "mailgw", "mailtm", "tempmail_lol", "guerrillamail", "mailtemp", "tempmail_plus", "inboxkitten", "inboxes", "freecustom", "dropmail", "mailcatch", "tempmailo", "smailpro", "tempmailbox", "minuteinbox", "generator_email", "mailtowin", "mail2me", "pickmemail", "maximail", "emlpro", "freeml", "emlhub", "emltmp", "mailpwr", "tenmail", "dropmail_me", "mimimail", "pickmail", "spymail", "yomail", "tmio_bltiwd", "tmio_wnbaldwy", "tmio_bwmyga", "tmio_ozsaip", "gonebox", "openinbox", "blinkbox":
 		return true
 	default:
 		return false

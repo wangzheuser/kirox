@@ -1027,7 +1027,10 @@ function getEmailProviderDisplayName(provider) {
     tmio_bltiwd: 'TempMailIO bltiwd',
     tmio_wnbaldwy: 'TempMailIO wnbaldwy',
     tmio_bwmyga: 'TempMailIO bwmyga',
-    tmio_ozsaip: 'TempMailIO ozsaip'
+    tmio_ozsaip: 'TempMailIO ozsaip',
+    gonebox: 'GoneBox',
+    openinbox: 'OpenInbox',
+    blinkbox: 'BlinkBoxApp'
   };
   return map[provider] || provider || '-';
 }

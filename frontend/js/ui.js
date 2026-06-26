@@ -142,7 +142,7 @@ document.addEventListener('keydown', function(e) {
 
 // 当前选中的邮箱提供商（多选）
 var selectedEmailProviders = ['outlook'];
-var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'fce_areueally', 'fce_junkstopper', 'fce_ditpay', 'dropmail', 'mailcatch', 'tempmailo', 'minuteinbox', 'smailpro', 'tempmailbox', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip'];
+var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'fce_areueally', 'fce_junkstopper', 'fce_ditpay', 'dropmail', 'mailcatch', 'tempmailo', 'minuteinbox', 'smailpro', 'tempmailbox', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip', 'gonebox', 'openinbox', 'blinkbox'];
 var selectedMoeMailDomains = [];
 var allMoeMailDomains = []; // 存储所有可用域名及其配置映射
 var selectedCloudMailDomains = [];
@@ -383,6 +383,18 @@ function updateEmailProviderHint(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.tmioOzsaipHint', '使用 TempMailIO ozsaip.com 零配置临时邮箱进行注册。');
     hintDiv.setAttribute('data-i18n', 'register.tmioOzsaipHint');
+  } else if (provider === 'gonebox') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.goneBoxHint', '使用 GoneBox 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.goneBoxHint');
+  } else if (provider === 'openinbox') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.openInboxHint', '使用 OpenInbox 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.openInboxHint');
+  } else if (provider === 'blinkbox') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.blinkBoxHint', '使用 BlinkBoxApp 零配置临时邮箱进行注册。');
+    hintDiv.setAttribute('data-i18n', 'register.blinkBoxHint');
   } else if (provider === 'cloudmail') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.cloudmailHint', '使用 Cloud-Mail 自部署邮箱注册。⚠️ 每次注册会创建永久账号，需手动清理。');
