@@ -139,6 +139,34 @@ func TestTempMailLOLCreate403CountryBlockedIsProviderAccessBlocked(t *testing.T)
 	}
 }
 
+func TestEmailProviderCreateFailuresDoNotStopWholeBatch(t *testing.T) {
+	cases := []struct {
+		name    string
+		errText string
+	}{
+		{
+			name:    "rate limit",
+			errText: `创建 FreeCustom.Email 邮箱失败: FreeCustom 邮件列表 HTTP 429: {"error":"too_many_requests","message":"Rate limit exceeded"}`,
+		},
+		{
+			name:    "access blocked",
+			errText: `创建 TempMail.lol 邮箱 HTTP 403: {"error":"The country you are requesting from (TR) is not allowed to use the API free tier due to consistent API abuse."}`,
+		},
+		{
+			name:    "ordinary create failure",
+			errText: "创建 Mailporary 邮箱失败: net/http: request canceled (Client.Timeout or context cancellation while reading body)",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if shouldStopTaskForEmailCreateFailure(tc.errText) {
+				t.Fatalf("email provider create failure should fail only the current attempt, not stop the whole batch: %s", tc.errText)
+			}
+		})
+	}
+}
+
 func TestOrdinary403IsNotProviderAccessBlocked(t *testing.T) {
 	errText := "创建 TempMail.lol 邮箱 HTTP 403: forbidden"
 	if isEmailProviderAccessBlockedError(errText) {

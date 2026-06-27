@@ -1427,12 +1427,17 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			statsMu.Unlock()
 			publishDiagnostics()
 			log.Println(progressSummary)
-			if isEmailProviderAccessBlockedError(err.Error()) {
-				requestTaskStop(fmt.Sprintf("[Kiro] %s 邮箱服务拒绝当前出口国家/IP，停止任务；请更换邮箱代理/Clash 节点或邮箱渠道", providerLabel))
+			errorMsg := err.Error()
+			if shouldStopTaskForEmailCreateFailure(errorMsg) {
+				requestTaskStop(fmt.Sprintf("[Kiro] %s 邮箱服务不可用，停止任务；请更换邮箱代理/渠道", providerLabel))
 				return
 			}
-			if isEmailProviderRateLimitError(err.Error()) {
-				requestTaskStop(fmt.Sprintf("[Kiro] %s 邮箱服务限流，已重试 %d 次仍失败；请稍后重试或更换邮箱代理/渠道", providerLabel, len(emailProviderRateLimitBackoffs)))
+			if isEmailProviderAccessBlockedError(errorMsg) {
+				log.Printf("[Kiro] %s 邮箱服务拒绝当前出口国家/IP，本次尝试失败，批次继续；请更换邮箱代理/Clash 节点或邮箱渠道", providerLabel)
+				return
+			}
+			if isEmailProviderRateLimitError(errorMsg) {
+				log.Printf("[Kiro] %s 邮箱服务限流，已重试 %d 次仍失败；本次尝试失败，批次继续；请稍后重试或更换邮箱代理/渠道", providerLabel, len(emailProviderRateLimitBackoffs))
 			}
 		}
 		createTempEmailWithRetry := func(providerLabel string, create func() (string, error)) (string, error) {
@@ -3364,6 +3369,11 @@ func shouldRetryEmailProviderCreateError(errorMsg string, rateLimitAttempt int) 
 	}
 	wait := emailProviderRateLimitBackoff(rateLimitAttempt)
 	return wait > 0, wait
+}
+
+// 邮箱服务创建失败只代表当前邮箱渠道/出口暂时不可用，应计入本次尝试失败并继续下一次。
+func shouldStopTaskForEmailCreateFailure(_ string) bool {
+	return false
 }
 
 func emailProxyUsesClash(emailProxy, clashProxy string) bool {
