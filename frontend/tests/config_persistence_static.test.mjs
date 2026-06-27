@@ -69,7 +69,7 @@ test('wails wrappers expose persistent config APIs', () => {
 
 test('settings cfg controls have backend persistence coverage or explicit non-setting ownership', () => {
   const settingsStart = html.indexOf('id="page-settings"');
-  const settingsEnd = html.indexOf('id="page-logs"', settingsStart);
+  const settingsEnd = html.indexOf('id="page-store"', settingsStart);
   const settingsHtml = html.slice(settingsStart, settingsEnd);
   const cfgIds = [...settingsHtml.matchAll(/id="(cfg-[^"]+)"/g)].map(match => match[1]).sort();
   const expected = [

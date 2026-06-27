@@ -65,12 +65,6 @@ function setText(id, text) {
   var el = document.getElementById(id);
   if (el) el.textContent = text;
 }
-
-function setWidth(id, width) {
-  var el = document.getElementById(id);
-  if (el) el.style.width = width;
-}
-
 // 更新任务状态卡片（从快速轮询）
 function updateTaskStatusUI(data) {
   var kiro = data.kiro || {};

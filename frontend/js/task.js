@@ -34,10 +34,6 @@ function formatTime(seconds) {
   return h + 'h ' + m + 'm';
 }
 
-// 任务模态框（保留兼容，已迁移到注册页面）
-function openKiroTaskModal() { switchPage('register'); }
-function closeKiroTaskModal() {}
-
 function switchToOverviewAfterTaskStart() {
   if (typeof switchPage === 'function') switchPage('overview');
 }
@@ -529,7 +525,6 @@ async function checkUpdateManually() {
 
 // ===== 状态轮询 =====
 
-var lastOutlookUpdate = 0;
 setInterval(async function() {
   try {
     var s = await window.go.main.App.GetStatus();
@@ -600,14 +595,6 @@ setInterval(async function() {
     renderUnifiedLogs();
   } catch(e) {}
 
-  var now = Date.now();
-  if (now - lastOutlookUpdate > 2000) {
-    lastOutlookUpdate = now;
-    var outlookModal = document.getElementById('outlook-modal');
-    if (outlookModal && outlookModal.classList.contains('show')) {
-      await loadOutlookAccountsList();
-    }
-  }
 }, 2000);
 
 // 切换语言时立刻按新语言重渲染日志（renderUnifiedLogs 自带 innerHTML 短路，无副作用）

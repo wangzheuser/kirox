@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../js/moemail.js', import.meta.url), 'utf8');
 
-test('MoeMail list and modal expose edit controls', () => {
+test('MoeMail inline list exposes edit controls', () => {
   assert.match(js, /编辑/);
   assert.match(js, /beginEditMoeMailConfig/);
   assert.match(html, /moemail-inline-cancel-edit-btn/);

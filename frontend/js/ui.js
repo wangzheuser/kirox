@@ -656,35 +656,3 @@ function selectAllCloudMailDomains() {
   selectedCloudMailDomains = allCloudMailDomains.map(item => item.domain);
   updateCloudMailDomainStyles();
 }
-
-// 关闭任务模态框
-function closeKiroTaskModal() {
-  document.getElementById('kiro-task-modal').classList.remove('show');
-}
-
-// ===== 模态框遮罩层关闭逻辑（仅当 mousedown 和 mouseup 都在遮罩层上时才关闭） =====
-(function() {
-  var modalCloseMap = {
-    'kiro-task-modal': function() { closeKiroTaskModal(); },
-    'outlook-modal': function() { if (typeof closeOutlookModal === 'function') closeOutlookModal(); },
-    'moemail-modal': function() { if (typeof closeMoeMailModal === 'function') closeMoeMailModal(); }
-  };
-
-  var mouseDownTarget = null;
-
-  Object.keys(modalCloseMap).forEach(function(id) {
-    var overlay = document.getElementById(id);
-    if (!overlay) return;
-
-    overlay.addEventListener('mousedown', function(e) {
-      mouseDownTarget = e.target;
-    });
-
-    overlay.addEventListener('mouseup', function(e) {
-      if (mouseDownTarget === overlay && e.target === overlay) {
-        modalCloseMap[id]();
-      }
-      mouseDownTarget = null;
-    });
-  });
-})();

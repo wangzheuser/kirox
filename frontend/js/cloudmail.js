@@ -164,12 +164,6 @@ function generateCloudMailName() {
   }
   return name;
 }
-
-function parseDomainsText(text) {
-  if (!text) return [];
-  return text.split(/[\s,;\n]+/).map(s => s.trim()).filter(Boolean);
-}
-
 async function inlineAddCloudMail() {
   var name = (document.getElementById('cloudmail-inline-name').value || '').trim();
   var url = (document.getElementById('cloudmail-inline-url').value || '').trim();
@@ -342,37 +336,6 @@ async function deleteCloudMailConfig(index) {
     }
   );
 }
-
-async function clearAllCloudMailConfigs() {
-  if (cloudmailConfigs.length === 0) {
-    showToast(_cmT('cloudmail.nothingToClear', '没有配置可清空'), 'info');
-    return;
-  }
-  showConfirmModal(
-    _cmT('cloudmail.clearAllTitle', '清空 Cloud-Mail 配置'),
-    _cmT('cloudmail.clearAllMsg', '确认清空所有 Cloud-Mail 配置吗？此操作不可恢复。'),
-    _cmT('accounts.clearAllConfirm', '确认清空'),
-    async function() {
-      cloudmailConfigs = [];
-      try {
-        const result = await window.go.main.App.SaveCloudMailConfigs(JSON.stringify(cloudmailConfigs));
-        if (result.error) {
-          showToast(_cmT('toast.clearFailed', '清空失败') + ': ' + result.error, 'error');
-          await loadCloudMailConfigs();
-          return;
-        }
-        cloudmailConfigStatus = {};
-        saveCloudMailConfigStatus();
-        updateCloudMailUI();
-        showToast(_cmT('cloudmail.allCleared', '已清空所有配置'), 'success');
-      } catch (e) {
-        showToast(_cmT('toast.clearFailed', '清空失败') + ': ' + e, 'error');
-        await loadCloudMailConfigs();
-      }
-    }
-  );
-}
-
 async function autoTestAllCloudMailConfigs() {
   if (cloudmailConfigs.length === 0) return;
   console.log('[CloudMail] 启动自动测试，共 ' + cloudmailConfigs.length + ' 个配置');

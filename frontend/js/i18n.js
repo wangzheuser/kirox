@@ -12,12 +12,12 @@
   var DICT = {
     zh: {
       nav: {
-        overview: '概览', logs: '运行日志', register: '注册', accounts: '邮箱池', subscription: '订阅',
+        overview: '概览', register: '注册', accounts: '邮箱池', subscription: '订阅',
         about: '关于', settings: '设置', toggleTheme: '切换主题', checkUpdate: '检查更新',
         language: '语言：中文 (点击切换)'
       },
       page: {
-        overview: '概览', logs: '运行日志', register: '注册', accounts: '邮箱池', subscription: '订阅',
+        overview: '概览', register: '注册', accounts: '邮箱池', subscription: '订阅',
         about: '关于', settings: '设置'
       },
       common: {
@@ -312,12 +312,12 @@
     },
     en: {
       nav: {
-        overview: 'Overview', logs: 'Logs', register: 'Register', accounts: 'Emails', subscription: 'Subscription',
+        overview: 'Overview', register: 'Register', accounts: 'Emails', subscription: 'Subscription',
         about: 'About', settings: 'Settings', toggleTheme: 'Toggle theme', checkUpdate: 'Check update',
         language: 'Language: English (click to switch)'
       },
       page: {
-        overview: 'Overview', logs: 'Logs', register: 'Register', accounts: 'Emails', subscription: 'Subscription',
+        overview: 'Overview', register: 'Register', accounts: 'Emails', subscription: 'Subscription',
         about: 'About', settings: 'Settings'
       },
       common: {
@@ -612,12 +612,12 @@
     },
     ja: {
       nav: {
-        overview: '概要', logs: 'ログ', register: '登録', accounts: 'メール', subscription: 'サブスク',
+        overview: '概要', register: '登録', accounts: 'メール', subscription: 'サブスク',
         about: '情報', settings: '設定', toggleTheme: 'テーマ切替', checkUpdate: '更新確認',
         language: '言語：日本語 (クリックで切替)'
       },
       page: {
-        overview: '概要', logs: 'ログ', register: '登録', accounts: 'メール', subscription: 'サブスク',
+        overview: '概要', register: '登録', accounts: 'メール', subscription: 'サブスク',
         about: '情報', settings: '設定'
       },
       common: {

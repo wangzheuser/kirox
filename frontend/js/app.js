@@ -7,7 +7,7 @@ function getPageTitle(pageId) {
     var v = window.I18N.t('page.' + pageId);
     if (v && v !== 'page.' + pageId) return v;
   }
-  var fallback = { overview: '概览', logs: '运行日志', register: '注册', accounts: '邮箱池', subscription: '获取订阅支付链接', 'account-pool': '账号池', info: '关于', settings: '设置' };
+  var fallback = { overview: '概览', register: '注册', accounts: '邮箱池', subscription: '获取订阅支付链接', 'account-pool': '账号池', info: '关于', settings: '设置' };
   return fallback[pageId] || pageId;
 }
 function switchPage(pageId) {
@@ -44,20 +44,6 @@ function switchPage(pageId) {
   if (pageId === 'register' && typeof loadEmailProviderStats === 'function') {
     loadEmailProviderStats();
   }
-}
-
-// 标签页切换
-function switchTab(tabId) {
-  var tabBar = document.querySelector('.tab-item[data-tab="' + tabId + '"]').parentElement;
-  tabBar.querySelectorAll('.tab-item').forEach(function(t) {
-    t.classList.toggle('active', t.getAttribute('data-tab') === tabId);
-  });
-  var page = tabBar.parentElement;
-  page.querySelectorAll('.tab-panel').forEach(function(p) {
-    p.classList.remove('active');
-  });
-  var target = document.getElementById('tab-' + tabId);
-  if (target) target.classList.add('active');
 }
 
 // 下拉框
@@ -1349,17 +1335,6 @@ window.addEventListener('DOMContentLoaded', async function() {
   // 启动时静默检查更新
   setTimeout(checkUpdateOnStartup, 2000);
 });
-
-// 语言切换（设置页下拉）
-async function onLanguageChange(lang) {
-  if (!lang || !window.I18N) return;
-  try {
-    window.I18N.setLanguage(lang);
-    showToast(tr('toast.languageChanged', '已切换语言'));
-  } catch(e) {
-    showToast(tr('toast.operationFailed', '操作失败') + ': ' + e.message, 'error');
-  }
-}
 
 // 语言循环切换（侧栏点击）：zh → en → ja → zh
 var _langOrder = ['zh', 'en', 'ja'];
