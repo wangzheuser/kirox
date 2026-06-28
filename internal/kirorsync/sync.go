@@ -50,6 +50,7 @@ type addCredentialResponse struct {
 	Message      string          `json:"message"`
 	CredentialID int             `json:"credentialId"`
 	Email        string          `json:"email"`
+	ModelCount   int             `json:"modelCount,omitempty"`
 	Balance      json.RawMessage `json:"balance,omitempty"`
 }
 
@@ -310,6 +311,9 @@ func isPermanentCredentialRejection(status int, body []byte) (bool, string) {
 	if status == http.StatusNotFound && (strings.Contains(message, "凭据不存在") || errorTypeLower == "not_found") {
 		return false, ""
 	}
+	if isModelForbiddenRejection(all) {
+		return true, firstNonEmpty(message, text)
+	}
 	if status == http.StatusTooManyRequests || status >= 500 {
 		return false, ""
 	}
@@ -342,6 +346,19 @@ func isPermanentCredentialRejection(status int, body []byte) (bool, string) {
 		return true, firstNonEmpty(message, text)
 	}
 	return false, ""
+}
+
+func isModelForbiddenRejection(text string) bool {
+	lower := strings.ToLower(text)
+	if !strings.Contains(lower, strings.ToLower("ListAvailableModels")) &&
+		!strings.Contains(lower, strings.ToLower("模型列表")) &&
+		!strings.Contains(lower, "models") {
+		return false
+	}
+	return strings.Contains(lower, "http 403") ||
+		strings.Contains(lower, "403 forbidden") ||
+		strings.Contains(lower, "forbidden") ||
+		strings.Contains(lower, "upstreamforbidden")
 }
 
 func parseKiroRSError(body []byte) (message string, errorType string, topReason string) {

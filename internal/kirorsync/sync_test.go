@@ -57,6 +57,54 @@ func TestSyncAccountsKeepsOtherBadRequestAsFailure(t *testing.T) {
 	}
 }
 
+func TestSyncAccountsRejectsModelForbiddenWrappedByBadGateway(t *testing.T) {
+	var attempts int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprint(w, `{"error":{"type":"api_error","message":"上游服务错误: ListAvailableModels 请求失败: HTTP 403 Forbidden body={}"}}`)
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+		{"email": "forbidden@example.com", "refreshToken": "refresh", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if attempts != 1 {
+		t.Fatalf("permanent model forbidden should not be retried, got attempts=%d", attempts)
+	}
+	if result.Total != 1 || result.Success != 0 || result.Failed != 1 {
+		t.Fatalf("model forbidden should fail sync, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+	if len(result.Details) != 1 || !result.Details[0].Rejected || result.Details[0].RejectReason == "" {
+		t.Fatalf("model forbidden should be rejected for local deletion: %#v", result.Details)
+	}
+}
+
+func TestSyncAccountsKeepsOrdinaryBadGatewayAsTransient(t *testing.T) {
+	var attempts int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprint(w, `temporary upstream gateway error`)
+	}))
+	defer server.Close()
+
+	result := SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+		{"email": "transient-502@example.com", "refreshToken": "refresh", "clientId": "client", "clientSecret": "secret"},
+	})
+
+	if attempts != 2 {
+		t.Fatalf("ordinary 502 should still retry once, got attempts=%d", attempts)
+	}
+	if result.Total != 1 || result.Success != 0 || result.Failed != 1 {
+		t.Fatalf("ordinary 502 should fail after retry, got total=%d success=%d failed=%d details=%#v", result.Total, result.Success, result.Failed, result.Details)
+	}
+	if len(result.Details) != 1 || result.Details[0].Rejected {
+		t.Fatalf("ordinary 502 must not reject local account: %#v", result.Details)
+	}
+}
+
 func TestSyncAccountsCountsOrdinarySuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body addCredentialRequest

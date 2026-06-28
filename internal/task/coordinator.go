@@ -2852,10 +2852,14 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				storage.GetKiroRSAPIKey(),
 				selectedAccounts,
 			)
-			if updated, err := data.MarkKiroRSSynced(outDir, successfulSyncEmails(syncResult)); err != nil {
-				log.Printf("[Kiro] kiro.rs 同步状态更新失败: %v", err)
+			updated, removedRejected, _, applyErr := applyKiroRSSyncResult(outDir, syncResult)
+			if applyErr != nil {
+				log.Printf("[Kiro] kiro.rs 同步状态更新失败: %v", applyErr)
 			} else if updated > 0 {
 				log.Printf("[Kiro] kiro.rs 同步状态已更新: %d 个账号标记为已同步", updated)
+			}
+			if removedRejected > 0 {
+				log.Printf("[Kiro] kiro.rs 自动同步已删除本地永久失效账号: %d 个", removedRejected)
 			}
 			log.Printf("[Kiro] kiro.rs 同步完成: 成功 %d / 失败 %d", syncResult.Success, syncResult.Failed)
 			if Manager.OnSyncResult != nil {
@@ -2921,6 +2925,33 @@ func successfulSyncEmails(result kirorsync.SyncResult) []string {
 		}
 	}
 	return emails
+}
+
+func rejectedSyncEmails(result kirorsync.SyncResult) []string {
+	emails := make([]string, 0)
+	for _, detail := range result.Details {
+		if detail.Rejected && strings.TrimSpace(detail.Email) != "" {
+			emails = append(emails, detail.Email)
+		}
+	}
+	return emails
+}
+
+func applyKiroRSSyncResult(outDir string, result kirorsync.SyncResult) (int, int, []string, error) {
+	updated, err := data.MarkKiroRSSynced(outDir, successfulSyncEmails(result))
+	if err != nil {
+		return updated, 0, nil, fmt.Errorf("更新同步状态失败: %w", err)
+	}
+
+	rejectedEmails := rejectedSyncEmails(result)
+	removed := 0
+	if len(rejectedEmails) > 0 {
+		removed, err = data.DeleteAccounts(outDir, rejectedEmails)
+		if err != nil {
+			return updated, removed, rejectedEmails, fmt.Errorf("删除本地失效账号失败: %w", err)
+		}
+	}
+	return updated, removed, rejectedEmails, nil
 }
 
 // classifyError 根据错误信息粗分类，用于统计展示。

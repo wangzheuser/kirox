@@ -2,11 +2,14 @@ package task
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"reg_go/internal/core"
+	"reg_go/internal/data"
 	"reg_go/internal/email"
 	"reg_go/internal/kirorsync"
 	"reg_go/internal/storage"
@@ -50,6 +53,52 @@ func TestConcurrentStartStaggerSpreadsInitialConcurrencyWindow(t *testing.T) {
 		got := concurrentStartStagger(tc.idx, 10)
 		if got < tc.minDelay || got > tc.maxDelay {
 			t.Fatalf("idx %d stagger = %s, want within [%s, %s]", tc.idx, got, tc.minDelay, tc.maxDelay)
+		}
+	}
+}
+
+func TestApplyKiroRSSyncResultDeletesRejectedAccounts(t *testing.T) {
+	dir := t.TempDir()
+	accountsJSON := `[
+	  {"email":"ok@example.com","refreshToken":"ok-refresh","kiroRsSynced":false},
+	  {"email":"dead@example.com","refreshToken":"dead-refresh","kiroRsSynced":false},
+	  {"email":"keep@example.com","refreshToken":"keep-refresh","kiroRsSynced":false}
+	]`
+	if err := os.WriteFile(filepath.Join(dir, "accounts.json"), []byte(accountsJSON), 0o600); err != nil {
+		t.Fatalf("write accounts.json: %v", err)
+	}
+
+	result := kirorsync.SyncResult{Details: []kirorsync.SyncDetail{
+		{Email: "ok@example.com", Success: true},
+		{Email: "dead@example.com", Success: false, Rejected: true, RejectReason: "ListAvailableModels 请求失败: HTTP 403 Forbidden"},
+	}}
+	updated, removed, rejectedEmails, err := applyKiroRSSyncResult(dir, result)
+	if err != nil {
+		t.Fatalf("applyKiroRSSyncResult: %v", err)
+	}
+	if updated != 1 || removed != 1 {
+		t.Fatalf("updated=%d removed=%d, want 1/1", updated, removed)
+	}
+	if len(rejectedEmails) != 1 || rejectedEmails[0] != "dead@example.com" {
+		t.Fatalf("unexpected rejected emails: %#v", rejectedEmails)
+	}
+
+	accounts, err := data.LoadAccounts(dir)
+	if err != nil {
+		t.Fatalf("LoadAccounts: %v", err)
+	}
+	if len(accounts) != 2 {
+		t.Fatalf("expected rejected account removed, got %#v", accounts)
+	}
+	for _, acc := range accounts {
+		email, _ := acc["email"].(string)
+		if email == "dead@example.com" {
+			t.Fatalf("rejected account should be deleted: %#v", accounts)
+		}
+		if email == "ok@example.com" {
+			if synced, _ := acc["kiroRsSynced"].(bool); !synced {
+				t.Fatalf("successful account should be marked synced: %#v", acc)
+			}
 		}
 	}
 }
