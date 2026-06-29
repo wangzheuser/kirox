@@ -1259,6 +1259,30 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		}
 		attemptMu.Unlock()
 	}
+	registrationCounter := newRegistrationAttemptCounter(req.Count)
+	reserveRegistrationAttempt := func(candidateIndex int) (int, bool) {
+		if successTargetMode {
+			return candidateIndex, true
+		}
+		return registrationCounter.reserve()
+	}
+	var preparationMu sync.Mutex
+	nextPreparationIndex := 0
+	nextPreparationAttempt := func() (int, bool) {
+		select {
+		case <-Manager.stopCh:
+			return 0, false
+		default:
+		}
+		if !successTargetMode && registrationCounter.done() {
+			return 0, false
+		}
+		preparationMu.Lock()
+		idx := nextPreparationIndex
+		nextPreparationIndex++
+		preparationMu.Unlock()
+		return idx, true
+	}
 
 	// send-otp 400 熔断：任一任务遇到该错误即终止全部并发任务（只触发一次）
 	var otpKillOnce sync.Once
@@ -1337,14 +1361,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			return true
 		}
 		recordEmailCreateFailure := func(providerLabel string, err error) {
-			log.Printf("[Kiro][%d/%d] 生成 %s 邮箱失败: %v", i+1, displayTotal, providerLabel, err)
 			Manager.mu.Lock()
-			Manager.completed++
-			Manager.failed++
 			completedCount := Manager.completed
 			successCount := Manager.success
 			failedCount := Manager.failed
 			Manager.mu.Unlock()
+			log.Printf("[Kiro][%d/%d] 生成 %s 邮箱失败（前置失败，不计入注册次数，继续补齐）: %v", i+1, displayTotal, providerLabel, err)
 			if err == nil {
 				return
 			}
@@ -1396,12 +1418,11 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			// Outlook 模式：从共享池领取账号
 			if !nextUsableOutlookAccount() {
 				log.Printf("[Kiro][%d/%d] 无可用账号，跳过", i+1, displayTotal)
-				Manager.mu.Lock()
-				Manager.completed++
-				Manager.failed++
-				Manager.mu.Unlock()
+				recordEmailCreateFailure("Outlook", fmt.Errorf("无可用账号"))
 				if successTargetMode && onlyOutlookProvider {
 					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止成功目标模式")
+				} else if !successTargetMode && onlyOutlookProvider {
+					requestTaskStop("[Kiro] Outlook 账号池已耗尽，停止任务")
 				}
 				return
 			}
@@ -1424,11 +1445,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				// 创建 MoeMail 提供商
 				provider, err := email.NewMoeMailProviderWithProxy(config, emailName, expiryTime, domain, taskCfg.EmailProxy)
 				if err != nil {
-					log.Printf("[Kiro][%d/%d] 生成 MoeMail 邮箱失败: %v", i+1, displayTotal, err)
-					Manager.mu.Lock()
-					Manager.completed++
-					Manager.failed++
-					Manager.mu.Unlock()
+					recordEmailCreateFailure("MoeMail", err)
 					return
 				}
 
@@ -1446,11 +1463,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 
 				provider, err := email.NewCloudMailProvider(config, emailName, domain)
 				if err != nil {
-					log.Printf("[Kiro][%d/%d] 生成 cloud-mail 邮箱失败: %v", i+1, displayTotal, err)
-					Manager.mu.Lock()
-					Manager.completed++
-					Manager.failed++
-					Manager.mu.Unlock()
+					recordEmailCreateFailure("cloud-mail", err)
 					return
 				}
 
@@ -2041,6 +2054,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			}
 		}
 
+		registrationIndex, reserved := reserveRegistrationAttempt(i)
+		if !reserved {
+			log.Printf("[Kiro][%d/%d] 注册次数已满，丢弃已创建邮箱并停止领取新尝试", i+1, displayTotal)
+			return
+		}
+		i = registrationIndex
 		log.Printf("[Kiro][%d/%d] 开始注册", i+1, displayTotal)
 		itemStart := time.Now()
 
@@ -2058,7 +2077,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			// 每次重试前检查停止信号
 			select {
 			case <-Manager.stopCh:
-				return
+				result = map[string]interface{}{
+					"status": "failed",
+					"error":  "任务已取消",
+					"email":  currentEmail,
+				}
+				break retryLoop
 			default:
 			}
 
@@ -2066,13 +2090,23 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				log.Printf("[Kiro][%d/%d] 第 %d 次重试", i+1, displayTotal, attempt)
 				select {
 				case <-Manager.stopCh:
-					return
+					result = map[string]interface{}{
+						"status": "failed",
+						"error":  "任务已取消",
+						"email":  currentEmail,
+					}
+					break retryLoop
 				case <-time.After(time.Duration(2+attempt) * time.Second):
 				}
 			}
 
 			if taskCtx.Err() != nil {
-				return
+				result = map[string]interface{}{
+					"status": "failed",
+					"error":  "任务已取消",
+					"email":  currentEmail,
+				}
+				break retryLoop
 			}
 
 			attemptCfg := taskCfg
@@ -2623,42 +2657,44 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 	} else if req.Concurrency > 1 {
 		log.Printf("[Kiro] 启动并发任务: %d 个任务，并发数 %d", req.Count, req.Concurrency)
 		log.Printf("[Kiro] 并发任务启动错峰: 步进 100ms, 抖动 0-80ms")
-		sem := make(chan struct{}, req.Concurrency)
+		workerCount := req.Concurrency
 		var wg sync.WaitGroup
-	loop:
-		for i := 0; i < req.Count; i++ {
-			select {
-			case <-Manager.stopCh:
-				break loop
-			default:
-			}
+		for workerID := 0; workerID < workerCount; workerID++ {
 			wg.Add(1)
-			sem <- struct{}{}
-			go func(idx int) {
+			go func() {
 				defer wg.Done()
-				defer func() { <-sem }()
-
-				stagger := concurrentStartStagger(idx, req.Concurrency)
-				if stagger > 0 {
-					timer := time.NewTimer(stagger)
-					select {
-					case <-Manager.stopCh:
-						if !timer.Stop() {
-							<-timer.C
-						}
+				for {
+					idx, ok := nextPreparationAttempt()
+					if !ok {
 						return
-					case <-timer.C:
 					}
-				}
 
-				doTask(idx)
-			}(i)
+					stagger := concurrentStartStagger(idx, workerCount)
+					if stagger > 0 {
+						timer := time.NewTimer(stagger)
+						select {
+						case <-Manager.stopCh:
+							if !timer.Stop() {
+								<-timer.C
+							}
+							return
+						case <-timer.C:
+						}
+					}
+
+					doTask(idx)
+				}
+			}()
 		}
 		wg.Wait()
 	} else {
 		log.Printf("[Kiro] 启动串行任务: %d 个任务", req.Count)
 	serialLoop:
-		for i := 0; i < req.Count; i++ {
+		for {
+			idx, ok := nextPreparationAttempt()
+			if !ok {
+				break serialLoop
+			}
 			select {
 			case <-Manager.stopCh:
 				log.Println("任务已停止")
@@ -2667,8 +2703,8 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				break serialLoop
 			default:
 			}
-			doTask(i)
-			if req.Delay > 0 && i < req.Count-1 {
+			doTask(idx)
+			if req.Delay > 0 && !registrationCounter.done() {
 				time.Sleep(time.Duration(req.Delay) * time.Second)
 			}
 		}
