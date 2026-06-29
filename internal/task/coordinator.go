@@ -1674,8 +1674,11 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				currentEmail = taskCfg.TempEmailService.GetAddress()
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 SmailPro 邮箱", i+1, displayTotal)
-				service := email.NewSmailProService(taskCfg.EmailProxy)
-				address, err := createTempEmailWithRetry("SmailPro", service.CreateWithError)
+				service, address, err := createTempEmailPreferringSuccessfulDomains(taskCtx, "smailpro", "SmailPro", i+1, displayTotal, func() (email.TempEmailService, string, error) {
+					service := email.NewSmailProService(taskCfg.EmailProxy)
+					address, err := createTempEmailWithRetry("SmailPro", service.CreateWithError)
+					return service, address, err
+				})
 				if err != nil {
 					recordEmailCreateFailure("SmailPro", err)
 					return
@@ -2024,8 +2027,11 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				currentEmail = taskCfg.TempEmailService.GetAddress()
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 BlinkBoxApp 邮箱", i+1, displayTotal)
-				service := email.NewBlinkBoxService(taskCfg.EmailProxy)
-				address, err := createTempEmailWithRetry("BlinkBoxApp", service.CreateWithError)
+				service, address, err := createTempEmailPreferringSuccessfulDomains(taskCtx, "blinkbox", "BlinkBoxApp", i+1, displayTotal, func() (email.TempEmailService, string, error) {
+					service := email.NewBlinkBoxService(taskCfg.EmailProxy)
+					address, err := createTempEmailWithRetry("BlinkBoxApp", service.CreateWithError)
+					return service, address, err
+				})
 				if err != nil {
 					recordEmailCreateFailure("BlinkBoxApp", err)
 					return
