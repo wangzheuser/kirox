@@ -46,13 +46,6 @@ var freeCustomFixedDomainChannels = []FreeCustomDomainChannel{
 	{Provider: "fce_ditpay", Domain: "ditpay.info", Label: "FreeCustom ditpay"},
 }
 
-// FreeCustomFixedDomainChannels 返回当前接入的固定域名 FreeCustom.Email 渠道。
-func FreeCustomFixedDomainChannels() []FreeCustomDomainChannel {
-	out := make([]FreeCustomDomainChannel, len(freeCustomFixedDomainChannels))
-	copy(out, freeCustomFixedDomainChannels)
-	return out
-}
-
 // FreeCustomFixedDomainChannel 根据 provider 查询固定域名渠道。
 func FreeCustomFixedDomainChannel(provider string) (FreeCustomDomainChannel, bool) {
 	provider = strings.ToLower(strings.TrimSpace(provider))

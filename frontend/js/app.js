@@ -1,4 +1,4 @@
-// ===== 核心：导航 / 标签页 / 下拉框 / 配置 / 卡密 / Toast / 窗口控制 =====
+// ===== 核心：导航 / 标签页 / 下拉框 / 配置 / Toast / 窗口控制 =====
 
 // 页面切换
 var _currentPageId = 'overview';
@@ -1242,8 +1242,6 @@ async function saveSoundEnabled() {
 // 初始化加载
 async function loadConfig() {
   console.log('[启动] 开始初始化...');
-  
-  // 默认禁用所有功能，等待卡密验证
   
   let retries = 0;
   while ((!window.go || !window.go.main || !window.go.main.App) && retries < 100) {

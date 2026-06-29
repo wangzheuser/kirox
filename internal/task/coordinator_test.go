@@ -110,7 +110,10 @@ func TestFilterAccountsByEmailReturnsOnlyCurrentBatch(t *testing.T) {
 		{"email": "another@example.com"},
 	}
 
-	got := filterAccountsByEmail(accounts, []string{"new@example.com"})
+	got, missing := selectAccountsByEmail(accounts, []string{"new@example.com"})
+	if len(missing) != 0 {
+		t.Fatalf("expected no missing accounts, got %#v", missing)
+	}
 
 	if len(got) != 1 || got[0]["email"] != "new@example.com" {
 		t.Fatalf("expected only current batch account, got %#v", got)
@@ -782,15 +785,15 @@ func TestResolveOutlookGraphRegistrationEmailMapsOnlyClaimedAccount(t *testing.T
 		{Email: "second@outlook.jp", ClientID: "c2", RefreshToken: "r2"},
 	}
 	calls := 0
-	resolver := func(acc email.OutlookAccount, proxyURL string) (string, error) {
+	resolver := func(acc email.OutlookAccount, proxyURL string) (email.OutlookGraphProfile, error) {
 		calls++
 		if acc.Email != "first@outlook.jp" {
 			t.Fatalf("should only resolve claimed account, got %s", acc.Email)
 		}
-		return "first@hotmail.com", nil
+		return email.OutlookGraphProfile{PrimaryEmail: "first@hotmail.com"}, nil
 	}
 
-	resolved := resolveOutlookGraphRegistrationEmail(accounts[0], "", resolver)
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, accounts[0], storage.OutlookGraphRegistrationEmailPrimary, resolver)
 
 	if calls != 1 {
 		t.Fatalf("expected one lazy Graph /me lookup for the claimed account, got %d", calls)
@@ -806,7 +809,7 @@ func TestResolveOutlookGraphRegistrationEmailMapsOnlyClaimedAccount(t *testing.T
 func TestResolveOutlookGraphRegistrationEmailAutoKeepsExistingMappingWithoutLookup(t *testing.T) {
 	acc := email.OutlookAccount{Email: "alias@outlook.jp", RegistrationEmail: "actual@hotmail.com"}
 	calls := 0
-	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, acc, storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		calls++
 		return email.OutlookGraphProfile{PrimaryEmail: "unexpected@hotmail.com"}, nil
 	})
@@ -823,7 +826,7 @@ func TestResolveOutlookGraphRegistrationEmailAutoPrefersImportedAliasWhenGraphKn
 	acc := email.OutlookAccount{Email: "alias@outlook.jp"}
 	profile := email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com", Aliases: []string{"primary@hotmail.com", "alias@outlook.jp"}, AliasDataAvailable: true}
 
-	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, acc, storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		return profile, nil
 	})
 
@@ -839,7 +842,7 @@ func TestResolveOutlookGraphRegistrationEmailAutoUsesPrimaryWhenImportedAddressI
 	acc := email.OutlookAccount{Email: "external@example.com"}
 	profile := email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com", Aliases: []string{"primary@hotmail.com", "alias@outlook.jp"}, AliasDataAvailable: true}
 
-	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, acc, storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		return profile, nil
 	})
 
@@ -852,7 +855,7 @@ func TestResolveOutlookGraphRegistrationEmailAutoKeepsImportedWhenAliasesUnavail
 	acc := email.OutlookAccount{Email: "alias@outlook.jp"}
 	profile := email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com"}
 
-	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, acc, storage.OutlookGraphRegistrationEmailAuto, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		return profile, nil
 	})
 
@@ -864,7 +867,7 @@ func TestResolveOutlookGraphRegistrationEmailAutoKeepsImportedWhenAliasesUnavail
 func TestResolveOutlookGraphRegistrationEmailPrimaryModeOverridesExistingMapping(t *testing.T) {
 	acc := email.OutlookAccount{Email: "alias@outlook.jp", RegistrationEmail: "old-alias@hotmail.com"}
 	calls := 0
-	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailPrimary, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, acc, storage.OutlookGraphRegistrationEmailPrimary, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		calls++
 		return email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com", Aliases: []string{"alias@outlook.jp"}, AliasDataAvailable: true}, nil
 	})
@@ -880,7 +883,7 @@ func TestResolveOutlookGraphRegistrationEmailPrimaryModeOverridesExistingMapping
 func TestResolveOutlookGraphRegistrationEmailImportedModeOverridesExistingMapping(t *testing.T) {
 	acc := email.OutlookAccount{Email: "alias@outlook.jp", RegistrationEmail: "old-primary@hotmail.com"}
 	calls := 0
-	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailImported, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, acc, storage.OutlookGraphRegistrationEmailImported, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		calls++
 		return email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com"}, nil
 	})
@@ -897,7 +900,7 @@ func TestResolveOutlookGraphRegistrationEmailPrimaryModeUsesGraphPrimary(t *test
 	acc := email.OutlookAccount{Email: "alias@outlook.jp"}
 	profile := email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com", Aliases: []string{"alias@outlook.jp"}, AliasDataAvailable: true}
 
-	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailPrimary, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, acc, storage.OutlookGraphRegistrationEmailPrimary, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		return profile, nil
 	})
 
@@ -909,7 +912,7 @@ func TestResolveOutlookGraphRegistrationEmailPrimaryModeUsesGraphPrimary(t *test
 func TestResolveOutlookGraphRegistrationEmailImportedModeSkipsGraphLookup(t *testing.T) {
 	acc := email.OutlookAccount{Email: "alias@outlook.jp"}
 	calls := 0
-	resolved := resolveOutlookGraphRegistrationEmailWithMode(acc, "", storage.OutlookGraphRegistrationEmailImported, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
+	resolved := resolveOutlookGraphRegistrationEmailForTest(t, acc, storage.OutlookGraphRegistrationEmailImported, func(email.OutlookAccount, string) (email.OutlookGraphProfile, error) {
 		calls++
 		return email.OutlookGraphProfile{PrimaryEmail: "primary@hotmail.com"}, nil
 	})
@@ -920,6 +923,15 @@ func TestResolveOutlookGraphRegistrationEmailImportedModeSkipsGraphLookup(t *tes
 	if resolved.RegistrationEmail != "alias@outlook.jp" {
 		t.Fatalf("imported mode should use imported email: %#v", resolved)
 	}
+}
+
+func resolveOutlookGraphRegistrationEmailForTest(t *testing.T, acc email.OutlookAccount, mode string, resolver outlookGraphProfileResolver) email.OutlookAccount {
+	t.Helper()
+	resolved, err := resolveOutlookGraphRegistrationEmailForTask(acc, "", mode, resolver)
+	if err != nil {
+		t.Fatalf("resolveOutlookGraphRegistrationEmailForTask error: %v", err)
+	}
+	return resolved
 }
 
 func TestBuildAvailableOutlookAccountsPreservesGraphCacheFields(t *testing.T) {
@@ -996,7 +1008,7 @@ func TestRuntimeProgressSummaryIncludesLiveDiagnostics(t *testing.T) {
 	stats.RecordFailure("验活失败: UnauthorizedException", true, "验活")
 	stats.RecordRegisteredSkip()
 	stats.RecordGraphFailure("Graph网络错误")
-	stats.RecordNetworkError("门户访问失败: connection reset")
+	stats.RecordFailure("门户访问失败: connection reset", false, "")
 
 	got := stats.ProgressSummary(3, 1, 2, 2)
 	for _, want := range []string{"进度汇总", "总计=3", "成功=1", "失败=2", "成功率=33.3%", "已注册跳过=1", "Graph失败=1", "网络错误=1", "passwordSet失败=1", "Top失败="} {
@@ -1035,7 +1047,9 @@ func TestOutlookRegistrationAddressTrackerSkipsDuplicateAndRegisteredAddresses(t
 		t.Fatalf("duplicate final registration address should be skipped")
 	}
 	tracker.MarkRegistered(first)
-	if !tracker.IsRegistered(second) {
+	registeredTracker := newOutlookRegistrationAddressTracker()
+	registeredTracker.MarkRegistered(first)
+	if !registeredTracker.ShouldSkip(second) {
 		t.Fatalf("registered final address should be remembered case-insensitively")
 	}
 }

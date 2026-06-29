@@ -114,11 +114,3 @@ func refreshVolatile(base *BrowserIdentity) *BrowserIdentity {
 	clone.WebpackHash = hexed[rand.Intn(20):][:10]
 	return &clone
 }
-
-// ResetIdentityCache 清空缓存（用于「强制刷新指纹」按钮，未来可选）
-func ResetIdentityCache() {
-	idCacheMu.Lock()
-	defer idCacheMu.Unlock()
-	idCache = map[string]cachedIdentity{}
-	_ = os.Remove(identityCachePath())
-}

@@ -463,9 +463,6 @@ if (window.runtime) {
     updateInfo = data;
     showUpdateModal(data);
   });
-  window.runtime.EventsOn('update-progress', function(progress, downloaded, total) {
-    updateDownloadProgress(progress, downloaded, total);
-  });
   window.runtime.EventsOn('kiro-rs-sync-result', function(result) {
     if (result.error) {
       showToast('kiro.rs 同步失败: ' + result.error, 'error');

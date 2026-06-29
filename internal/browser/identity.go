@@ -267,14 +267,6 @@ func generateCanvasData() (int32, [256]int) {
 	return -2120415875, chrome2DCanvasHistogramBase
 }
 
-// abs 整数绝对值
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
 // ──────────────────── 核心: 随机身份生成 ────────────────────
 
 // RandomIdentity 创建随机浏览器身份

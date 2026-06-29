@@ -121,13 +121,6 @@ func (s *State) SetDiagnostics(diagnostics TaskDiagnostics) {
 	s.diagnostics = diagnostics.Clone()
 }
 
-// ResetDiagnostics 清空当前任务诊断快照。
-func (s *State) ResetDiagnostics() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.diagnostics = TaskDiagnostics{}
-}
-
 // AppendLog 追加日志，最多保留 500 条，同时写入日志文件
 func (s *State) AppendLog(msg string) {
 	s.logsMu.Lock()

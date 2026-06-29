@@ -87,33 +87,6 @@ func TestFreeCustomFixedDomainServiceUsesOnlyConfiguredDomain(t *testing.T) {
 	}
 }
 
-func TestFreeCustomFixedDomainChannelsExposeCurrentFreeDomains(t *testing.T) {
-	channels := FreeCustomFixedDomainChannels()
-	if len(channels) != 3 {
-		t.Fatalf("fixed domain channels=%d, want exactly 3 validated providers", len(channels))
-	}
-	seenProviders := map[string]bool{}
-	seenDomains := map[string]bool{}
-	for _, ch := range channels {
-		if ch.Provider == "" || ch.Domain == "" || ch.Label == "" {
-			t.Fatalf("channel has empty field: %#v", ch)
-		}
-		if seenProviders[ch.Provider] {
-			t.Fatalf("duplicate provider %q", ch.Provider)
-		}
-		if seenDomains[ch.Domain] {
-			t.Fatalf("duplicate domain %q", ch.Domain)
-		}
-		seenProviders[ch.Provider] = true
-		seenDomains[ch.Domain] = true
-	}
-	for _, want := range []string{"areueally.info", "junkstopper.info", "ditpay.info"} {
-		if !seenDomains[want] {
-			t.Fatalf("missing fixed FreeCustom domain %q in %#v", want, channels)
-		}
-	}
-}
-
 func TestFreeCustomWaitForCodeReadsMessageDetail(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

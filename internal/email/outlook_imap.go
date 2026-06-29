@@ -12,13 +12,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"reg_go/internal/proxy"
-	"reg_go/internal/storage"
 )
 
 // OutlookAccount Outlook 邮箱账号
@@ -46,35 +44,6 @@ func recipientMatches(toField, target string) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(toField), target)
-}
-
-// ParseOutlookCSV 解析 outlook.csv
-func ParseOutlookCSV(path string) ([]OutlookAccount, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var accounts []OutlookAccount
-	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "----", 4)
-		if len(parts) != 4 {
-			log.Printf("跳过格式错误的行: %s", line[:min(50, len(line))])
-			continue
-		}
-		accounts = append(accounts, OutlookAccount{
-			Email:        parts[0],
-			Password:     parts[1],
-			ClientID:     parts[2],
-			RefreshToken: parts[3],
-		})
-	}
-	return accounts, nil
 }
 
 // ParseOutlookLines 从文本内容直接解析 Outlook 账号 (Web UI 使用)
@@ -131,11 +100,6 @@ func ParseOutlookLines(data string) []OutlookAccount {
 	}
 
 	return accounts
-}
-
-// RefreshOutlookToken 用 refresh_token 获取 access_token（优先走全局代理，失败时降级直连）
-func RefreshOutlookToken(acc OutlookAccount) (string, error) {
-	return refreshOutlookToken(acc, storage.GetEmailProxy(), true)
 }
 
 // RefreshOutlookTokenWithProxy 用指定代理刷新 Outlook access_token。
@@ -196,11 +160,6 @@ type imapClient struct {
 	conn   net.Conn
 	reader *bufio.Reader
 	tag    int
-}
-
-// newIMAPClient 连接 Outlook IMAP（优先走全局代理，代理被封端口时自动降级直连）
-func newIMAPClient() (*imapClient, error) {
-	return newIMAPClientWithFallback(storage.GetEmailProxy(), true)
 }
 
 // newIMAPClientWithProxy 连接 Outlook IMAP，并优先使用指定代理。
@@ -440,11 +399,6 @@ func (c *imapClient) fetchLatestBody(seq int) (string, error) {
 	return raw, nil
 }
 
-// WaitForOTP 通过 IMAP 轮询等待 AWS 验证码
-func WaitForOTP(ctx context.Context, acc OutlookAccount, beforeCount, timeout, interval int) (string, error) {
-	return WaitForOTPWithProxy(ctx, acc, beforeCount, timeout, interval, storage.GetEmailProxy())
-}
-
 // WaitForOTPWithProxy 通过指定代理轮询等待 AWS 验证码。
 // 支持 context 取消，任务停止时立即中断轮询。
 func WaitForOTPWithProxy(ctx context.Context, acc OutlookAccount, beforeCount, timeout, interval int, proxyURL string) (string, error) {
@@ -559,11 +513,6 @@ func WaitForOTPWithProxy(ctx context.Context, acc OutlookAccount, beforeCount, t
 		}
 	}
 	return "", fmt.Errorf("等待验证码超时 (%ds)", timeout)
-}
-
-// GetInboxCount 获取收件箱当前邮件数量（带完整重连重试）
-func GetInboxCount(acc OutlookAccount) (int, error) {
-	return GetInboxCountWithProxy(acc, storage.GetEmailProxy())
 }
 
 // GetInboxCountWithProxy 通过指定代理获取收件箱当前邮件数量。

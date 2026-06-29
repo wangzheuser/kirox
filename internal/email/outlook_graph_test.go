@@ -265,37 +265,6 @@ func TestWaitForOTPGraphRetriesTransientTokenRefreshEOF(t *testing.T) {
 	}
 }
 
-func TestGetOutlookGraphUserPrincipalNameWithProxy(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/token":
-			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "graph-access-token"})
-		case "/me":
-			_ = json.NewEncoder(w).Encode(map[string]string{"userPrincipalName": "actual@hotmail.com"})
-		default:
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	oldEndpoint := outlookGraphTokenEndpoint
-	oldAPIBase := outlookGraphAPIBase
-	outlookGraphTokenEndpoint = server.URL + "/token"
-	outlookGraphAPIBase = server.URL
-	t.Cleanup(func() {
-		outlookGraphTokenEndpoint = oldEndpoint
-		outlookGraphAPIBase = oldAPIBase
-	})
-
-	upn, err := GetOutlookGraphUserPrincipalNameWithProxy(OutlookAccount{ClientID: "client-id", RefreshToken: "refresh-token"}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if upn != "actual@hotmail.com" {
-		t.Fatalf("userPrincipalName = %q, want actual@hotmail.com", upn)
-	}
-}
-
 func TestWaitForOTPGraphFiltersByRegistrationEmailWhenPresent(t *testing.T) {
 	after := time.Date(2026, 5, 20, 10, 0, 0, 0, time.UTC)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -60,11 +60,6 @@ type MoeMailMessagesResponse struct {
 	NextCursor string           `json:"nextCursor"`
 }
 
-// NewMoeMailClient 创建 MoeMail 客户端
-func NewMoeMailClient(config MoeMailConfig) *MoeMailClient {
-	return NewMoeMailClientWithProxy(config, "")
-}
-
 // NewMoeMailClientWithProxy 创建使用指定代理的 MoeMail 客户端。
 func NewMoeMailClientWithProxy(config MoeMailConfig, proxyURL string) *MoeMailClient {
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
@@ -225,11 +220,6 @@ func GenerateEmailName(taskIndex int) string {
 	}
 
 	return string(name)
-}
-
-// NewMoeMailProvider 创建 MoeMail 提供商
-func NewMoeMailProvider(config MoeMailConfig, name string, expiryTime int64, domain string) (*MoeMailProvider, error) {
-	return NewMoeMailProviderWithProxy(config, name, expiryTime, domain, "")
 }
 
 // NewMoeMailProviderWithProxy 创建使用指定代理的 MoeMail 提供商。

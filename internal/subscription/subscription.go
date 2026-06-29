@@ -196,26 +196,6 @@ func CreateSubscriptionLink(acc Account, accessToken, subscriptionType string) (
 	return resp.EncodedVerificationURL, nil
 }
 
-// SetOverage 开启/关闭超额
-func SetOverage(acc Account, accessToken string, enabled bool) error {
-	status := "DISABLED"
-	if enabled {
-		status = "ENABLED"
-	}
-	payload := map[string]interface{}{
-		"overageConfiguration": map[string]string{"overageStatus": status},
-		"profileArn":           profileARN(acc.Provider),
-	}
-	body, code, err := doSubscriptionPost(acc, accessToken, "/setUserPreference", payload)
-	if err != nil {
-		return err
-	}
-	if code != 200 {
-		return fmt.Errorf("HTTP %d: %s", code, truncate(string(body), 1000))
-	}
-	return nil
-}
-
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s

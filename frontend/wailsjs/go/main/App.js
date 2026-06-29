@@ -10,14 +10,6 @@ export function AddProxyEntry(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddProxyEntry'](arg1, arg2, arg3);
 }
 
-export function CancelUpdate() {
-  return window['go']['main']['App']['CancelUpdate']();
-}
-
-export function CheckLicense() {
-  return window['go']['main']['App']['CheckLicense']();
-}
-
 export function CheckUpdate() {
   return window['go']['main']['App']['CheckUpdate']();
 }
@@ -48,18 +40,6 @@ export function DeleteProxyEntry(arg1) {
 
 export function DetectClashProxy(arg1, arg2) {
   return window['go']['main']['App']['DetectClashProxy'](arg1, arg2);
-}
-
-export function DetectEmailProxy(arg1) {
-  return window['go']['main']['App']['DetectEmailProxy'](arg1);
-}
-
-export function DetectProxy(arg1) {
-  return window['go']['main']['App']['DetectProxy'](arg1);
-}
-
-export function DownloadUpdate() {
-  return window['go']['main']['App']['DownloadUpdate']();
 }
 
 export function ExportAccountPoolJSON() {
@@ -100,10 +80,6 @@ export function GetKiroRSConfig() {
 
 export function GetLanguage() {
   return window['go']['main']['App']['GetLanguage']();
-}
-
-export function GetLicenseInfo() {
-  return window['go']['main']['App']['GetLicenseInfo']();
 }
 
 export function GetLogs() {
@@ -190,10 +166,6 @@ export function LoadOutputAccounts() {
   return window['go']['main']['App']['LoadOutputAccounts']();
 }
 
-export function LogoutLicense() {
-  return window['go']['main']['App']['LogoutLicense']();
-}
-
 export function OpenURL(arg1) {
   return window['go']['main']['App']['OpenURL'](arg1);
 }
@@ -210,20 +182,12 @@ export function ResetEmailProxy() {
   return window['go']['main']['App']['ResetEmailProxy']();
 }
 
-export function ResetFingerprintCache() {
-  return window['go']['main']['App']['ResetFingerprintCache']();
-}
-
 export function ResetOutlookAccountStatuses() {
   return window['go']['main']['App']['ResetOutlookAccountStatuses']();
 }
 
 export function ResetOutlookAccountStatusesByEmails(arg1) {
   return window['go']['main']['App']['ResetOutlookAccountStatusesByEmails'](arg1);
-}
-
-export function ResetOutlookAccountsByFailReason(arg1) {
-  return window['go']['main']['App']['ResetOutlookAccountsByFailReason'](arg1);
 }
 
 export function ResetProxy() {
@@ -336,8 +300,4 @@ export function TestProxyEntry(arg1) {
 
 export function UpdateProxyEntry(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['UpdateProxyEntry'](arg1, arg2, arg3, arg4, arg5);
-}
-
-export function VerifyLicense(arg1) {
-  return window['go']['main']['App']['VerifyLicense'](arg1);
 }

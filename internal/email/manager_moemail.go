@@ -81,22 +81,3 @@ func TestMoeMailConnection(configJSON string) map[string]interface{} {
 		"domainCount": len(sysConfig.Domains),
 	}
 }
-
-// GetMoeMailDomains 获取可用域名列表
-func GetMoeMailDomains(configJSON string) map[string]interface{} {
-	var config MoeMailConfig
-	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		return map[string]interface{}{"error": "配置格式错误: " + err.Error()}
-	}
-
-	client := NewMoeMailClientWithProxy(config, storage.GetEmailProxy())
-	sysConfig, err := client.GetSystemConfig()
-	if err != nil {
-		return map[string]interface{}{"error": "获取域名列表失败: " + err.Error()}
-	}
-
-	return map[string]interface{}{
-		"success": true,
-		"domains": sysConfig.Domains,
-	}
-}

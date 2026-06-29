@@ -207,22 +207,6 @@ func queryGetEndpoint(client interface {
 	return checkEndpointResponse(url, resp.StatusCode, body)
 }
 
-func queryPostEndpoint(client interface {
-	Do(req *fhttp.Request) (*fhttp.Response, error)
-}, url string, payload []byte) endpointResult {
-	req, _ := fhttp.NewRequest("POST", url, bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("端点查询异常 [%s]: %s", endpointLabel(url), scrubURLs(err.Error()))
-		return endpointResult{}
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	return checkEndpointResponse(url, resp.StatusCode, body)
-}
-
 func (r *Registrar) parseUsage(body []byte) map[string]interface{} {
 	var usage map[string]interface{}
 	json.Unmarshal(body, &usage)

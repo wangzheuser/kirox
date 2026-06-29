@@ -1407,48 +1407,12 @@ func getFileMutex(filePath string) *sync.Mutex {
 	return val.(*sync.Mutex)
 }
 
-// LoadJSON 从文件读取 JSON 数组（线程安全）
-func LoadJSON(filePath string) ([]map[string]interface{}, error) {
-	mu := getFileMutex(filePath)
-	mu.Lock()
-	defer mu.Unlock()
-	return loadJSON(filePath)
-}
-
 // SaveJSON 将 JSON 数组写入文件（线程安全，原子写入）
 func SaveJSON(filePath string, items []map[string]interface{}) error {
 	mu := getFileMutex(filePath)
 	mu.Lock()
 	defer mu.Unlock()
 	return saveJSON(filePath, items)
-}
-
-// AppendJSON 向 JSON 数组文件追加一条记录（线程安全）
-func AppendJSON(filePath string, item map[string]interface{}) error {
-	mu := getFileMutex(filePath)
-	mu.Lock()
-	defer mu.Unlock()
-	existing, _ := loadJSON(filePath)
-	existing = append(existing, item)
-	return saveJSON(filePath, existing)
-}
-
-// ModifyJSON 原子读-改-写
-func ModifyJSON(filePath string, fn func([]map[string]interface{}) []map[string]interface{}) error {
-	mu := getFileMutex(filePath)
-	mu.Lock()
-	defer mu.Unlock()
-	existing, _ := loadJSON(filePath)
-	return saveJSON(filePath, fn(existing))
-}
-
-// CountJSON 统计 JSON 数组文件中的记录数
-func CountJSON(filePath string) int {
-	items, err := LoadJSON(filePath)
-	if err != nil {
-		return 0
-	}
-	return len(items)
 }
 
 func loadJSON(filePath string) ([]map[string]interface{}, error) {

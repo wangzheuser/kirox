@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	clashFingerprintPrefix       = "clash:"
-	normalClashFingerprintPrefix = "normal-clash:"
+	clashFingerprintPrefix          = "clash:"
+	normalClashFingerprintPrefix    = "normal-clash:"
+	normalTemplateFingerprintPrefix = "normal-template:"
 )
 
 func shouldEnableNormalClashAssist(proxyMode, normalProxyURL, clashProxyURL string, clashConfig proxy.ClashConfig, concurrency int) bool {
@@ -27,20 +28,10 @@ func shouldEnableNormalClashAssist(proxyMode, normalProxyURL, clashProxyURL stri
 	if concurrency != 1 {
 		return false
 	}
-	if proxy.HasURLTemplate(normalProxyURL) {
-		return false
-	}
-	if !isLoopbackProxyURL(normalProxyURL) {
-		return false
-	}
-	if strings.TrimSpace(clashProxyURL) != "" && !isLoopbackProxyURL(clashProxyURL) {
+	if !sameLoopbackProxyEndpoint(normalProxyURL, clashProxyURL) {
 		return false
 	}
 	return true
-}
-
-func applyClashSelectionToConfig(cfg *core.Config, proxyURL string, selection proxy.ClashSelection, fingerprintPrefix string) core.BrowserLocale {
-	return applyClashSelectionToConfigForSubject(cfg, proxyURL, selection, fingerprintPrefix, "")
 }
 
 func applyClashSelectionToConfigForSubject(cfg *core.Config, proxyURL string, selection proxy.ClashSelection, fingerprintPrefix string, subject string) core.BrowserLocale {
@@ -55,6 +46,13 @@ func applyClashSelectionToConfigForSubject(cfg *core.Config, proxyURL string, se
 	return locale
 }
 
+func applyRuntimeProxyCountryLocaleToConfigForSubject(cfg *core.Config, countryCode string, subject string) (core.BrowserLocale, bool) {
+	// 运行时代理出口国家只用于节点筛选与日志诊断，不再覆盖浏览器语言/时区/指纹 key。
+	// 当前目标风控在同一代理池下对稳定默认 zh-CN 指纹的历史成功率更高；
+	// 按短生命周期代理出口切换 locale 会显著增加注册后 models suspended。
+	return core.BrowserLocale{}, false
+}
+
 func clashFingerprintKey(prefix, node, subject string) string {
 	key := prefix + strings.TrimSpace(node)
 	subject = strings.ToLower(strings.TrimSpace(subject))
@@ -63,6 +61,17 @@ func clashFingerprintKey(prefix, node, subject string) string {
 	}
 	sum := sha256.Sum256([]byte(subject))
 	return key + ":acct:" + hex.EncodeToString(sum[:])[:12]
+}
+
+func normalTemplateFingerprintKey(proxyURL, subject string) string {
+	proxySum := sha256.Sum256([]byte(strings.TrimSpace(proxyURL)))
+	key := normalTemplateFingerprintPrefix + hex.EncodeToString(proxySum[:])[:12]
+	subject = strings.ToLower(strings.TrimSpace(subject))
+	if subject == "" {
+		return key
+	}
+	subjectSum := sha256.Sum256([]byte(subject))
+	return key + ":acct:" + hex.EncodeToString(subjectSum[:])[:12]
 }
 
 func fingerprintSubjectForTask(cfg *core.Config, fallbackEmail string) string {
@@ -77,15 +86,31 @@ func fingerprintSubjectForTask(cfg *core.Config, fallbackEmail string) string {
 	return strings.TrimSpace(fallbackEmail)
 }
 
-func isLoopbackProxyURL(raw string) bool {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
+func sameLoopbackProxyEndpoint(a, b string) bool {
+	aHost, aPort, aOK := loopbackProxyEndpoint(a)
+	bHost, bPort, bOK := loopbackProxyEndpoint(b)
+	if !aOK || !bOK {
 		return false
 	}
-	u, err := url.Parse(raw)
+	if aPort == "" || bPort == "" || aPort != bPort {
+		return false
+	}
+	return isLoopbackHost(aHost) && isLoopbackHost(bHost)
+}
+
+func loopbackProxyEndpoint(raw string) (string, string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", "", false
+	}
+	parseable := strings.ReplaceAll(raw, "{uuid}", "00000000-0000-0000-0000-000000000000")
+	u, err := url.Parse(parseable)
 	if err == nil && u.Host != "" {
 		host := u.Hostname()
-		return isLoopbackHost(host)
+		if !isLoopbackHost(host) {
+			return "", "", false
+		}
+		return host, u.Port(), true
 	}
 	hostPort := raw
 	if i := strings.LastIndexByte(hostPort, '@'); i >= 0 {
@@ -95,7 +120,12 @@ func isLoopbackProxyURL(raw string) bool {
 	if err != nil {
 		host = hostPort
 	}
-	return isLoopbackHost(strings.Trim(host, "[]"))
+	host = strings.Trim(host, "[]")
+	if !isLoopbackHost(host) {
+		return "", "", false
+	}
+	_, port, _ := net.SplitHostPort(hostPort)
+	return host, port, true
 }
 
 func isLoopbackHost(host string) bool {

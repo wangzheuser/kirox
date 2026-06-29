@@ -10,9 +10,9 @@ func TestRuntimeTaskStatsBuildsDiagnosticBreakdowns(t *testing.T) {
 	stats.RecordFailure("等待验证码超时", false, "等待验证码")
 	stats.RecordFailure("验活失败: models query failed: 403 forbidden", true, "验活")
 	stats.RecordFailure("suspended", true, "验活")
-	stats.RecordNetworkError("send-otp 请求 timeout")
-	stats.RecordNetworkError("等待验证码 获取邮件失败")
-	stats.RecordNetworkError("验活失败: connection reset")
+	stats.RecordFailure("send-otp 请求 timeout", false, "")
+	stats.RecordFailure("等待验证码 获取邮件失败: connection reset", false, "")
+	stats.RecordFailure("验活失败: connection reset", false, "")
 	stats.RecordGraphFailure("Graph Token失效")
 	stats.clashNetworkErrors = 2
 	stats.clashRiskFailures = 1
@@ -24,7 +24,7 @@ func TestRuntimeTaskStatsBuildsDiagnosticBreakdowns(t *testing.T) {
 	if diagnostics.OTPFailures.Total != 3 {
 		t.Fatalf("OTP total = %d, want 3", diagnostics.OTPFailures.Total)
 	}
-	if diagnostics.OTPFailures.Details["验证码发送失败"] != 1 ||
+	if diagnostics.OTPFailures.Details["send-otp TES/BLOCKED"] != 1 ||
 		diagnostics.OTPFailures.Details["验证码无效"] != 1 ||
 		diagnostics.OTPFailures.Details["验证码超时"] != 1 {
 		t.Fatalf("unexpected OTP details: %#v", diagnostics.OTPFailures.Details)
@@ -69,7 +69,30 @@ func TestRuntimeTaskStatsBuildsDiagnosticBreakdowns(t *testing.T) {
 	}
 }
 
-func TestStateDiagnosticsAreResetAndCloned(t *testing.T) {
+func TestSendOTPBlockedDiagnosticsAreSeparatedFromOrdinaryEmailFailures(t *testing.T) {
+	stats := newRuntimeTaskStats()
+
+	stats.RecordFailure(`send-otp 失败: status=400, body={"errorCode":"BLOCKED","message":"Request was blocked by TES."} [provider=pickmail, domain=pickmail.org, emailProxy=enabled, proxy=enabled]`, false, "发送验证码")
+	stats.RecordFailure(`send-otp 失败 (400): domain rejected [provider=mailtm, domain=example.test, emailProxy=enabled, proxy=enabled]`, false, "发送验证码")
+	stats.RecordFailure(`邮箱创建失败: TempMailo 首页 HTTP 403`, false, "注册初始化")
+
+	diagnostics := stats.DiagnosticsSnapshot(0, 0, 10)
+
+	if got := diagnostics.OTPFailures.Details["send-otp TES/BLOCKED"]; got != 1 {
+		t.Fatalf("TES/BLOCKED OTP detail = %d, want 1; all=%#v", got, diagnostics.OTPFailures.Details)
+	}
+	if got := diagnostics.OTPFailures.Details["验证码发送失败"]; got != 1 {
+		t.Fatalf("ordinary send-otp detail = %d, want 1; all=%#v", got, diagnostics.OTPFailures.Details)
+	}
+	if got := diagnostics.EmailServiceFailures.Details["邮箱创建失败"]; got != 1 {
+		t.Fatalf("email create detail = %d, want 1; all=%#v", got, diagnostics.EmailServiceFailures.Details)
+	}
+	if got := diagnostics.RiskFailures.Details["send-otp TES/BLOCKED"]; got != 1 {
+		t.Fatalf("risk TES/BLOCKED detail = %d, want 1; all=%#v", got, diagnostics.RiskFailures.Details)
+	}
+}
+
+func TestStateDiagnosticsAreCloned(t *testing.T) {
 	state := &State{}
 	state.SetDiagnostics(TaskDiagnostics{
 		OTPFailures: DiagnosticGroup{
@@ -91,12 +114,6 @@ func TestStateDiagnosticsAreResetAndCloned(t *testing.T) {
 		t.Fatalf("diagnostics map was not cloned, got %d", got)
 	}
 
-	state.ResetDiagnostics()
-	status = state.GetStatus()
-	diagnostics = status["diagnostics"].(TaskDiagnostics)
-	if diagnostics.OTPFailures.Total != 0 || len(diagnostics.OTPFailures.Details) != 0 {
-		t.Fatalf("diagnostics not reset: %#v", diagnostics.OTPFailures)
-	}
 }
 
 func assertGroupTotalEqualsDetails(t *testing.T, name string, group DiagnosticGroup) {

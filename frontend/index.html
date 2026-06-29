@@ -66,7 +66,7 @@
 <!-- 全局加载遮罩层 -->
 <div id="global-loading-overlay" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);z-index:9999;align-items:center;justify-content:center;flex-direction:column;">
   <div class="skeleton-spinner" style="border-top-color:#3b82f6;"></div>
-  <div id="global-loading-text" style="margin-top:16px;font-size:14px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.3);" data-i18n="common.loading">正在激活...</div>
+  <div id="global-loading-text" style="margin-top:16px;font-size:14px;font-weight:600;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.3);" data-i18n="common.loading">加载中...</div>
 </div>
 
 <!-- 骨架屏加载 -->
@@ -123,12 +123,12 @@
         <div style="width:48px;height:48px;border-radius:14px;background:#fef2f2;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
           <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         </div>
-        <div id="confirm-title" style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;" data-i18n="modal.confirmLogoutTitle">确认退出卡密？</div>
-        <div id="confirm-message" style="font-size:13px;color:var(--text-secondary);line-height:1.6;" data-i18n="modal.confirmLogoutMsg">此操作会清除本地授权信息，需要重新激活卡密才能使用。</div>
+        <div id="confirm-title" style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px;" data-i18n="common.confirm">确认</div>
+        <div id="confirm-message" style="font-size:13px;color:var(--text-secondary);line-height:1.6;">请确认是否继续。</div>
       </div>
       <div class="btn-row">
         <button onclick="closeConfirmModal()" class="btn btn-secondary" style="flex:1;justify-content:center;" data-i18n="common.cancel">取消</button>
-        <button id="confirm-action-btn" onclick="confirmAction()" class="btn btn-primary" style="flex:1;justify-content:center;background:var(--danger);" data-i18n="modal.confirmLogoutBtn">确认退出</button>
+        <button id="confirm-action-btn" onclick="confirmAction()" class="btn btn-primary" style="flex:1;justify-content:center;background:var(--danger);" data-i18n="common.confirm">确认</button>
       </div>
     </div>
   </div>

@@ -9,10 +9,6 @@ export function AddOutlookAccounts(arg1:string):Promise<Record<string, any>>;
 
 export function AddProxyEntry(arg1:string,arg2:string,arg3:number):Promise<Record<string, any>>;
 
-export function CancelUpdate():Promise<Record<string, any>>;
-
-export function CheckLicense():Promise<Record<string, any>>;
-
 export function CheckUpdate():Promise<Record<string, any>>;
 
 export function ClearOutlookAccounts():Promise<Record<string, any>>;
@@ -28,12 +24,6 @@ export function DeleteOutlookAccountsByFailReason(arg1:string):Promise<Record<st
 export function DeleteProxyEntry(arg1:string):Promise<Record<string, any>>;
 
 export function DetectClashProxy(arg1:string,arg2:proxy.ClashConfig):Promise<proxy.Info>;
-
-export function DetectEmailProxy(arg1:string):Promise<proxy.Info>;
-
-export function DetectProxy(arg1:string):Promise<proxy.Info>;
-
-export function DownloadUpdate():Promise<Record<string, any>>;
 
 export function ExportAccountPoolJSON():Promise<Record<string, any>>;
 
@@ -54,8 +44,6 @@ export function GetKillSwitchEnabled():Promise<boolean>;
 export function GetKiroRSConfig():Promise<Record<string, any>>;
 
 export function GetLanguage():Promise<string>;
-
-export function GetLicenseInfo():Promise<Record<string, any>>;
 
 export function GetLogs():Promise<Array<string>>;
 
@@ -99,8 +87,6 @@ export function ListProxyPool():Promise<Array<proxy.PoolEntry>>;
 
 export function LoadOutputAccounts():Promise<Record<string, any>>;
 
-export function LogoutLicense():Promise<Record<string, any>>;
-
 export function OpenURL(arg1:string):Promise<void>;
 
 export function ResetDataDir():Promise<Record<string, any>>;
@@ -109,13 +95,9 @@ export function ResetEmailProviderStats():Promise<Record<string, any>>;
 
 export function ResetEmailProxy():Promise<Record<string, any>>;
 
-export function ResetFingerprintCache():Promise<Record<string, any>>;
-
 export function ResetOutlookAccountStatuses():Promise<Record<string, any>>;
 
 export function ResetOutlookAccountStatusesByEmails(arg1:Array<string>):Promise<Record<string, any>>;
-
-export function ResetOutlookAccountsByFailReason(arg1:string):Promise<Record<string, any>>;
 
 export function ResetProxy():Promise<Record<string, any>>;
 
@@ -172,5 +154,3 @@ export function TestMoeMailConnection(arg1:string):Promise<Record<string, any>>;
 export function TestProxyEntry(arg1:string):Promise<proxy.Info>;
 
 export function UpdateProxyEntry(arg1:string,arg2:string,arg3:string,arg4:number,arg5:boolean):Promise<Record<string, any>>;
-
-export function VerifyLicense(arg1:string):Promise<Record<string, any>>;

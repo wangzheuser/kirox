@@ -258,24 +258,3 @@ func TestDeleteOutlookAccountsByFailReasonDeletesCaseInsensitiveReason(t *testin
 		t.Fatalf("unexpected remaining accounts: %#v", accounts)
 	}
 }
-
-func TestResetOutlookAccountsByFailReasonKeepsCredentials(t *testing.T) {
-	storage.SetAccountsCached([]map[string]interface{}{
-		{"email": "registered@outlook.jp", "password": "p", "clientId": "c", "refreshToken": "r", "failReason": "邮箱已注册", "registered": true, "success": false, "registeredAt": "now"},
-	})
-
-	result := ResetOutlookAccountsByFailReason("邮箱已注册")
-	if result["reset"] != 1 {
-		t.Fatalf("expected one reset account, got %+v", result)
-	}
-	acc := storage.GetAccountsCached()[0]
-	if reg, _ := acc["registered"].(bool); reg {
-		t.Fatalf("registered should be reset: %#v", acc)
-	}
-	if acc["password"] != "p" || acc["clientId"] != "c" || acc["refreshToken"] != "r" {
-		t.Fatalf("credentials should be preserved: %#v", acc)
-	}
-	if _, ok := acc["failReason"]; ok {
-		t.Fatalf("failReason should be cleared: %#v", acc)
-	}
-}

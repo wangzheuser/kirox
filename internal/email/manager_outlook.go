@@ -8,24 +8,6 @@ import (
 	"reg_go/internal/storage"
 )
 
-// ParseOutlook 解析 Outlook 账号
-func ParseOutlook(data string) map[string]interface{} {
-	accounts := ParseOutlookLines(data)
-
-	var accountList []map[string]string
-	for _, acc := range accounts {
-		accountList = append(accountList, map[string]string{
-			"email":    acc.Email,
-			"password": acc.Password,
-		})
-	}
-
-	return map[string]interface{}{
-		"count":    len(accounts),
-		"accounts": accountList,
-	}
-}
-
 // AddOutlookAccounts 添加 Outlook 账号到持久化存储
 func AddOutlookAccounts(data string) map[string]interface{} {
 	accounts := ParseOutlookLines(data)
@@ -313,29 +295,6 @@ func ResetOutlookAccountStatusesByEmails(emails []string) map[string]interface{}
 			}
 			email, _ := accounts[i]["email"].(string)
 			if _, ok := target[strings.ToLower(strings.TrimSpace(email))]; !ok {
-				continue
-			}
-			resetOutlookStatusFields(accounts[i])
-			reset++
-		}
-		return accounts
-	})
-	return map[string]interface{}{"status": "reset", "reset": reset}
-}
-
-func ResetOutlookAccountsByFailReason(reason string) map[string]interface{} {
-	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		return map[string]interface{}{"error": "失败原因为空"}
-	}
-	reset := 0
-	storage.ModifyAccountsCached(func(accounts []map[string]interface{}) []map[string]interface{} {
-		for i := range accounts {
-			if accounts[i] == nil {
-				continue
-			}
-			failReason, _ := accounts[i]["failReason"].(string)
-			if strings.TrimSpace(failReason) != reason {
 				continue
 			}
 			resetOutlookStatusFields(accounts[i])

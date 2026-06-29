@@ -111,12 +111,6 @@ func (s *runtimeTaskStats) RecordGraphFailure(reason string) {
 	}
 }
 
-func (s *runtimeTaskStats) RecordNetworkError(errorMsg string) {
-	if s != nil {
-		s.networkStageFailures[classifyNetworkErrorStage(errorMsg)]++
-	}
-}
-
 func (s *runtimeTaskStats) recordSendOTPDiagnostics(diag map[string]string) {
 	if s == nil {
 		return
@@ -139,9 +133,10 @@ func (s *runtimeTaskStats) DiagnosticsSnapshot(clashQuarantined, poolQuarantined
 	}
 	return TaskDiagnostics{
 		OTPFailures: diagnosticGroup(map[string]int{
-			"验证码发送失败": s.failCategories["验证码发送失败"] + s.sendOTPBlockedFailures,
-			"验证码无效":   s.failCategories["验证码无效"],
-			"验证码超时":   s.failCategories["验证码超时"],
+			"验证码发送失败":              s.failCategories["验证码发送失败"],
+			"send-otp TES/BLOCKED": s.sendOTPBlockedFailures,
+			"验证码无效":                s.failCategories["验证码无效"],
+			"验证码超时":                s.failCategories["验证码超时"],
 		}),
 		PostRegistrationFailures: diagnosticGroup(s.passwordSetFailureCategories),
 		NetworkProxyFailures:     diagnosticGroup(s.networkStageFailures),
@@ -339,15 +334,6 @@ func (t *outlookRegistrationAddressTracker) MarkRegistered(acc email.OutlookAcco
 	if key := t.key(acc); key != "" {
 		t.registered[key] = struct{}{}
 	}
-}
-
-func (t *outlookRegistrationAddressTracker) IsRegistered(acc email.OutlookAccount) bool {
-	key := t.key(acc)
-	if key == "" {
-		return false
-	}
-	_, ok := t.registered[key]
-	return ok
 }
 
 type outlookOTPTimeoutStreak struct {
@@ -695,66 +681,7 @@ func newCachedOutlookGraphProfileResolver(resolver outlookGraphProfileResolver) 
 	}
 }
 
-type outlookGraphUPNResolver func(email.OutlookAccount, string) (string, error)
-
 type outlookGraphProfileResolver func(email.OutlookAccount, string) (email.OutlookGraphProfile, error)
-
-func resolveOutlookGraphRegistrationEmail(acc email.OutlookAccount, emailProxy string, resolver outlookGraphUPNResolver) email.OutlookAccount {
-	profileResolver := func(acc email.OutlookAccount, proxyURL string) (email.OutlookGraphProfile, error) {
-		primary, err := resolver(acc, proxyURL)
-		return email.OutlookGraphProfile{PrimaryEmail: primary}, err
-	}
-	return resolveOutlookGraphRegistrationEmailWithMode(acc, emailProxy, storage.OutlookGraphRegistrationEmailPrimary, profileResolver)
-}
-
-func resolveOutlookGraphRegistrationEmailWithMode(acc email.OutlookAccount, emailProxy, mode string, resolver outlookGraphProfileResolver) email.OutlookAccount {
-	mode = strings.ToLower(strings.TrimSpace(mode))
-	if mode == "" {
-		mode = storage.OutlookGraphRegistrationEmailAuto
-	}
-	if mode == storage.OutlookGraphRegistrationEmailAuto && strings.TrimSpace(acc.RegistrationEmail) != "" {
-		return acc
-	}
-	imported := strings.TrimSpace(acc.Email)
-	if mode == storage.OutlookGraphRegistrationEmailImported || resolver == nil {
-		acc.RegistrationEmail = imported
-		return acc
-	}
-	profile, err := resolver(acc, emailProxy)
-	if err != nil {
-		log.Printf("[Kiro] Outlook Graph 地址解析失败: %s: %v", acc.Email, err)
-		acc.RegistrationEmail = imported
-		return acc
-	}
-	primary := strings.TrimSpace(profile.PrimaryEmail)
-	acc.GraphPrimaryEmail = primary
-	acc.GraphAliasVerified = profile.HasAliasData() && profile.HasAddress(imported)
-	acc.GraphResolvedAt = time.Now().Format("2006-01-02 15:04:05")
-	switch mode {
-	case storage.OutlookGraphRegistrationEmailPrimary:
-		if primary != "" {
-			acc.RegistrationEmail = primary
-		} else {
-			acc.RegistrationEmail = imported
-		}
-	case storage.OutlookGraphRegistrationEmailAuto, "":
-		if profile.HasAliasData() {
-			if profile.HasAddress(imported) {
-				acc.RegistrationEmail = imported
-			} else if primary != "" {
-				acc.RegistrationEmail = primary
-			} else {
-				acc.RegistrationEmail = imported
-			}
-		} else {
-			acc.RegistrationEmail = imported
-		}
-	default:
-		acc.RegistrationEmail = imported
-	}
-	logOutlookGraphRegistrationChoice(imported, acc.GraphPrimaryEmail, acc.RegistrationEmail, mode)
-	return acc
-}
 
 func resolveOutlookGraphRegistrationEmailForTask(acc email.OutlookAccount, emailProxy, mode string, resolver outlookGraphProfileResolver) (email.OutlookAccount, error) {
 	mode = strings.ToLower(strings.TrimSpace(mode))
@@ -2210,7 +2137,22 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 					return true
 				}
 
-				selection, err := proxy.SelectRuntimeProxy(taskCtx, attemptCfg.Proxy, proxy.DefaultRegisterSelectOptions())
+				var (
+					selection                proxy.Selection
+					countryCode              string
+					preferredProxyCountryHit bool
+				)
+				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && proxy.HasURLTemplate(attemptCfg.Proxy) {
+					selection, countryCode, preferredProxyCountryHit, err = selectRuntimeProxyWithCountryPreference(
+						taskCtx,
+						attemptCfg.Proxy,
+						proxy.DefaultRegisterSelectOptions(),
+						detectRuntimeProxyCountryCode,
+						preferredRuntimeProxyCountryMaxAttempts,
+					)
+				} else {
+					selection, err = proxy.SelectRuntimeProxy(taskCtx, attemptCfg.Proxy, proxy.DefaultRegisterSelectOptions())
+				}
 				if err != nil {
 					log.Printf("[Kiro][%d/%d] 代理候选选择失败: %v", i+1, displayTotal, err)
 					errorPrefix := "代理无可用节点"
@@ -2225,6 +2167,9 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 					return false
 				}
 				attemptCfg.Proxy = selection.ProxyURL
+				if selection.Templated && strings.TrimSpace(attemptCfg.FingerprintKey) == "" {
+					attemptCfg.FingerprintKey = normalTemplateFingerprintKey(selection.ProxyURL, fingerprintSubjectForTask(&attemptCfg, currentEmail))
+				}
 				if proxyMode == storage.ProxyModePool {
 					currentPoolProxy = selection.ProxyURL
 				}
@@ -2240,6 +2185,24 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 					}
 				} else {
 					log.Printf("[Kiro][%d/%d] 代理验证可用: %s", i+1, displayTotal, selection.MaskedProxyURL)
+				}
+				if !currentClashAssisted {
+					var geoErr error
+					if countryCode == "" {
+						countryCode, geoErr = detectRuntimeProxyCountryCode(taskCtx, attemptCfg.Proxy)
+					} else if preferredProxyCountryHit {
+						log.Printf("[Kiro][%d/%d] 运行时代理命中优选出口地区: country=%s", i+1, displayTotal, countryCode)
+					} else if proxyMode == storage.ProxyModeNormal && selection.Templated {
+						log.Printf("[Kiro][%d/%d] 运行时代理未命中优选出口地区，回退首个可用出口: country=%s", i+1, displayTotal, countryCode)
+					}
+					if geoErr != nil {
+						log.Printf("[Kiro][%d/%d] 运行时代理出口地区探测失败，保留默认浏览器地区: %v", i+1, displayTotal, geoErr)
+					} else if locale, ok := applyRuntimeProxyCountryLocaleToConfigForSubject(&attemptCfg, countryCode, fingerprintSubjectForTask(&attemptCfg, currentEmail)); ok {
+						log.Printf("[Kiro][%d/%d] 运行时代理出口地区已绑定: country=%s acceptLanguage=%s, i18next=%s, timeZone=%d",
+							i+1, displayTotal, countryCode, locale.AcceptLanguage, locale.I18Next, locale.TimeZone)
+					} else {
+						log.Printf("[Kiro][%d/%d] 运行时代理出口地区 %s 暂无地区指纹映射，保留默认浏览器地区", i+1, displayTotal, countryCode)
+					}
 				}
 				result = runRegistrar(&attemptCfg)
 				return true
@@ -2364,7 +2327,6 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 						clashMu.Lock()
 						clashClient.RecordNodeSuccess(currentClashNode)
 						clashMu.Unlock()
-						break
 					}
 					if !isModelVerificationAccessDeniedError(retryErr) && !isProxyNetworkError(retryErr) {
 						break
@@ -2375,7 +2337,6 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				}
 				errorMsg, _ = result["error"].(string)
 				proxyNetworkErr = isProxyNetworkError(errorMsg)
-				clashRiskErr = isClashNodeRiskFailure(errorMsg)
 			}
 
 			// AWS/TES 熔断：普通数量模式下任一任务遇到明确 BLOCKED/TES 类错误即终止全部。
@@ -2526,7 +2487,6 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		taskDurations = append(taskDurations, itemDuration)
 		if !success {
 			errorMsg, _ := result["error"].(string)
-			failReason = classifyError(errorMsg)
 			passwordSet, _ := result["passwordSet"].(bool)
 			failReason = runtimeStats.RecordFailure(errorMsg, passwordSet, "")
 			if diag, ok := parseSendOTPDiagnostics(errorMsg); ok {
@@ -2867,11 +2827,6 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			}
 		}
 	}
-}
-
-func filterAccountsByEmail(accounts []map[string]interface{}, emails []string) []map[string]interface{} {
-	selected, _ := selectAccountsByEmail(accounts, emails)
-	return selected
 }
 
 func selectAccountsByEmail(accounts []map[string]interface{}, emails []string) ([]map[string]interface{}, []string) {
@@ -3434,13 +3389,11 @@ func proxyEndpointKey(raw string) string {
 }
 
 func createTempEmailWithRateLimitRetry(ctx context.Context, providerLabel string, taskNo, displayTotal int, create func() (string, error)) (string, error) {
-	var lastErr error
 	for rateLimitAttempt := 0; ; rateLimitAttempt++ {
 		address, err := create()
 		if err == nil {
 			return address, nil
 		}
-		lastErr = err
 		shouldRetry, wait := shouldRetryEmailProviderCreateError(err.Error(), rateLimitAttempt)
 		if !shouldRetry {
 			return "", err
@@ -3456,7 +3409,6 @@ func createTempEmailWithRateLimitRetry(ctx context.Context, providerLabel string
 		case <-timer.C:
 		}
 	}
-	return "", lastErr
 }
 
 func isSendOTPBlockedError(errorMsg string) bool {

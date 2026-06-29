@@ -1,7 +1,6 @@
 package email
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -170,27 +169,6 @@ func (s *TempMailLOLService) get(rawURL string) ([]byte, int, error) {
 		return nil, 0, err
 	}
 	httputil.SetHeaders(req, tempMailLOLHeaders())
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, resp.StatusCode, err
-	}
-	return body, resp.StatusCode, nil
-}
-
-func (s *TempMailLOLService) postJSON(rawURL string, payload interface{}) ([]byte, int, error) {
-	reqBody, _ := json.Marshal(payload)
-	req, err := fhttp.NewRequest("POST", rawURL, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, 0, err
-	}
-	headers := tempMailLOLHeaders()
-	headers["Content-Type"] = "application/json"
-	httputil.SetHeaders(req, headers)
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, 0, err

@@ -52,9 +52,7 @@ const distAssetsDir = path.join(distDir, 'assets');
 if (!fs.existsSync(distAssetsDir)) {
   fs.mkdirSync(distAssetsDir, { recursive: true });
 }
-const assetFiles = ['kiro.svg', 'logo.svg', 'openai.svg', 'claude-color.svg', 'deepseek-color.svg',
-  'grok.svg', 'qwen-color.svg', 'chatglm-color.svg', 'minimax-color.svg', 'outlook.png', 'appicon.png',
-  'wx.jpg', 'zfb.jpg'];
+const assetFiles = ['kiro.svg', 'outlook.png', 'appicon.png', 'wx.jpg', 'zfb.jpg'];
 for (const file of assetFiles) {
   const src = path.join(assetsDir, file);
   if (fs.existsSync(src)) {
@@ -62,8 +60,6 @@ for (const file of assetFiles) {
   }
 }
 console.log('✓ 已复制 assets/ 图标资源 (' + assetFiles.length + ' 个)');
-
-// removed redundant css lines
 
 // 复制 fonts 目录到 dist/fonts/
 const fontsSource = path.join(__dirname, 'fonts');

@@ -108,17 +108,6 @@ func RefreshOutlookGraphTokenWithProxy(acc OutlookAccount, proxyURL string) (str
 	return token, nil
 }
 
-func GetOutlookGraphUserPrincipalNameWithProxy(acc OutlookAccount, proxyURL string) (string, error) {
-	profile, err := GetOutlookGraphProfileWithProxy(acc, proxyURL)
-	if err != nil {
-		return "", err
-	}
-	if strings.TrimSpace(profile.PrimaryEmail) == "" {
-		return "", fmt.Errorf("Graph /me 响应中无 userPrincipalName")
-	}
-	return profile.PrimaryEmail, nil
-}
-
 func GetOutlookGraphProfileWithProxy(acc OutlookAccount, proxyURL string) (OutlookGraphProfile, error) {
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	accessToken, err := RefreshOutlookGraphTokenWithProxy(acc, runtimeProxyURL)
