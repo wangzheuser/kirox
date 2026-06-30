@@ -14,14 +14,20 @@ import (
 )
 
 const runtimeProxyCountryEndpoint = "http://ip-api.com/json/?fields=status,message,countryCode"
-const preferredRuntimeProxyCountryMaxAttempts = 1
+const preferredRuntimeProxyCountryMaxAttempts = 10
 
 type runtimeProxyCountryDetector func(context.Context, string) (string, error)
 
 var preferredRuntimeProxyCountryCodes = map[string]struct{}{
+	"RO": {},
 	"KR": {},
-	"HK": {},
 	"SG": {},
+	"NL": {},
+}
+
+var avoidedRuntimeProxyCountryCodes = map[string]struct{}{
+	"US": {},
+	"HK": {},
 }
 
 func detectRuntimeProxyCountryCode(ctx context.Context, proxyURL string) (string, error) {
@@ -90,6 +96,11 @@ func isPreferredRuntimeProxyCountryCode(countryCode string) bool {
 	return ok
 }
 
+func isAvoidedRuntimeProxyCountryCode(countryCode string) bool {
+	_, ok := avoidedRuntimeProxyCountryCodes[normalizeRuntimeProxyCountryCode(countryCode)]
+	return ok
+}
+
 func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, opts proxy.SelectOptions, detector runtimeProxyCountryDetector, maxPreferredAttempts int) (proxy.Selection, string, bool, error) {
 	if !proxy.HasURLTemplate(raw) || detector == nil {
 		selection, err := proxy.SelectRuntimeProxy(ctx, raw, opts)
@@ -110,6 +121,9 @@ func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, op
 	var firstUsable proxy.Selection
 	firstCountryCode := ""
 	hasFirstUsable := false
+	var firstNonAvoided proxy.Selection
+	firstNonAvoidedCountryCode := ""
+	hasFirstNonAvoided := false
 	var errors []string
 	for attempt := 1; attempt <= maxPreferredAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
@@ -136,8 +150,15 @@ func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, op
 
 		if !hasFirstUsable {
 			firstUsable = selection
+			firstUsable.SuccessAttempt = attempt
 			firstCountryCode = countryCode
 			hasFirstUsable = true
+		}
+		if geoErr == nil && !isAvoidedRuntimeProxyCountryCode(countryCode) && !hasFirstNonAvoided {
+			firstNonAvoided = selection
+			firstNonAvoided.SuccessAttempt = attempt
+			firstNonAvoidedCountryCode = countryCode
+			hasFirstNonAvoided = true
 		}
 
 		if geoErr == nil && isPreferredRuntimeProxyCountryCode(countryCode) {
@@ -147,6 +168,16 @@ func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, op
 			selection.Errors = errors
 			return selection, countryCode, true, nil
 		}
+	}
+
+	if hasFirstNonAvoided {
+		firstNonAvoided.Attempts = maxPreferredAttempts
+		if firstNonAvoided.SuccessAttempt == 0 {
+			firstNonAvoided.SuccessAttempt = 1
+		}
+		firstNonAvoided.Duration = time.Since(start)
+		firstNonAvoided.Errors = errors
+		return firstNonAvoided, firstNonAvoidedCountryCode, false, nil
 	}
 
 	if hasFirstUsable {

@@ -47,10 +47,46 @@ func applyClashSelectionToConfigForSubject(cfg *core.Config, proxyURL string, se
 }
 
 func applyRuntimeProxyCountryLocaleToConfigForSubject(cfg *core.Config, countryCode string, subject string) (core.BrowserLocale, bool) {
-	// 运行时代理出口国家只用于节点筛选与日志诊断，不再覆盖浏览器语言/时区/指纹 key。
-	// 当前目标风控在同一代理池下对稳定默认 zh-CN 指纹的历史成功率更高；
-	// 按短生命周期代理出口切换 locale 会显著增加注册后 models suspended。
-	return core.BrowserLocale{}, false
+	locale, ok := runtimeProxyBrowserLocaleForCountryCode(countryCode)
+	if !ok {
+		return core.BrowserLocale{}, false
+	}
+	if cfg != nil {
+		cfg.AcceptLanguage = locale.AcceptLanguage
+		cfg.I18Next = locale.I18Next
+		cfg.TimeZone = locale.TimeZone
+		cfg.TimeZoneSet = true
+	}
+	return locale, true
+}
+
+func runtimeProxyBrowserLocaleForCountryCode(countryCode string) (core.BrowserLocale, bool) {
+	switch strings.ToUpper(strings.TrimSpace(countryCode)) {
+	case "US":
+		return core.BrowserLocale{AcceptLanguage: "en-US,en;q=0.9", I18Next: "en-US", TimeZone: -8}, true
+	case "JP":
+		return core.BrowserLocale{AcceptLanguage: "ja-JP,ja;q=0.9,en;q=0.8", I18Next: "ja-JP", TimeZone: 9}, true
+	case "DE":
+		return core.BrowserLocale{AcceptLanguage: "de-DE,de;q=0.9,en;q=0.8", I18Next: "de-DE", TimeZone: 1}, true
+	case "HK":
+		return core.BrowserLocale{AcceptLanguage: "zh-HK,zh;q=0.9,en;q=0.8", I18Next: "zh-HK", TimeZone: 8}, true
+	case "SG":
+		return core.BrowserLocale{AcceptLanguage: "en-SG,en;q=0.9", I18Next: "en-SG", TimeZone: 8}, true
+	case "KR":
+		return core.BrowserLocale{AcceptLanguage: "ko-KR,ko;q=0.9,en;q=0.8", I18Next: "ko-KR", TimeZone: 9}, true
+	case "RO":
+		return core.BrowserLocale{AcceptLanguage: "ro-RO,ro;q=0.9,en;q=0.8", I18Next: "ro-RO", TimeZone: 2}, true
+	case "GB":
+		return core.BrowserLocale{AcceptLanguage: "en-GB,en;q=0.9", I18Next: "en-GB", TimeZone: 0}, true
+	case "FR":
+		return core.BrowserLocale{AcceptLanguage: "fr-FR,fr;q=0.9,en;q=0.8", I18Next: "fr-FR", TimeZone: 1}, true
+	case "CA":
+		return core.BrowserLocale{AcceptLanguage: "en-CA,en;q=0.9", I18Next: "en-CA", TimeZone: -5}, true
+	case "NL":
+		return core.BrowserLocale{AcceptLanguage: "nl-NL,nl;q=0.9,en;q=0.8", I18Next: "nl-NL", TimeZone: 1}, true
+	default:
+		return core.BrowserLocale{}, false
+	}
 }
 
 func clashFingerprintKey(prefix, node, subject string) string {

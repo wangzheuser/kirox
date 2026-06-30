@@ -388,6 +388,12 @@ type emailProviderSelector struct {
 	next      int
 }
 
+const (
+	emailProviderHistoricalMinOTP         = 5
+	emailProviderHistoricalMinSuccess     = 3
+	emailProviderHistoricalMinSuccessRate = 0.50
+)
+
 func newEmailProviderSelector(providers []string) *emailProviderSelector {
 	return &emailProviderSelector{providers: append([]string(nil), providers...)}
 }
@@ -408,6 +414,46 @@ func (s *emailProviderSelector) Next() string {
 
 func normalizeStartEmailProviders(providers []string) ([]string, error) {
 	return storage.NormalizeRegistrationEmailProviders(providers)
+}
+
+func effectiveEmailProvidersForBatch(providers []string) []string {
+	return effectiveEmailProvidersForBatchByStats(providers, storage.GetEmailProviderStats())
+}
+
+func effectiveEmailProvidersForBatchByStats(providers []string, stats []storage.EmailProviderStat) []string {
+	original := append([]string(nil), providers...)
+	if len(original) <= 1 {
+		return original
+	}
+
+	statByProvider := make(map[string]storage.EmailProviderStat, len(stats))
+	for _, stat := range stats {
+		provider := strings.ToLower(strings.TrimSpace(stat.Provider))
+		if provider == "" {
+			continue
+		}
+		statByProvider[provider] = stat
+	}
+
+	winners := make([]string, 0, len(original))
+	for _, provider := range original {
+		key := strings.ToLower(strings.TrimSpace(provider))
+		stat, ok := statByProvider[key]
+		if !ok {
+			continue
+		}
+		if stat.OTPReceivedCount < emailProviderHistoricalMinOTP || stat.RegistrationSuccessCount < emailProviderHistoricalMinSuccess {
+			continue
+		}
+		successRate := float64(stat.RegistrationSuccessCount) / float64(stat.OTPReceivedCount)
+		if successRate >= emailProviderHistoricalMinSuccessRate {
+			winners = append(winners, provider)
+		}
+	}
+	if len(winners) == 0 {
+		return original
+	}
+	return winners
 }
 
 func startRequestUsesProvider(req StartTaskRequest, provider string) bool {
@@ -978,9 +1024,13 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		return
 	}
 	req.EmailProviders = emailProviders
-	providerSelector := newEmailProviderSelector(emailProviders)
-	onlyOutlookProvider := len(emailProviders) == 1 && emailProviders[0] == "outlook"
+	effectiveEmailProviders := effectiveEmailProvidersForBatch(emailProviders)
+	providerSelector := newEmailProviderSelector(effectiveEmailProviders)
+	onlyOutlookProvider := len(effectiveEmailProviders) == 1 && effectiveEmailProviders[0] == "outlook"
 	log.Printf("[Kiro] 邮箱渠道轮询: %s", strings.Join(emailProviders, ","))
+	if strings.Join(effectiveEmailProviders, ",") != strings.Join(emailProviders, ",") {
+		log.Printf("[Kiro] 邮箱渠道历史优选: %s", strings.Join(effectiveEmailProviders, ","))
+	}
 
 	outDir := req.OutputPath
 	if outDir == "" {

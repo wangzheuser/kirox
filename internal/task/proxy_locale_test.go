@@ -25,9 +25,22 @@ func TestParseRuntimeProxyCountryCodeRejectsMissingCode(t *testing.T) {
 	}
 }
 
-func TestRuntimeProxyCountryPreferenceDoesNotHuntRareRegions(t *testing.T) {
-	if preferredRuntimeProxyCountryMaxAttempts != 1 {
-		t.Fatalf("runtime proxy selection should use the first usable UUID; got preference attempts=%d", preferredRuntimeProxyCountryMaxAttempts)
+func TestRuntimeProxyCountryPreferenceSamplesMultipleCandidates(t *testing.T) {
+	if preferredRuntimeProxyCountryMaxAttempts != 10 {
+		t.Fatalf("runtime proxy selection should sample 10 UUIDs for registration country fit, got %d", preferredRuntimeProxyCountryMaxAttempts)
+	}
+	for _, country := range []string{"RO", "KR", "SG", "NL"} {
+		if !isPreferredRuntimeProxyCountryCode(country) {
+			t.Fatalf("runtime proxy country %s should be preferred for registration", country)
+		}
+	}
+	for _, country := range []string{"US", "HK"} {
+		if isPreferredRuntimeProxyCountryCode(country) {
+			t.Fatalf("runtime proxy country %s should not be preferred after repeated TES blocks", country)
+		}
+		if !isAvoidedRuntimeProxyCountryCode(country) {
+			t.Fatalf("runtime proxy country %s should be avoided after repeated TES blocks", country)
+		}
 	}
 }
 
@@ -165,5 +178,90 @@ func TestSelectRuntimeProxyWithCountryPreferenceFallsBackToFirstUsableProxy(t *t
 	}
 	if !strings.Contains(selection.ProxyURL, ids[0]) {
 		t.Fatalf("fallback should use first usable proxy, got %q", selection.ProxyURL)
+	}
+}
+
+func TestSelectRuntimeProxyWithCountryPreferenceFallsBackToFirstNonAvoidedProxy(t *testing.T) {
+	ids := []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+	var idx int
+	opts := proxy.SelectOptions{
+		MaxAttempts: 1,
+		Timeout:     time.Second,
+		TargetURL:   "https://example.test/ping",
+		UUIDFactory: func() string {
+			id := ids[idx]
+			idx++
+			return id
+		},
+		Check: func(_ context.Context, _, _ string, _ time.Duration) error {
+			return nil
+		},
+	}
+	detect := func(_ context.Context, proxyURL string) (string, error) {
+		if strings.Contains(proxyURL, ids[1]) {
+			return "DE", nil
+		}
+		return "US", nil
+	}
+
+	selection, countryCode, preferred, err := selectRuntimeProxyWithCountryPreference(
+		context.Background(),
+		"http://session-{uuid}:secret@127.0.0.1:9200",
+		opts,
+		detect,
+		2,
+	)
+	if err != nil {
+		t.Fatalf("selection returned error: %v", err)
+	}
+	if preferred || countryCode != "DE" {
+		t.Fatalf("expected non-preferred but non-avoided DE fallback, got preferred=%v country=%q", preferred, countryCode)
+	}
+	if selection.Attempts != 2 || selection.SuccessAttempt != 2 {
+		t.Fatalf("fallback attempts = %d/%d, want success attempt 2 after 2 probes", selection.SuccessAttempt, selection.Attempts)
+	}
+	if !strings.Contains(selection.ProxyURL, ids[1]) {
+		t.Fatalf("fallback should skip avoided US proxy and use second candidate, got %q", selection.ProxyURL)
+	}
+}
+
+func TestSelectRuntimeProxyWithCountryPreferenceSkipsAvoidedHongKongFallback(t *testing.T) {
+	ids := []string{"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+	var idx int
+	opts := proxy.SelectOptions{
+		MaxAttempts: 1,
+		Timeout:     time.Second,
+		TargetURL:   "https://example.test/ping",
+		UUIDFactory: func() string {
+			id := ids[idx]
+			idx++
+			return id
+		},
+		Check: func(_ context.Context, _, _ string, _ time.Duration) error {
+			return nil
+		},
+	}
+	detect := func(_ context.Context, proxyURL string) (string, error) {
+		if strings.Contains(proxyURL, ids[1]) {
+			return "DE", nil
+		}
+		return "HK", nil
+	}
+
+	selection, countryCode, preferred, err := selectRuntimeProxyWithCountryPreference(
+		context.Background(),
+		"http://session-{uuid}:secret@127.0.0.1:9200",
+		opts,
+		detect,
+		2,
+	)
+	if err != nil {
+		t.Fatalf("selection returned error: %v", err)
+	}
+	if preferred || countryCode != "DE" {
+		t.Fatalf("expected DE fallback after skipped HK, got preferred=%v country=%q", preferred, countryCode)
+	}
+	if selection.SuccessAttempt != 2 || !strings.Contains(selection.ProxyURL, ids[1]) {
+		t.Fatalf("fallback should skip avoided HK proxy and use second candidate, attempt=%d proxy=%q", selection.SuccessAttempt, selection.ProxyURL)
 	}
 }

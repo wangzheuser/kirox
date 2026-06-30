@@ -4,6 +4,8 @@ import (
 	"sort"
 	"sync"
 	"testing"
+
+	"reg_go/internal/storage"
 )
 
 func TestEmailProviderSelectorRoundRobinsSerially(t *testing.T) {
@@ -88,5 +90,38 @@ func TestEmailProviderSelectorSetIsImmutable(t *testing.T) {
 	sort.Strings(got[:2])
 	if got[0] != "emailnator" || got[1] != "mailgw" || got[2] != "emailnator" {
 		t.Fatalf("selector should keep an internal copy, got %#v", got)
+	}
+}
+
+func TestEffectiveEmailProvidersForBatchPrefersHistoricalWinner(t *testing.T) {
+	got := effectiveEmailProvidersForBatchByStats(
+		[]string{"pickmail", "blinkbox"},
+		[]storage.EmailProviderStat{
+			{Provider: "pickmail", OTPReceivedCount: 8, RegistrationSuccessCount: 1},
+			{Provider: "blinkbox", OTPReceivedCount: 16, RegistrationSuccessCount: 11},
+		},
+	)
+
+	if len(got) != 1 || got[0] != "blinkbox" {
+		t.Fatalf("historical high-success provider should be preferred, got %#v", got)
+	}
+}
+
+func TestEffectiveEmailProvidersForBatchKeepsOriginalWithoutStrongWinner(t *testing.T) {
+	providers := []string{"emailnator", "mailgw"}
+	got := effectiveEmailProvidersForBatchByStats(
+		providers,
+		[]storage.EmailProviderStat{
+			{Provider: "emailnator", OTPReceivedCount: 2, RegistrationSuccessCount: 2},
+			{Provider: "mailgw", OTPReceivedCount: 6, RegistrationSuccessCount: 2},
+		},
+	)
+
+	if len(got) != len(providers) || got[0] != providers[0] || got[1] != providers[1] {
+		t.Fatalf("providers without a strong historical winner should keep original order, got %#v", got)
+	}
+	providers[0] = "changed"
+	if got[0] != "emailnator" {
+		t.Fatalf("returned provider list should not alias input, got %#v", got)
 	}
 }

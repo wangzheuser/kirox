@@ -92,22 +92,52 @@ func TestApplyClashSelectionToConfigForSubjectSeparatesAccountFingerprints(t *te
 	}
 }
 
-func TestApplyRuntimeProxyCountryLocaleToConfigForSubjectKeepsDefaultLocale(t *testing.T) {
+func TestApplyRuntimeProxyCountryLocaleToConfigForSubjectBindsKnownCountryLocale(t *testing.T) {
 	cfg := core.NewConfig()
 	cfg.Proxy = "http://127.0.0.1:9200"
+
+	locale, ok := applyRuntimeProxyCountryLocaleToConfigForSubject(cfg, "US", "alice@example.com")
+	if !ok {
+		t.Fatalf("known runtime proxy country should bind browser locale")
+	}
+	if !strings.HasPrefix(cfg.AcceptLanguage, "en-US") || cfg.I18Next != "en-US" || cfg.TimeZone != -8 || !cfg.TimeZoneSet {
+		t.Fatalf("runtime US country should use US browser locale, got accept=%q i18next=%q tz=%d set=%v", cfg.AcceptLanguage, cfg.I18Next, cfg.TimeZone, cfg.TimeZoneSet)
+	}
+	if locale.I18Next != "en-US" || locale.TimeZone != -8 {
+		t.Fatalf("returned locale should match applied locale, got %+v", locale)
+	}
+	if cfg.FingerprintKey != "" {
+		t.Fatalf("runtime country locale should not rewrite fingerprint key, got %q", cfg.FingerprintKey)
+	}
+}
+
+func TestApplyRuntimeProxyCountryLocaleToConfigForSubjectBindsNetherlandsLocale(t *testing.T) {
+	cfg := core.NewConfig()
+
+	locale, ok := applyRuntimeProxyCountryLocaleToConfigForSubject(cfg, " nl ", "alice@example.com")
+	if !ok {
+		t.Fatalf("runtime proxy country NL should bind browser locale")
+	}
+	if !strings.HasPrefix(cfg.AcceptLanguage, "nl-NL") || cfg.I18Next != "nl-NL" || cfg.TimeZone != 1 || !cfg.TimeZoneSet {
+		t.Fatalf("runtime NL country should use Netherlands browser locale, got accept=%q i18next=%q tz=%d set=%v", cfg.AcceptLanguage, cfg.I18Next, cfg.TimeZone, cfg.TimeZoneSet)
+	}
+	if locale.I18Next != "nl-NL" || locale.TimeZone != 1 {
+		t.Fatalf("returned locale should match Netherlands locale, got %+v", locale)
+	}
+}
+
+func TestApplyRuntimeProxyCountryLocaleToConfigForSubjectKeepsDefaultForUnknownCountry(t *testing.T) {
+	cfg := core.NewConfig()
 	defaultAccept := cfg.AcceptLanguage
 	defaultI18Next := cfg.I18Next
 	defaultTimeZone := cfg.TimeZone
 
-	locale, ok := applyRuntimeProxyCountryLocaleToConfigForSubject(cfg, "US", "alice@example.com")
+	locale, ok := applyRuntimeProxyCountryLocaleToConfigForSubject(cfg, "ZZ", "alice@example.com")
 	if ok {
-		t.Fatalf("runtime proxy country should be observed but not override browser locale, got locale=%+v", locale)
+		t.Fatalf("unknown runtime proxy country should not bind browser locale, got %+v", locale)
 	}
 	if cfg.I18Next != defaultI18Next || cfg.AcceptLanguage != defaultAccept || cfg.TimeZone != defaultTimeZone || !cfg.TimeZoneSet {
-		t.Fatalf("runtime country should not change browser locale, got accept=%q i18next=%q tz=%d set=%v", cfg.AcceptLanguage, cfg.I18Next, cfg.TimeZone, cfg.TimeZoneSet)
-	}
-	if cfg.FingerprintKey != "" {
-		t.Fatalf("runtime country should not change fingerprint key, got %q", cfg.FingerprintKey)
+		t.Fatalf("unknown runtime country should keep default browser locale, got accept=%q i18next=%q tz=%d set=%v", cfg.AcceptLanguage, cfg.I18Next, cfg.TimeZone, cfg.TimeZoneSet)
 	}
 }
 
