@@ -14,6 +14,8 @@ test('register page contains persistent email provider stats card', () => {
   assert.match(html, /验证码收码次数/);
   assert.match(html, /注册成功数/);
   assert.match(html, /注册成功域名统计/);
+  assert.match(html, /域名尝试统计/);
+  assert.match(html, /当前探索比例/);
   assert.match(html, /id="email-provider-stats-body"/);
   assert.match(html, /id="btn-select-selected-email-provider-stats"[^>]*disabled/);
   assert.match(html, /勾选所选邮箱渠道/);
@@ -21,7 +23,7 @@ test('register page contains persistent email provider stats card', () => {
   assert.match(html, /勾选所有邮箱渠道/);
   assert.match(html, /id="btn-reset-email-provider-stats"/);
   assert.match(html, /<th[^>]*>\s*<\/th>\s*<th[^>]*>\s*渠道\s*<\/th>/);
-  assert.match(html, /<td colspan="5"[^>]*>加载中\.\.\.<\/td>/);
+  assert.match(html, /<td colspan="6"[^>]*>加载中\.\.\.<\/td>/);
 });
 
 test('frontend loads and resets email provider stats through dedicated api', () => {
@@ -30,6 +32,8 @@ test('frontend loads and resets email provider stats through dedicated api', () 
   assert.match(appJs, /function\s+resetEmailProviderStats\s*\(/);
   assert.match(appJs, /ResetEmailProviderStats\s*\(/);
   assert.match(appJs, /formatEmailProviderSuccessDomains\s*\(/);
+  assert.match(appJs, /formatEmailProviderDomainAttempts\s*\(/);
+  assert.match(appJs, /cfg-domain-exploration-percent/);
 });
 
 test('frontend can replace selected providers with providers from stats', () => {
@@ -65,4 +69,6 @@ test('wails bindings expose email provider stats api and model', () => {
   assert.match(wailsAppDts, /ResetEmailProviderStats\(\):Promise<Record<string, any>>/);
   assert.match(modelsTs, /export class EmailProviderStat/);
   assert.match(modelsTs, /successDomains: Record<string, number>/);
+  assert.match(modelsTs, /domainAttempts: Record<string, number>/);
+  assert.match(modelsTs, /domainExplorationPercent: number/);
 });

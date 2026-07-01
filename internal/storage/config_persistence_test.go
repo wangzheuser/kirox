@@ -53,14 +53,15 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 		t.Fatalf("SetSoundEnabled returned error: %v", err)
 	}
 	if err := SetRegistrationConfig(RegistrationConfig{
-		Count:             7,
-		SuccessTarget:     5,
-		Concurrency:       3,
-		Delay:             0,
-		EmailProviders:    []string{"moemail", "emailnator", "moemail"},
-		MoeMailDomainMode: "custom",
-		MoeMailDomains:    []string{"alpha.example", "beta.example"},
-		ReuseFailedEmail:  true,
+		Count:                    7,
+		SuccessTarget:            5,
+		Concurrency:              3,
+		Delay:                    0,
+		DomainExplorationPercent: 35,
+		EmailProviders:           []string{"moemail", "emailnator", "moemail"},
+		MoeMailDomainMode:        "custom",
+		MoeMailDomains:           []string{"alpha.example", "beta.example"},
+		ReuseFailedEmail:         true,
 	}); err != nil {
 		t.Fatalf("SetRegistrationConfig returned error: %v", err)
 	}
@@ -95,7 +96,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if got := GetSoundEnabled(); got {
 		t.Fatalf("sound false should persist")
 	}
-	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || strings.Join(got.EmailProviders, ",") != "moemail,emailnator" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.ReuseFailedEmail || !got.Saved {
+	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || got.DomainExplorationPercent != 35 || strings.Join(got.EmailProviders, ",") != "moemail,emailnator" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.ReuseFailedEmail || !got.Saved {
 		t.Fatalf("registration config round-trip failed: got %+v", got)
 	}
 
@@ -111,6 +112,9 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	}
 	if got := saved[keyRegistrationEmailProviders]; got != `["moemail","emailnator"]` {
 		t.Fatalf("email providers should be persisted as ordered list, got %q", got)
+	}
+	if got := saved[keyRegistrationDomainExplorationPercent]; got != "35" {
+		t.Fatalf("domain exploration percent should be persisted, got %q", got)
 	}
 }
 
@@ -157,7 +161,7 @@ func TestRegistrationConfigDefaultsAndValidation(t *testing.T) {
 	withTempStorageConfig(t, "")
 
 	defaults := GetRegistrationConfig()
-	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || strings.Join(defaults.EmailProviders, ",") != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.ReuseFailedEmail || defaults.Saved {
+	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || defaults.DomainExplorationPercent != 20 || strings.Join(defaults.EmailProviders, ",") != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.ReuseFailedEmail || defaults.Saved {
 		t.Fatalf("registration defaults mismatch: got %+v", defaults)
 	}
 
@@ -175,6 +179,20 @@ func TestRegistrationConfigDefaultsAndValidation(t *testing.T) {
 	}
 	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: 0, EmailProviders: []string{"invalid"}}); err == nil {
 		t.Fatalf("invalid email provider should be rejected")
+	}
+
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: 0, DomainExplorationPercent: 150, EmailProviders: []string{"outlook"}}); err != nil {
+		t.Fatalf("domain exploration percent > 100 should be clamped, not rejected: %v", err)
+	}
+	if got := GetRegistrationConfig(); got.DomainExplorationPercent != 100 {
+		t.Fatalf("DomainExplorationPercent should clamp to 100, got %+v", got)
+	}
+
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: 0, DomainExplorationPercent: -5, EmailProviders: []string{"outlook"}}); err != nil {
+		t.Fatalf("domain exploration percent < 0 should be clamped, not rejected: %v", err)
+	}
+	if got := GetRegistrationConfig(); got.DomainExplorationPercent != 0 {
+		t.Fatalf("DomainExplorationPercent should clamp to 0, got %+v", got)
 	}
 }
 

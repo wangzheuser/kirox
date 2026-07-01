@@ -274,6 +274,15 @@ func recordEmailProviderSuccessStat(provider string, result map[string]interface
 	}
 }
 
+func recordEmailProviderDomainAttemptStat(provider, emailAddr string) {
+	if strings.TrimSpace(emailAddr) == "" {
+		return
+	}
+	if err := storage.RecordEmailProviderDomainAttempt(provider, emailAddr); err != nil {
+		log.Printf("[Kiro] 记录邮箱渠道域名尝试统计失败: provider=%s email=%s err=%v", provider, emailAddr, err)
+	}
+}
+
 func (s *runtimeTaskStats) ProgressSummary(completed, success, failed, topN int) string {
 	if topN <= 0 {
 		topN = 3
@@ -515,18 +524,19 @@ func (p *runtimeProxyCountryStartPacer) ReserveDelay(countryCode string, now tim
 
 // StartTaskRequest 启动任务请求
 type StartTaskRequest struct {
-	Count             int                              `json:"count"`
-	SuccessTarget     int                              `json:"successTarget"`
-	Concurrency       int                              `json:"concurrency"`
-	Delay             int                              `json:"delay"`
-	RetryCount        int                              `json:"retryCount"`
-	OTPTimeout        int                              `json:"otpTimeout"`
-	ReuseFailedEmail  bool                             `json:"reuseFailedEmail"`
-	OutputPath        string                           `json:"outputPath"`
-	EmailProviders    []string                         `json:"emailProviders"`    // 多邮箱渠道，按注册 attempt 轮询
-	MoeMailDomains    []string                         `json:"moemailDomains"`    // 选中的域名列表
-	MoeMailConfigs    map[string][]email.MoeMailConfig `json:"moemailConfigs"`    // 域名 -> 配置列表映射
-	MoeMailRandomMode bool                             `json:"moemailRandomMode"` // 是否为随机模式
+	Count                    int                              `json:"count"`
+	SuccessTarget            int                              `json:"successTarget"`
+	Concurrency              int                              `json:"concurrency"`
+	Delay                    int                              `json:"delay"`
+	DomainExplorationPercent int                              `json:"domainExplorationPercent"`
+	RetryCount               int                              `json:"retryCount"`
+	OTPTimeout               int                              `json:"otpTimeout"`
+	ReuseFailedEmail         bool                             `json:"reuseFailedEmail"`
+	OutputPath               string                           `json:"outputPath"`
+	EmailProviders           []string                         `json:"emailProviders"`    // 多邮箱渠道，按注册 attempt 轮询
+	MoeMailDomains           []string                         `json:"moemailDomains"`    // 选中的域名列表
+	MoeMailConfigs           map[string][]email.MoeMailConfig `json:"moemailConfigs"`    // 域名 -> 配置列表映射
+	MoeMailRandomMode        bool                             `json:"moemailRandomMode"` // 是否为随机模式
 
 	CloudMailDomains    []string                           `json:"cloudmailDomains"`
 	CloudMailConfigs    map[string][]email.CloudMailConfig `json:"cloudmailConfigs"`
@@ -859,6 +869,7 @@ func recycleReusableFailedEmail(req StartTaskRequest, pool *reusableEmailPool, p
 
 // StartTask 公开方法（包装器）
 func StartTask(req StartTaskRequest) map[string]interface{} {
+	req.DomainExplorationPercent = clampDomainExplorationPercent(req.DomainExplorationPercent)
 	return startTask(req)
 }
 
@@ -2029,7 +2040,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				currentEmail = taskCfg.TempEmailService.GetAddress()
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 SmailPro 邮箱", i+1, displayTotal)
-				service, address, err := createTempEmailPreferringSuccessfulDomains(taskCtx, "smailpro", "SmailPro", i+1, displayTotal, func() (email.TempEmailService, string, error) {
+				service, address, err := createTempEmailPreferringSuccessfulDomains(taskCtx, "smailpro", "SmailPro", i+1, displayTotal, req.DomainExplorationPercent, func() (email.TempEmailService, string, error) {
 					service := email.NewSmailProService(taskCfg.EmailProxy)
 					address, err := createTempEmailWithRetry("SmailPro", service.CreateWithError)
 					return service, address, err
@@ -2382,7 +2393,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				currentEmail = taskCfg.TempEmailService.GetAddress()
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 BlinkBoxApp 邮箱", i+1, displayTotal)
-				service, address, err := createTempEmailPreferringSuccessfulDomains(taskCtx, "blinkbox", "BlinkBoxApp", i+1, displayTotal, func() (email.TempEmailService, string, error) {
+				service, address, err := createTempEmailPreferringSuccessfulDomains(taskCtx, "blinkbox", "BlinkBoxApp", i+1, displayTotal, req.DomainExplorationPercent, func() (email.TempEmailService, string, error) {
 					service := email.NewBlinkBoxService(taskCfg.EmailProxy)
 					address, err := createTempEmailWithRetry("BlinkBoxApp", service.CreateWithError)
 					return service, address, err
@@ -2403,6 +2414,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		var itemStart time.Time
 		var result map[string]interface{}
 		registrationReserved := false
+		domainAttemptRecorded := false
 		reserveBeforeRegistrar := func() bool {
 			if registrationReserved {
 				return true
@@ -2424,6 +2436,10 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			}
 			itemStart = time.Now()
 			log.Printf("[Kiro][%d/%d] 开始注册", i+1, displayTotal)
+			if !domainAttemptRecorded {
+				recordEmailProviderDomainAttemptStat(emailProvider, currentEmail)
+				domainAttemptRecorded = true
+			}
 			return true
 		}
 		releaseRegistrationReservation := func() {

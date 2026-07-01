@@ -147,6 +147,7 @@ export namespace storage {
 	    otpReceivedCount: number;
 	    registrationSuccessCount: number;
 	    successDomains: Record<string, number>;
+	    domainAttempts: Record<string, number>;
 	    updatedAt: string;
 
 	    static createFrom(source: any = {}) {
@@ -159,6 +160,7 @@ export namespace storage {
 	        this.otpReceivedCount = source["otpReceivedCount"];
 	        this.registrationSuccessCount = source["registrationSuccessCount"];
 	        this.successDomains = source["successDomains"];
+	        this.domainAttempts = source["domainAttempts"];
 	        this.updatedAt = source["updatedAt"];
 	    }
 	}
@@ -167,6 +169,7 @@ export namespace storage {
 	    successTarget: number;
 	    concurrency: number;
 	    delay: number;
+	    domainExplorationPercent: number;
 	    retryCount: number;
 	    otpTimeout: number;
 	    emailProviders: string[];
@@ -185,6 +188,7 @@ export namespace storage {
 	        this.successTarget = source["successTarget"];
 	        this.concurrency = source["concurrency"];
 	        this.delay = source["delay"];
+	        this.domainExplorationPercent = source["domainExplorationPercent"];
 	        this.retryCount = source["retryCount"];
 	        this.otpTimeout = source["otpTimeout"];
 	        this.emailProviders = source["emailProviders"];
@@ -204,6 +208,7 @@ export namespace task {
 	    successTarget: number;
 	    concurrency: number;
 	    delay: number;
+	    domainExplorationPercent: number;
 	    retryCount: number;
 	    otpTimeout: number;
 	    reuseFailedEmail: boolean;
@@ -226,6 +231,7 @@ export namespace task {
 	        this.successTarget = source["successTarget"];
 	        this.concurrency = source["concurrency"];
 	        this.delay = source["delay"];
+	        this.domainExplorationPercent = source["domainExplorationPercent"];
 	        this.retryCount = source["retryCount"];
 	        this.otpTimeout = source["otpTimeout"];
 	        this.reuseFailedEmail = source["reuseFailedEmail"];

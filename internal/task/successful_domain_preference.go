@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"strings"
 
 	"reg_go/internal/email"
@@ -14,11 +15,12 @@ const successfulDomainPreferenceMaxCreateAttempts = 10
 
 type tempEmailServiceCreator func() (email.TempEmailService, string, error)
 
-func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, providerLabel string, current, total int, create tempEmailServiceCreator) (email.TempEmailService, string, error) {
+func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, providerLabel string, current, total int, domainExplorationPercent int, create tempEmailServiceCreator) (email.TempEmailService, string, error) {
 	preferredDomains := successfulDomainsForProvider(provider)
 	if len(preferredDomains) == 0 {
 		return create()
 	}
+	domainExplorationPercent = clampDomainExplorationPercent(domainExplorationPercent)
 
 	for attempt := 1; attempt <= successfulDomainPreferenceMaxCreateAttempts; attempt++ {
 		select {
@@ -39,6 +41,14 @@ func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, p
 			}
 			return service, address, nil
 		}
+		if shouldExploreNonPreferredDomain(domainExplorationPercent) {
+			if domain == "" {
+				log.Printf("[Kiro][%d/%d] %s 邮箱未能解析域名，但命中 %d%% 探索比例，允许进入注册流程", current, total, providerLabel, domainExplorationPercent)
+			} else {
+				log.Printf("[Kiro][%d/%d] %s 邮箱域名 %s 非历史成功域名，但命中 %d%% 探索比例，允许进入注册流程", current, total, providerLabel, strings.TrimPrefix(domain, "@"), domainExplorationPercent)
+			}
+			return service, address, nil
+		}
 
 		if attempt < successfulDomainPreferenceMaxCreateAttempts {
 			if domain == "" {
@@ -56,9 +66,6 @@ func successfulDomainsForProvider(provider string) map[string]struct{} {
 	provider = normalizeSuccessfulDomainPreferenceProvider(provider)
 	if provider == "" {
 		return nil
-	}
-	if defaults := defaultSuccessfulDomainsForProvider(provider); len(defaults) > 0 {
-		return defaults
 	}
 	for _, stat := range storage.GetEmailProviderStats() {
 		if strings.ToLower(strings.TrimSpace(stat.Provider)) != provider {
@@ -92,22 +99,12 @@ func successfulDomainsForProvider(provider string) map[string]struct{} {
 	return nil
 }
 
-func defaultSuccessfulDomainsForProvider(provider string) map[string]struct{} {
-	switch normalizeSuccessfulDomainPreferenceProvider(provider) {
-	case "blinkbox":
-		return map[string]struct{}{"@fontdle.com": {}}
-	default:
-		return nil
-	}
-}
-
 func normalizeSuccessfulDomainPreferenceProvider(provider string) string {
-	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "smailpro", "blinkbox":
-		return strings.ToLower(strings.TrimSpace(provider))
-	default:
+	providers, err := storage.NormalizeRegistrationEmailProviders([]string{provider})
+	if err != nil || len(providers) == 0 {
 		return ""
 	}
+	return providers[0]
 }
 
 func isSuccessfulDomainPreferenceMiss(errorMsg string) bool {
@@ -132,4 +129,25 @@ func normalizeEmailAddressDomain(value string) string {
 		return ""
 	}
 	return "@" + value
+}
+
+func clampDomainExplorationPercent(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
+}
+
+func shouldExploreNonPreferredDomain(percent int) bool {
+	percent = clampDomainExplorationPercent(percent)
+	if percent <= 0 {
+		return false
+	}
+	if percent >= 100 {
+		return true
+	}
+	return rand.Intn(100) < percent
 }

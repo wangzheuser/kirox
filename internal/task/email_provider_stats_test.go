@@ -73,7 +73,7 @@ func TestCreateTempEmailPreferringSuccessfulDomainsRetriesUntilHistoricalSuccess
 
 	addresses := []string{"first@blocked.test", "second@FontDle.COM"}
 	attempts := 0
-	service, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, func() (email.TempEmailService, string, error) {
+	service, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, 0, func() (email.TempEmailService, string, error) {
 		addr := addresses[attempts]
 		attempts++
 		return &taskFakeTempEmailService{address: addr}, addr, nil
@@ -108,7 +108,7 @@ func TestCreateTempEmailPreferringSuccessfulDomainsIgnoresLowSampleSuccessDomain
 
 	addresses := []string{"first@beatnesia.my.id", "second@fontdle.com"}
 	attempts := 0
-	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, func() (email.TempEmailService, string, error) {
+	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, 0, func() (email.TempEmailService, string, error) {
 		addr := addresses[attempts]
 		attempts++
 		return &taskFakeTempEmailService{address: addr}, addr, nil
@@ -132,7 +132,7 @@ func TestCreateTempEmailPreferringSuccessfulDomainsFailsAfterTenMisses(t *testin
 	}
 
 	attempts := 0
-	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, func() (email.TempEmailService, string, error) {
+	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, 0, func() (email.TempEmailService, string, error) {
 		attempts++
 		addr := fmt.Sprintf("miss%d@beatnesia.my.id", attempts)
 		return &taskFakeTempEmailService{address: addr}, addr, nil
@@ -153,7 +153,7 @@ func TestCreateTempEmailPreferringSuccessfulDomainsDoesNotFilterWithoutHistory(t
 	storage.ResetEmailProviderStats()
 
 	attempts := 0
-	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "smailpro", "SmailPro", 1, 1, func() (email.TempEmailService, string, error) {
+	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "smailpro", "SmailPro", 1, 1, 20, func() (email.TempEmailService, string, error) {
 		attempts++
 		return &taskFakeTempEmailService{address: "first@blocked.test"}, "first@blocked.test", nil
 	})
@@ -168,24 +168,47 @@ func TestCreateTempEmailPreferringSuccessfulDomainsDoesNotFilterWithoutHistory(t
 	}
 }
 
-func TestCreateTempEmailPreferringSuccessfulDomainsUsesBlinkBoxDefaultFontdleDomain(t *testing.T) {
+func TestCreateTempEmailPreferringSuccessfulDomainsDoesNotUseHardcodedBlinkBoxDefault(t *testing.T) {
 	isolateEmailProviderStatsStorage(t)
 	storage.ResetEmailProviderStats()
 
-	addresses := []string{"first@beatnesia.my.id", "second@fontdle.com"}
 	attempts := 0
-	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, func() (email.TempEmailService, string, error) {
-		addr := addresses[attempts]
+	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, 20, func() (email.TempEmailService, string, error) {
 		attempts++
+		addr := "first@beatnesia.my.id"
 		return &taskFakeTempEmailService{address: addr}, addr, nil
 	})
 	if err != nil {
 		t.Fatalf("createTempEmailPreferringSuccessfulDomains returned error: %v", err)
 	}
-	if attempts != 2 {
-		t.Fatalf("attempts = %d, want 2", attempts)
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
 	}
-	if address != "second@fontdle.com" {
-		t.Fatalf("address = %q, want second@fontdle.com", address)
+	if address != "first@beatnesia.my.id" {
+		t.Fatalf("address = %q, want first@beatnesia.my.id", address)
+	}
+}
+
+func TestCreateTempEmailPreferringSuccessfulDomainsExplorationCanAcceptNonHistoricalDomain(t *testing.T) {
+	isolateEmailProviderStatsStorage(t)
+	storage.ResetEmailProviderStats()
+	if err := storage.RecordEmailProviderRegistrationSuccess("blinkbox", "ok@fontdle.com"); err != nil {
+		t.Fatalf("RecordEmailProviderRegistrationSuccess returned error: %v", err)
+	}
+
+	attempts := 0
+	_, address, err := createTempEmailPreferringSuccessfulDomains(context.Background(), "blinkbox", "BlinkBoxApp", 1, 1, 100, func() (email.TempEmailService, string, error) {
+		attempts++
+		addr := "explore@beatnesia.my.id"
+		return &taskFakeTempEmailService{address: addr}, addr, nil
+	})
+	if err != nil {
+		t.Fatalf("createTempEmailPreferringSuccessfulDomains returned error: %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+	if address != "explore@beatnesia.my.id" {
+		t.Fatalf("address = %q, want explore@beatnesia.my.id", address)
 	}
 }

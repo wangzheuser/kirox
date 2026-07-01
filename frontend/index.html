@@ -847,6 +847,10 @@
               <input type="number" id="cfg-delay" value="1" min="0" class="form-input" style="height:38px;">
             </div>
             <div class="form-group" style="margin-bottom:0;">
+              <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">域名探索比例(%)</label>
+              <input type="number" id="cfg-domain-exploration-percent" value="20" min="0" max="100" class="form-input" style="height:38px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">重试次数</label>
               <input type="number" id="cfg-retry-count" value="1" min="0" max="5" class="form-input" style="height:38px;">
             </div>
@@ -1352,7 +1356,7 @@
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
               <div>
                 <div style="font-size:13px;font-weight:800;color:var(--text);">邮箱渠道累计统计</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">只会持续累计；点击重置按钮才会清空。</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">只会持续累计；点击重置按钮才会清空。当前探索比例按上方“域名探索比例(%)”配置执行。</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
                 <button id="btn-select-selected-email-provider-stats" type="button" onclick="selectSelectedEmailProvidersFromStats()" class="btn btn-secondary btn-sm" disabled>勾选所选邮箱渠道</button>
@@ -1369,10 +1373,11 @@
                     <th style="white-space:nowrap;text-align:right;">验证码收码次数</th>
                     <th style="white-space:nowrap;text-align:right;">注册成功数</th>
                     <th>注册成功域名统计</th>
+                    <th>域名尝试统计</th>
                   </tr>
                 </thead>
                 <tbody id="email-provider-stats-body">
-                  <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:12px;">加载中...</td></tr>
+                  <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:12px;">加载中...</td></tr>
                 </tbody>
               </table>
             </div>

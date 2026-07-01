@@ -766,12 +766,13 @@ var registrationConfigLoaded = false;
 var registrationConfigApplying = false;
 var registrationSaveTimer = null;
 
-function readIntegerInput(id, fallback, min) {
+function readIntegerInput(id, fallback, min, max) {
   var el = document.getElementById(id);
   var raw = el ? String(el.value).trim() : '';
   var value = raw === '' ? fallback : parseInt(raw, 10);
   if (!Number.isFinite(value)) value = fallback;
   if (typeof min === 'number' && value < min) value = min;
+  if (typeof max === 'number' && value > max) value = max;
   return value;
 }
 
@@ -811,6 +812,7 @@ function getRegistrationConfigPayload() {
     successTarget: readIntegerInput('cfg-success-target', 0, 0),
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
+    domainExplorationPercent: readIntegerInput('cfg-domain-exploration-percent', 20, 0, 100),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
@@ -836,6 +838,7 @@ function applyRegistrationConfig(cfg) {
   writeIntegerInput('cfg-success-target', cfg.successTarget, 0);
   writeIntegerInput('cfg-concurrency', cfg.concurrency, 1);
   writeIntegerInput('cfg-delay', cfg.delay, 1);
+  writeIntegerInput('cfg-domain-exploration-percent', cfg.domainExplorationPercent, 20);
   writeIntegerInput('cfg-retry-count', cfg.retryCount, 1);
   writeIntegerInput('cfg-otp-timeout', cfg.otpTimeout, 60);
   writeCheckboxInput('cfg-reuse-failed-email', cfg.reuseFailedEmail);
@@ -856,6 +859,7 @@ function getFormConfig() {
     successTarget: readIntegerInput('cfg-success-target', 0, 0),
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
+    domainExplorationPercent: readIntegerInput('cfg-domain-exploration-percent', 20, 0, 100),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
@@ -962,6 +966,7 @@ async function loadRegistrationConfig() {
       successTarget: 0,
       concurrency: 1,
       delay: 1,
+      domainExplorationPercent: 20,
       retryCount: 1,
       otpTimeout: 60,
       reuseFailedEmail: false,
@@ -1022,6 +1027,25 @@ function getEmailProviderDisplayName(provider) {
 }
 
 function formatEmailProviderSuccessDomains(domains) {
+  domains = domains || {};
+  var items = Object.keys(domains).map(function(domain) {
+    return { domain: domain, count: parseInt(domains[domain], 10) || 0 };
+  }).filter(function(item) {
+    return item.domain && item.count > 0;
+  });
+  items.sort(function(a, b) {
+    if (a.count === b.count) return a.domain.localeCompare(b.domain);
+    return b.count - a.count;
+  });
+  if (!items.length) return '<span style="color:var(--text-muted);">-</span>';
+  return items.map(function(item) {
+    return '<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 6px;border-radius:999px;background:var(--bg-subtle);border:1px solid var(--border);font-family:var(--font-mono);">' +
+      _escapeHtml(item.domain) + '(' + item.count + ')' +
+      '</span>';
+  }).join('');
+}
+
+function formatEmailProviderDomainAttempts(domains) {
   domains = domains || {};
   var items = Object.keys(domains).map(function(domain) {
     return { domain: domain, count: parseInt(domains[domain], 10) || 0 };
@@ -1107,7 +1131,7 @@ async function loadEmailProviderStats() {
     if (!stats.length) {
       selectedEmailProviderStatProviders = [];
       updateSelectedEmailProviderStatsButtonState();
-      body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:12px;">暂无统计</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:12px;">暂无统计</td></tr>';
       return;
     }
     var availableProviders = stats.map(getEmailProviderStatProvider).filter(function(provider, index, list) {
@@ -1121,6 +1145,7 @@ async function loadEmailProviderStats() {
       var otpCount = stat.otpReceivedCount != null ? stat.otpReceivedCount : stat.OTPReceivedCount;
       var successCount = stat.registrationSuccessCount != null ? stat.registrationSuccessCount : stat.RegistrationSuccessCount;
       var domains = stat.successDomains || stat.SuccessDomains || {};
+      var domainAttempts = stat.domainAttempts || stat.DomainAttempts || {};
       var providerAttr = _escapeHtml(provider);
       var checked = selectedEmailProviderStatProviders.indexOf(provider) >= 0 ? ' checked' : '';
       return '<tr data-provider="' + providerAttr + '">' +
@@ -1131,13 +1156,14 @@ async function loadEmailProviderStats() {
         '<td style="text-align:right;font-family:var(--font-mono);">' + (parseInt(otpCount, 10) || 0) + '</td>' +
         '<td style="text-align:right;font-family:var(--font-mono);">' + (parseInt(successCount, 10) || 0) + '</td>' +
         '<td style="min-width:220px;">' + formatEmailProviderSuccessDomains(domains) + '</td>' +
+        '<td style="min-width:220px;">' + formatEmailProviderDomainAttempts(domainAttempts) + '</td>' +
         '</tr>';
     }).join('');
     updateSelectedEmailProviderStatsButtonState();
   } catch(e) {
     selectedEmailProviderStatProviders = [];
     updateSelectedEmailProviderStatsButtonState();
-    body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger);padding:12px;">加载失败: ' + _escapeHtml(e.message || e) + '</td></tr>';
+    body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:12px;">加载失败: ' + _escapeHtml(e.message || e) + '</td></tr>';
   }
 }
 
@@ -1180,7 +1206,7 @@ async function resetEmailProviderStats() {
 }
 
 // 自动保存
-['cfg-count', 'cfg-success-target', 'cfg-concurrency', 'cfg-delay', 'cfg-retry-count', 'cfg-otp-timeout'].forEach(function(id) {
+['cfg-count', 'cfg-success-target', 'cfg-domain-exploration-percent', 'cfg-concurrency', 'cfg-delay', 'cfg-retry-count', 'cfg-otp-timeout'].forEach(function(id) {
   var el = document.getElementById(id);
   if (el) {
     el.addEventListener('change', scheduleRegistrationConfigSave);

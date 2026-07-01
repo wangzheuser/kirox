@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +27,12 @@ func TestEmailProviderStatsRecordAndPersist(t *testing.T) {
 	if err := RecordEmailProviderOTPReceived("emailnator"); err != nil {
 		t.Fatalf("RecordEmailProviderOTPReceived returned error: %v", err)
 	}
+	if err := RecordEmailProviderDomainAttempt("emailnator", "User@Example.COM"); err != nil {
+		t.Fatalf("RecordEmailProviderDomainAttempt returned error: %v", err)
+	}
+	if err := RecordEmailProviderDomainAttempt("emailnator", "other@example.com"); err != nil {
+		t.Fatalf("RecordEmailProviderDomainAttempt returned error: %v", err)
+	}
 	if err := RecordEmailProviderRegistrationSuccess("emailnator", "User@Example.COM"); err != nil {
 		t.Fatalf("RecordEmailProviderRegistrationSuccess returned error: %v", err)
 	}
@@ -43,14 +50,43 @@ func TestEmailProviderStatsRecordAndPersist(t *testing.T) {
 	if got := stat.SuccessDomains["@example.com"]; got != 2 {
 		t.Fatalf("SuccessDomains[@example.com] = %d, want 2; map=%#v", got, stat.SuccessDomains)
 	}
+	if got := stat.DomainAttempts["@example.com"]; got != 2 {
+		t.Fatalf("DomainAttempts[@example.com] = %d, want 2; map=%#v", got, stat.DomainAttempts)
+	}
 	if strings.TrimSpace(stat.UpdatedAt) == "" {
 		t.Fatalf("UpdatedAt should be set")
 	}
 
 	// 重新读取应来自持久化文件，统计值保持不变。
 	stat = findEmailProviderStat(t, GetEmailProviderStats(), "emailnator")
-	if stat.OTPReceivedCount != 2 || stat.RegistrationSuccessCount != 2 || stat.SuccessDomains["@example.com"] != 2 {
+	if stat.OTPReceivedCount != 2 || stat.RegistrationSuccessCount != 2 || stat.SuccessDomains["@example.com"] != 2 || stat.DomainAttempts["@example.com"] != 2 {
 		t.Fatalf("persisted stat mismatch: %+v", stat)
+	}
+}
+
+func TestEmailProviderStatsRecordDomainAttemptAndReadLegacyFile(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	legacyJSON := `{"blinkbox":{"provider":"blinkbox","otpReceivedCount":1,"registrationSuccessCount":1,"successDomains":{"@fontdle.com":1},"updatedAt":"2026-07-01T00:00:00Z"}}`
+	if err := os.WriteFile(emailProviderStatsFilePath(), []byte(legacyJSON), 0600); err != nil {
+		t.Fatalf("write legacy stats: %v", err)
+	}
+
+	stat := findEmailProviderStat(t, GetEmailProviderStats(), "blinkbox")
+	if stat.DomainAttempts == nil {
+		t.Fatalf("legacy stats should initialize DomainAttempts to an empty map")
+	}
+
+	if err := RecordEmailProviderDomainAttempt("blinkbox", "user@FontDle.COM"); err != nil {
+		t.Fatalf("RecordEmailProviderDomainAttempt returned error: %v", err)
+	}
+
+	stat = findEmailProviderStat(t, GetEmailProviderStats(), "blinkbox")
+	if got := stat.DomainAttempts["@fontdle.com"]; got != 1 {
+		t.Fatalf("DomainAttempts[@fontdle.com] = %d, want 1; stat=%+v", got, stat)
+	}
+	if got := stat.SuccessDomains["@fontdle.com"]; got != 1 {
+		t.Fatalf("legacy SuccessDomains should be preserved, got %d", got)
 	}
 }
 
@@ -98,6 +134,9 @@ func TestEmailProviderStatsConcurrentRecording(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
+			if err := RecordEmailProviderDomainAttempt("mailtm", "ok@Example.ORG"); err != nil {
+				t.Errorf("RecordEmailProviderDomainAttempt returned error: %v", err)
+			}
 			if err := RecordEmailProviderRegistrationSuccess("mailtm", "ok@Example.ORG"); err != nil {
 				t.Errorf("RecordEmailProviderRegistrationSuccess returned error: %v", err)
 			}
@@ -114,5 +153,8 @@ func TestEmailProviderStatsConcurrentRecording(t *testing.T) {
 	}
 	if got := stat.SuccessDomains["@example.org"]; got != workers {
 		t.Fatalf("SuccessDomains[@example.org] = %d, want %d", got, workers)
+	}
+	if got := stat.DomainAttempts["@example.org"]; got != workers {
+		t.Fatalf("DomainAttempts[@example.org] = %d, want %d", got, workers)
 	}
 }

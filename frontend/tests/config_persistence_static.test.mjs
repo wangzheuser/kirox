@@ -27,16 +27,19 @@ test('verify models setting and frontend API calls are removed', () => {
 
 test('registration form is persisted through backend APIs instead of long-term localStorage', () => {
   assert.match(html, /id="cfg-success-target"/);
+  assert.match(html, /id="cfg-domain-exploration-percent"/);
   assert.match(html, /id="cfg-reuse-failed-email"/);
   assert.match(appJs, /GetRegistrationConfig\(\)/);
   assert.match(appJs, /SetRegistrationConfig\(/);
   assert.match(appJs, /successTarget:\s*readIntegerInput\(['"]cfg-success-target['"]/);
+  assert.match(appJs, /domainExplorationPercent:\s*readIntegerInput\(['"]cfg-domain-exploration-percent['"],\s*20,\s*0,\s*100\)/);
   assert.match(appJs, /reuseFailedEmail:\s*readCheckboxInput\(['"]cfg-reuse-failed-email['"]/);
   assert.match(appJs, /emailProviders:\s*getSelectedEmailProviders\(\)/);
   assert.doesNotMatch(appJs, /emailProvider:\s*selectedEmailProvider/);
   assert.match(appJs, /writeIntegerInput\(['"]cfg-success-target['"]\s*,\s*cfg\.successTarget/);
+  assert.match(appJs, /writeIntegerInput\(['"]cfg-domain-exploration-percent['"]\s*,\s*cfg\.domainExplorationPercent/);
   assert.match(appJs, /writeCheckboxInput\(['"]cfg-reuse-failed-email['"]\s*,\s*cfg\.reuseFailedEmail/);
-  assert.match(appJs, /\['cfg-count',\s*'cfg-success-target'/);
+  assert.match(appJs, /\['cfg-count',\s*'cfg-success-target',\s*'cfg-domain-exploration-percent'/);
   assert.match(appJs, /\['cfg-reuse-failed-email'\]/);
   assert.doesNotMatch(appJs, /localStorage\.setItem\(['"]kiro-config['"]/);
   assert.doesNotMatch(appJs, /cfg\.delay\s*\|\|/);
@@ -156,4 +159,11 @@ test('registration OTP timeout defaults to sixty seconds in UI config', () => {
   assert.match(appJs, /otpTimeout:\s*readIntegerInput\(['"]cfg-otp-timeout['"],\s*60,\s*30\)/);
   assert.match(appJs, /writeIntegerInput\(['"]cfg-otp-timeout['"],\s*cfg\.otpTimeout,\s*60\)/);
   assert.match(appJs, /otpTimeout:\s*60/);
+});
+
+test('registration domain exploration percent defaults to twenty and is clamped in UI config', () => {
+  assert.match(html, /id="cfg-domain-exploration-percent" value="20" min="0" max="100"/);
+  assert.match(appJs, /domainExplorationPercent:\s*readIntegerInput\(['"]cfg-domain-exploration-percent['"],\s*20,\s*0,\s*100\)/);
+  assert.match(appJs, /writeIntegerInput\(['"]cfg-domain-exploration-percent['"],\s*cfg\.domainExplorationPercent,\s*20\)/);
+  assert.match(appJs, /domainExplorationPercent:\s*20/);
 });

@@ -20,6 +20,7 @@ type EmailProviderStat struct {
 	OTPReceivedCount         int            `json:"otpReceivedCount"`
 	RegistrationSuccessCount int            `json:"registrationSuccessCount"`
 	SuccessDomains           map[string]int `json:"successDomains"`
+	DomainAttempts           map[string]int `json:"domainAttempts"`
 	UpdatedAt                string         `json:"updatedAt"`
 }
 
@@ -76,6 +77,9 @@ func readEmailProviderStatsUnlocked() (map[string]EmailProviderStat, error) {
 		if stat.SuccessDomains == nil {
 			stat.SuccessDomains = map[string]int{}
 		}
+		if stat.DomainAttempts == nil {
+			stat.DomainAttempts = map[string]int{}
+		}
 		if stat.Provider == "" {
 			stat.Provider = provider
 		}
@@ -112,6 +116,9 @@ func sortedEmailProviderStats(stats map[string]EmailProviderStat) []EmailProvide
 		}
 		if stat.SuccessDomains == nil {
 			stat.SuccessDomains = map[string]int{}
+		}
+		if stat.DomainAttempts == nil {
+			stat.DomainAttempts = map[string]int{}
 		}
 		out = append(out, stat)
 	}
@@ -153,6 +160,9 @@ func RecordEmailProviderOTPReceived(provider string) error {
 	if stat.SuccessDomains == nil {
 		stat.SuccessDomains = map[string]int{}
 	}
+	if stat.DomainAttempts == nil {
+		stat.DomainAttempts = map[string]int{}
+	}
 	stat.OTPReceivedCount++
 	stat.UpdatedAt = time.Now().Format(time.RFC3339)
 	stats[provider] = stat
@@ -178,10 +188,46 @@ func RecordEmailProviderRegistrationSuccess(provider, emailAddr string) error {
 	if stat.SuccessDomains == nil {
 		stat.SuccessDomains = map[string]int{}
 	}
+	if stat.DomainAttempts == nil {
+		stat.DomainAttempts = map[string]int{}
+	}
 	stat.RegistrationSuccessCount++
 	if domain := normalizeSuccessDomain(emailAddr); domain != "" {
 		stat.SuccessDomains[domain]++
 	}
+	stat.UpdatedAt = time.Now().Format(time.RFC3339)
+	stats[provider] = stat
+	return writeEmailProviderStatsUnlocked(stats)
+}
+
+// RecordEmailProviderDomainAttempt 累计指定渠道真正进入注册流程的邮箱域名尝试次数。
+func RecordEmailProviderDomainAttempt(provider, emailAddr string) error {
+	provider, err := normalizeStatsProvider(provider)
+	if err != nil {
+		return err
+	}
+
+	domain := normalizeSuccessDomain(emailAddr)
+	if domain == "" {
+		return nil
+	}
+
+	emailProviderStatsMu.Lock()
+	defer emailProviderStatsMu.Unlock()
+
+	stats, err := readEmailProviderStatsUnlocked()
+	if err != nil {
+		return err
+	}
+	stat := stats[provider]
+	stat.Provider = provider
+	if stat.SuccessDomains == nil {
+		stat.SuccessDomains = map[string]int{}
+	}
+	if stat.DomainAttempts == nil {
+		stat.DomainAttempts = map[string]int{}
+	}
+	stat.DomainAttempts[domain]++
 	stat.UpdatedAt = time.Now().Format(time.RFC3339)
 	stats[provider] = stat
 	return writeEmailProviderStatsUnlocked(stats)

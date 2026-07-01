@@ -29,10 +29,11 @@ const (
 	OutlookGraphRegistrationEmailImported = "imported"
 	OutlookGraphRegistrationEmailPrimary  = "primary"
 
-	DefaultRegistrationCount         = 1
-	DefaultRegistrationSuccessTarget = 0
-	DefaultRegistrationConcurrency   = 1
-	DefaultRegistrationDelay         = 1
+	DefaultRegistrationCount                    = 1
+	DefaultRegistrationSuccessTarget            = 0
+	DefaultRegistrationConcurrency              = 1
+	DefaultRegistrationDelay                    = 1
+	DefaultRegistrationDomainExplorationPercent = 20
 
 	RegistrationEmailProviderOutlook        = "outlook"
 	RegistrationEmailProviderMoeMail        = "moemail"
@@ -85,53 +86,55 @@ const (
 	MoeMailDomainModeAll    = "all"
 	MoeMailDomainModeCustom = "custom"
 
-	keyDataDir                      = "data_dir"
-	keyResultOutputDir              = "result_output_dir"
-	keyOutlookScope                 = "outlook_scope"
-	keyOutlookGraphRegistrationMode = "outlook_graph_registration_email_mode"
-	keyProxyMode                    = "proxy_mode"
-	keyProxy                        = "proxy"
-	keyLanguage                     = "language"
-	keyClashProxy                   = "clash_proxy"
-	keyEmailProxy                   = "email_proxy"
-	keyKillSwitchEnabled            = "kill_switch_enabled"
-	keySoundEnabled                 = "sound_enabled"
-	keyClashEnabled                 = "clash_enabled"
-	keyClashAPIURL                  = "clash_api_url"
-	keyClashAPISecret               = "clash_api_secret"
-	keyClashProxyGroup              = "clash_proxy_group"
-	keyClashTestURL                 = "clash_test_url"
-	keyClashTestTimeout             = "clash_test_timeout"
-	keyClashSkipConnectivityTest    = "clash_skip_connectivity_test"
-	keyRegistrationConfigSaved      = "registration_config_saved"
-	keyRegistrationCount            = "registration_count"
-	keyRegistrationSuccessTarget    = "registration_success_target"
-	keyRegistrationConcurrency      = "registration_concurrency"
-	keyRegistrationDelay            = "registration_delay"
-	keyRegistrationRetryCount       = "registration_retry_count"
-	keyRegistrationOTPTimeout       = "registration_otp_timeout"
-	keyRegistrationEmailProviders   = "registration_email_providers"
-	keyRegistrationMoeMailMode      = "registration_moemail_domain_mode"
-	keyRegistrationMoeMailDomains   = "registration_moemail_domains"
-	keyRegistrationReuseFailedEmail = "registration_reuse_failed_email"
-	keyKiroRSAPIURL                 = "kiro_rs_api_url"
-	keyKiroRSAPIKey                 = "kiro_rs_api_key"
-	keyKiroRSAutoSync               = "kiro_rs_auto_sync"
+	keyDataDir                              = "data_dir"
+	keyResultOutputDir                      = "result_output_dir"
+	keyOutlookScope                         = "outlook_scope"
+	keyOutlookGraphRegistrationMode         = "outlook_graph_registration_email_mode"
+	keyProxyMode                            = "proxy_mode"
+	keyProxy                                = "proxy"
+	keyLanguage                             = "language"
+	keyClashProxy                           = "clash_proxy"
+	keyEmailProxy                           = "email_proxy"
+	keyKillSwitchEnabled                    = "kill_switch_enabled"
+	keySoundEnabled                         = "sound_enabled"
+	keyClashEnabled                         = "clash_enabled"
+	keyClashAPIURL                          = "clash_api_url"
+	keyClashAPISecret                       = "clash_api_secret"
+	keyClashProxyGroup                      = "clash_proxy_group"
+	keyClashTestURL                         = "clash_test_url"
+	keyClashTestTimeout                     = "clash_test_timeout"
+	keyClashSkipConnectivityTest            = "clash_skip_connectivity_test"
+	keyRegistrationConfigSaved              = "registration_config_saved"
+	keyRegistrationCount                    = "registration_count"
+	keyRegistrationSuccessTarget            = "registration_success_target"
+	keyRegistrationConcurrency              = "registration_concurrency"
+	keyRegistrationDelay                    = "registration_delay"
+	keyRegistrationDomainExplorationPercent = "registration_domain_exploration_percent"
+	keyRegistrationRetryCount               = "registration_retry_count"
+	keyRegistrationOTPTimeout               = "registration_otp_timeout"
+	keyRegistrationEmailProviders           = "registration_email_providers"
+	keyRegistrationMoeMailMode              = "registration_moemail_domain_mode"
+	keyRegistrationMoeMailDomains           = "registration_moemail_domains"
+	keyRegistrationReuseFailedEmail         = "registration_reuse_failed_email"
+	keyKiroRSAPIURL                         = "kiro_rs_api_url"
+	keyKiroRSAPIKey                         = "kiro_rs_api_key"
+	keyKiroRSAutoSync                       = "kiro_rs_auto_sync"
 )
 
 // RegistrationConfig 保存注册页面的业务配置。
 type RegistrationConfig struct {
-	Count             int      `json:"count"`
-	SuccessTarget     int      `json:"successTarget"`
-	Concurrency       int      `json:"concurrency"`
-	Delay             int      `json:"delay"`
-	RetryCount        int      `json:"retryCount"`
-	OTPTimeout        int      `json:"otpTimeout"`
-	EmailProviders    []string `json:"emailProviders"`
-	MoeMailDomainMode string   `json:"moemailDomainMode"`
-	MoeMailDomains    []string `json:"moemailDomains"`
-	ReuseFailedEmail  bool     `json:"reuseFailedEmail"`
-	Saved             bool     `json:"saved"`
+	Count                    int      `json:"count"`
+	SuccessTarget            int      `json:"successTarget"`
+	Concurrency              int      `json:"concurrency"`
+	Delay                    int      `json:"delay"`
+	DomainExplorationPercent int      `json:"domainExplorationPercent"`
+	RetryCount               int      `json:"retryCount"`
+	OTPTimeout               int      `json:"otpTimeout"`
+	EmailProviders           []string `json:"emailProviders"`
+	MoeMailDomainMode        string   `json:"moemailDomainMode"`
+	MoeMailDomains           []string `json:"moemailDomains"`
+	ReuseFailedEmail         bool     `json:"reuseFailedEmail"`
+	Saved                    bool     `json:"saved"`
 }
 
 var (
@@ -175,6 +178,7 @@ var configKeyOrder = []string{
 	keyRegistrationSuccessTarget,
 	keyRegistrationConcurrency,
 	keyRegistrationDelay,
+	keyRegistrationDomainExplorationPercent,
 	keyRegistrationRetryCount,
 	keyRegistrationOTPTimeout,
 	keyRegistrationEmailProviders,
@@ -799,6 +803,12 @@ func GetRegistrationConfig() RegistrationConfig {
 			cfg.Saved = true
 		}
 	}
+	if raw := strings.TrimSpace(m[keyRegistrationDomainExplorationPercent]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			cfg.DomainExplorationPercent = clampDomainExplorationPercent(value)
+			cfg.Saved = true
+		}
+	}
 	if raw := strings.TrimSpace(m[keyRegistrationRetryCount]); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value >= 0 && value <= 5 {
 			cfg.RetryCount = value
@@ -853,6 +863,7 @@ func SetRegistrationConfig(cfg RegistrationConfig) error {
 		m[keyRegistrationSuccessTarget] = strconv.Itoa(normalized.SuccessTarget)
 		m[keyRegistrationConcurrency] = strconv.Itoa(normalized.Concurrency)
 		m[keyRegistrationDelay] = strconv.Itoa(normalized.Delay)
+		m[keyRegistrationDomainExplorationPercent] = strconv.Itoa(normalized.DomainExplorationPercent)
 		m[keyRegistrationRetryCount] = strconv.Itoa(normalized.RetryCount)
 		m[keyRegistrationOTPTimeout] = strconv.Itoa(normalized.OTPTimeout)
 		delete(m, "registration_email_provider")
@@ -921,16 +932,17 @@ func normalizeOutlookGraphRegistrationEmailMode(mode string) string {
 
 func defaultRegistrationConfig() RegistrationConfig {
 	return RegistrationConfig{
-		Count:             DefaultRegistrationCount,
-		SuccessTarget:     DefaultRegistrationSuccessTarget,
-		Concurrency:       DefaultRegistrationConcurrency,
-		Delay:             DefaultRegistrationDelay,
-		RetryCount:        1,
-		OTPTimeout:        60,
-		EmailProviders:    []string{RegistrationEmailProviderOutlook},
-		MoeMailDomainMode: MoeMailDomainModeRandom,
-		MoeMailDomains:    []string{},
-		Saved:             false,
+		Count:                    DefaultRegistrationCount,
+		SuccessTarget:            DefaultRegistrationSuccessTarget,
+		Concurrency:              DefaultRegistrationConcurrency,
+		Delay:                    DefaultRegistrationDelay,
+		DomainExplorationPercent: DefaultRegistrationDomainExplorationPercent,
+		RetryCount:               1,
+		OTPTimeout:               60,
+		EmailProviders:           []string{RegistrationEmailProviderOutlook},
+		MoeMailDomainMode:        MoeMailDomainModeRandom,
+		MoeMailDomains:           []string{},
+		Saved:                    false,
 	}
 }
 
@@ -948,6 +960,7 @@ func normalizeRegistrationConfig(cfg RegistrationConfig) (RegistrationConfig, er
 	if out.Delay < 0 {
 		return RegistrationConfig{}, fmt.Errorf("任务间隔不能小于 0")
 	}
+	out.DomainExplorationPercent = clampDomainExplorationPercent(out.DomainExplorationPercent)
 	if out.RetryCount < 0 || out.RetryCount > 5 {
 		return RegistrationConfig{}, fmt.Errorf("重试次数必须在 0-5 之间")
 	}
@@ -983,6 +996,16 @@ func normalizeRegistrationConfig(cfg RegistrationConfig) (RegistrationConfig, er
 		out.MoeMailDomains = []string{}
 	}
 	return out, nil
+}
+
+func clampDomainExplorationPercent(value int) int {
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
 }
 
 func NormalizeRegistrationEmailProviders(providers []string) ([]string, error) {
