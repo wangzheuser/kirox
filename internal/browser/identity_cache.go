@@ -8,6 +8,7 @@ import (
 	stdurl "net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,9 @@ import (
 
 // 默认缓存有效期：6 小时
 const identityCacheTTL = 6 * time.Hour
+
+// identityCacheMaxEntries 限制指纹缓存最多保留的代理 key 数，避免动态代理模板长期运行后无限膨胀。
+const identityCacheMaxEntries = 2000
 
 type cachedIdentity struct {
 	Identity  *BrowserIdentity `json:"identity"`
@@ -78,6 +82,44 @@ func saveIdentityCacheLocked() {
 	}
 }
 
+func pruneIdentityCacheLocked(now int64) bool {
+	if idCache == nil {
+		return false
+	}
+	dirty := false
+	for key, entry := range idCache {
+		if entry.Identity == nil || !isConservativeBrowserIdentity(entry.Identity) || now-entry.CreatedAt >= int64(identityCacheTTL.Seconds()) {
+			delete(idCache, key)
+			dirty = true
+		}
+	}
+	if len(idCache) <= identityCacheMaxEntries {
+		return dirty
+	}
+
+	type cacheItem struct {
+		Key       string
+		CreatedAt int64
+	}
+	items := make([]cacheItem, 0, len(idCache))
+	for key, entry := range idCache {
+		items = append(items, cacheItem{Key: key, CreatedAt: entry.CreatedAt})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt == items[j].CreatedAt {
+			return items[i].Key < items[j].Key
+		}
+		return items[i].CreatedAt < items[j].CreatedAt
+	})
+	for len(idCache) > identityCacheMaxEntries && len(items) > 0 {
+		key := items[0].Key
+		items = items[1:]
+		delete(idCache, key)
+		dirty = true
+	}
+	return dirty
+}
+
 // IdentityForProxy 返回与代理绑定的稳定身份；同一代理 6 小时内复用同一硬件指纹。
 // 每次调用都会刷新 lsubid 前缀和 webpack hash —— 这两个在真实浏览器同一台机器上每次会话也会变。
 func IdentityForProxy(proxyURL string) *BrowserIdentity {
@@ -88,14 +130,19 @@ func IdentityForProxy(proxyURL string) *BrowserIdentity {
 	loadIdentityCacheLocked()
 
 	now := time.Now().Unix()
+	dirty := pruneIdentityCacheLocked(now)
 	if entry, ok := idCache[key]; ok && isConservativeBrowserIdentity(entry.Identity) {
 		if now-entry.CreatedAt < int64(identityCacheTTL.Seconds()) {
+			if dirty {
+				saveIdentityCacheLocked()
+			}
 			return refreshVolatile(entry.Identity)
 		}
 	}
 
 	id := RandomIdentity()
 	idCache[key] = cachedIdentity{Identity: id, CreatedAt: now}
+	pruneIdentityCacheLocked(now)
 	saveIdentityCacheLocked()
 	return refreshVolatile(id)
 }
