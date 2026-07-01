@@ -33,3 +33,37 @@ func TestGeneratedMathFingerprintUsesChromeLikeBaselineValues(t *testing.T) {
 		}
 	}
 }
+
+func TestRandomIdentityUsesConservativeNavigatorHardwareSurface(t *testing.T) {
+	for i := 0; i < 500; i++ {
+		identity := RandomIdentity()
+		if identity.DeviceMemory < 4 || identity.DeviceMemory > 8 {
+			t.Fatalf("deviceMemory=%dGB, want conservative Chrome bucket 4-8GB", identity.DeviceMemory)
+		}
+		if identity.HardwareConcurrency < 4 || identity.HardwareConcurrency > 16 {
+			t.Fatalf("hardwareConcurrency=%d, want common desktop/laptop range 4-16", identity.HardwareConcurrency)
+		}
+		if identity.Screen.ColorDepth != 24 {
+			t.Fatalf("colorDepth=%d, want common non-HDR Chrome colorDepth 24", identity.Screen.ColorDepth)
+		}
+		if identity.Screen.Width > 2560 || identity.Screen.Height > 1440 {
+			t.Fatalf("screen=%dx%d, want conservative <=2560x1440", identity.Screen.Width, identity.Screen.Height)
+		}
+		if identity.Screen.Width < 1366 || identity.Screen.Height < 768 {
+			t.Fatalf("screen=%dx%d, want common desktop/laptop minimum 1366x768", identity.Screen.Width, identity.Screen.Height)
+		}
+	}
+}
+
+func TestCachedIdentityRejectsHighRiskHardwareSurface(t *testing.T) {
+	identity := RandomIdentity()
+	identity.DeviceMemory = 64
+	identity.HardwareConcurrency = 32
+	identity.Screen.ColorDepth = 30
+	identity.Screen.Width = 3840
+	identity.Screen.Height = 2160
+
+	if isConservativeBrowserIdentity(identity) {
+		t.Fatalf("cached high-risk identity should be rejected and regenerated")
+	}
+}

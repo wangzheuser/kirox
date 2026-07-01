@@ -96,6 +96,28 @@ type BrowserIdentity struct {
 	WebpackHash         string
 }
 
+func isConservativeBrowserIdentity(identity *BrowserIdentity) bool {
+	if identity == nil {
+		return false
+	}
+	if identity.DeviceMemory < 4 || identity.DeviceMemory > 8 {
+		return false
+	}
+	if identity.HardwareConcurrency < 4 || identity.HardwareConcurrency > 16 {
+		return false
+	}
+	if identity.Screen.ColorDepth != 24 {
+		return false
+	}
+	if identity.Screen.Width < 1366 || identity.Screen.Height < 768 {
+		return false
+	}
+	if identity.Screen.Width > 2560 || identity.Screen.Height > 1440 {
+		return false
+	}
+	return true
+}
+
 // ──────────────────── 算法: GPU 配置生成 ────────────────────
 // 规律: Vendor = "Google Inc. ({芯片厂商})"
 //       Model  = "ANGLE ({芯片厂商}, {芯片型号} Direct3D11 vs_5_0 ps_5_0, D3D11)"
@@ -165,20 +187,18 @@ func genScreen() ScreenInfo {
 	// 按宽高比分组的常见分辨率
 	r16x9 := []resolution{
 		{1366, 768}, {1536, 864}, {1600, 900},
-		{1920, 1080}, {2560, 1440}, {3840, 2160},
+		{1920, 1080}, {2560, 1440},
 	}
 	r16x10 := []resolution{
-		{1440, 900}, {1680, 1050}, {1920, 1200}, {2560, 1600},
-	}
-	r21x9 := []resolution{
-		{2560, 1080}, {3440, 1440},
+		{1440, 900}, {1680, 1050}, {1920, 1200},
 	}
 	rOther := []resolution{
-		{1280, 720}, {1360, 768}, {2880, 1800},
+		{1366, 768}, {1536, 864}, {1920, 1080},
 	}
 
-	// 按市场份额加权: 16:9 最常见
-	pools := [][]resolution{r16x9, r16x9, r16x9, r16x10, r21x9, rOther}
+	// 按市场份额加权: 16:9 最常见；注册场景使用保守桌面/笔记本分辨率，
+	// 避免 4K、超宽屏、HDR 等低频组合与其它硬件字段拼出高风险指纹。
+	pools := [][]resolution{r16x9, r16x9, r16x9, r16x10, rOther}
 	pool := pools[rand.Intn(len(pools))]
 	res := pool[rand.Intn(len(pool))]
 
@@ -190,14 +210,12 @@ func genScreen() ScreenInfo {
 		taskbar = 32
 	}
 
-	colorDepths := []int{24, 24, 24, 24, 30} // 24常见, 30是 HDR
-
 	return ScreenInfo{
 		Width:       res.w,
 		Height:      res.h,
 		AvailWidth:  res.w,
 		AvailHeight: res.h - taskbar,
-		ColorDepth:  colorDepths[rand.Intn(len(colorDepths))],
+		ColorDepth:  24,
 	}
 }
 
@@ -281,10 +299,12 @@ func RandomIdentity() *BrowserIdentity {
 	screen := genScreen()
 
 	// 硬件参数
-	memories := []int{2, 4, 6, 8, 12, 16, 24, 32, 64}
+	// navigator.deviceMemory 在 Chrome 中是粗粒度且会被上限裁剪的值；
+	// 过高或非典型数值（12/16/32/64）会和 UA/TLS/屏幕组合出低频指纹。
+	memories := []int{4, 4, 8, 8, 8}
 	deviceMemory := memories[rand.Intn(len(memories))]
 
-	concurrencies := []int{2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 32}
+	concurrencies := []int{4, 6, 8, 8, 10, 12, 16}
 	hardwareConcurrency := concurrencies[rand.Intn(len(concurrencies))]
 
 	platform := "Win32"

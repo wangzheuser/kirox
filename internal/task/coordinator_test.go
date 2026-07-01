@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,6 +55,39 @@ func TestConcurrentStartStaggerSpreadsInitialConcurrencyWindow(t *testing.T) {
 		if got < tc.minDelay || got > tc.maxDelay {
 			t.Fatalf("idx %d stagger = %s, want within [%s, %s]", tc.idx, got, tc.minDelay, tc.maxDelay)
 		}
+	}
+}
+
+func TestRegistrarStartPacingDisabledForNormalProxyTemplate(t *testing.T) {
+	if shouldEnableRegistrarStartPacing(5, storage.ProxyModeNormal, "http://user-{uuid}:pass@127.0.0.1:9200") {
+		t.Fatalf("normal proxy template registration should not be globally paced because probes showed no success-rate gain and more long-tail timeouts")
+	}
+}
+
+func TestRegistrarStartPacerDisabledWhenStepIsZero(t *testing.T) {
+	pacer := newRegistrarStartPacer(0)
+	now := time.Date(2026, 6, 30, 17, 0, 0, 0, time.UTC)
+	if got := pacer.ReserveDelay(now); got != 0 {
+		t.Fatalf("disabled pacer delay = %s, want 0", got)
+	}
+}
+
+func TestRegistrarStartPacerSpacesActualStartsWithoutCatchupBursts(t *testing.T) {
+	step := 15 * time.Second
+	pacer := newRegistrarStartPacer(step)
+	base := time.Date(2026, 6, 30, 17, 0, 0, 0, time.UTC)
+
+	if got := pacer.ReserveDelay(base); got != 0 {
+		t.Fatalf("first actual start delay = %s, want 0", got)
+	}
+	if got := pacer.ReserveDelay(base.Add(1 * time.Second)); got != 14*time.Second {
+		t.Fatalf("second actual start delay = %s, want 14s", got)
+	}
+	if got := pacer.ReserveDelay(base.Add(40 * time.Second)); got != 0 {
+		t.Fatalf("late third start delay = %s, want 0", got)
+	}
+	if got := pacer.ReserveDelay(base.Add(41 * time.Second)); got != 14*time.Second {
+		t.Fatalf("fourth start after late third delay = %s, want 14s", got)
 	}
 }
 
@@ -1009,12 +1043,80 @@ func TestRuntimeProgressSummaryIncludesLiveDiagnostics(t *testing.T) {
 	stats.RecordRegisteredSkip()
 	stats.RecordGraphFailure("Graph网络错误")
 	stats.RecordFailure("门户访问失败: connection reset", false, "")
+	stats.RecordPreflightProxySelectFailure("代理候选均为回避出口地区")
 
 	got := stats.ProgressSummary(3, 1, 2, 2)
-	for _, want := range []string{"进度汇总", "总计=3", "成功=1", "失败=2", "成功率=33.3%", "已注册跳过=1", "Graph失败=1", "网络错误=1", "passwordSet失败=1", "Top失败="} {
+	for _, want := range []string{"进度汇总", "总计=3", "成功=1", "失败=2", "成功率=33.3%", "已注册跳过=1", "Graph失败=1", "网络错误=1", "passwordSet失败=1", "前置失败=1", "Top失败="} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("progress summary missing %q: %s", want, got)
 		}
+	}
+}
+
+func TestSubmitEmail403IsClassifiedAsRisk(t *testing.T) {
+	errText := "提交邮箱失败: 403 - <html><head><title>403 Forbidden</title></head></html>"
+	if got := classifyError(errText); got != "IP/指纹风控" {
+		t.Fatalf("classifyError(submit email 403) = %q, want IP/指纹风控", got)
+	}
+
+	stats := newRuntimeTaskStats()
+	stats.RecordFailure(errText, false, "提交邮箱")
+	diagnostics := stats.DiagnosticsSnapshot(0, 0, 10)
+
+	if got := diagnostics.RiskFailures.Details["提交邮箱 403"]; got != 1 {
+		t.Fatalf("submit-email 403 risk detail = %d, want 1; all=%#v", got, diagnostics.RiskFailures.Details)
+	}
+}
+
+func TestSubmitEmail403BeforePasswordSetIsPreRegistrationFailure(t *testing.T) {
+	result := map[string]interface{}{
+		"status":      "failed",
+		"error":       "提交邮箱失败: 403 - <html><head><title>403 Forbidden</title></head></html>",
+		"passwordSet": false,
+	}
+
+	if !shouldTreatReservedFailureAsPreflight(result) {
+		t.Fatalf("submit-email 403 before passwordSet should release registration slot and be补齐 as preflight")
+	}
+}
+
+func TestSuspendedAfterPasswordSetIsNotPreRegistrationFailure(t *testing.T) {
+	result := map[string]interface{}{
+		"status":      "failed",
+		"error":       "suspended",
+		"passwordSet": true,
+	}
+
+	if shouldTreatReservedFailureAsPreflight(result) {
+		t.Fatalf("post-password suspended account has consumed mailbox/account and must count as a real attempt")
+	}
+}
+
+func TestEmailProviderSelectorSkipsCoolingProvider(t *testing.T) {
+	selector := newEmailProviderSelector([]string{"blinkbox", "mailtm"})
+	for i := 0; i < emailProviderCreateFailureCooldownThreshold; i++ {
+		selector.ReportCreateFailure("blinkbox")
+	}
+
+	provider, err := selector.NextWithContext(context.Background())
+	if err != nil {
+		t.Fatalf("Next returned error: %v", err)
+	}
+	if provider != "mailtm" {
+		t.Fatalf("provider = %q, want mailtm while blinkbox is cooling down", provider)
+	}
+}
+
+func TestEmailProviderSelectorCreateSuccessResetsFailureStreak(t *testing.T) {
+	selector := newEmailProviderSelector([]string{"blinkbox", "mailtm"})
+	for i := 0; i < emailProviderCreateFailureCooldownThreshold-1; i++ {
+		if selector.ReportCreateFailure("blinkbox") {
+			t.Fatalf("cooldown should not trigger before threshold")
+		}
+	}
+	selector.ReportCreateSuccess("blinkbox")
+	if selector.ReportCreateFailure("blinkbox") {
+		t.Fatalf("first failure after success should not trigger cooldown")
 	}
 }
 
@@ -1081,5 +1183,23 @@ func TestResolveOutlookGraphRegistrationEmailImportedModeSkipsFailure(t *testing
 	}
 	if resolved.RegistrationEmail != "alias@outlook.jp" {
 		t.Fatalf("imported mode should use imported address, got %#v", resolved)
+	}
+}
+
+func TestRuntimeProxyCountryStartPacerSpacesSameCountryOnly(t *testing.T) {
+	pacer := newRuntimeProxyCountryStartPacer(90 * time.Second)
+	now := time.Date(2026, 6, 30, 22, 40, 0, 0, time.Local)
+
+	if delay := pacer.ReserveDelay("JP", now); delay != 0 {
+		t.Fatalf("first JP start delay=%v, want 0", delay)
+	}
+	if delay := pacer.ReserveDelay("JP", now.Add(10*time.Second)); delay != 80*time.Second {
+		t.Fatalf("second JP start delay=%v, want 80s", delay)
+	}
+	if delay := pacer.ReserveDelay("KR", now.Add(10*time.Second)); delay != 0 {
+		t.Fatalf("different country should not wait, delay=%v", delay)
+	}
+	if delay := pacer.ReserveDelay("", now.Add(10*time.Second)); delay != 0 {
+		t.Fatalf("empty country should not be paced, delay=%v", delay)
 	}
 }

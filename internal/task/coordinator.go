@@ -22,39 +22,48 @@ import (
 )
 
 const (
-	concurrentStartStaggerStep      = 100 * time.Millisecond
-	concurrentStartStaggerJitterMax = 80 * time.Millisecond
-	postPasswordRegionCooldownAfter = 2
+	concurrentStartStaggerStep         = 100 * time.Millisecond
+	concurrentStartStaggerJitterMax    = 80 * time.Millisecond
+	registrarStartPacingStep           = 15 * time.Second
+	runtimeProxyCountryStartPacingStep = 90 * time.Second
+	postPasswordRegionCooldownAfter    = 2
 )
 
 var emailProviderRateLimitBackoffs = []time.Duration{60 * time.Second, 120 * time.Second, 300 * time.Second}
 
 type runtimeTaskStats struct {
-	failCategories               map[string]int
-	failureSamples               map[string]int
-	networkStageFailures         map[string]int
-	graphFailureCategories       map[string]int
-	passwordSetFailureCategories map[string]int
-	emailServiceFailureDetails   map[string]int
-	sendOTPDiagnosticCounts      map[string]map[string]int
-	registeredSkipCount          int
-	graphResolveFailures         int
-	clashNetworkErrors           int
-	clashRiskFailures            int
-	poolNetworkErrors            int
-	passwordSetFailures          int
-	sendOTPBlockedFailures       int
-	otpTimeoutStopped            bool
+	failCategories                map[string]int
+	failureSamples                map[string]int
+	preflightFailureCategories    map[string]int
+	networkStageFailures          map[string]int
+	graphFailureCategories        map[string]int
+	passwordSetFailureCategories  map[string]int
+	emailServiceFailureDetails    map[string]int
+	riskFailureDetails            map[string]int
+	sendOTPDiagnosticCounts       map[string]map[string]int
+	registeredSkipCount           int
+	graphResolveFailures          int
+	clashNetworkErrors            int
+	clashRiskFailures             int
+	poolNetworkErrors             int
+	passwordSetFailures           int
+	sendOTPBlockedFailures        int
+	preflightEmailCreateFailures  int
+	preflightProxySelectFailures  int
+	preflightRegistrationFailures int
+	otpTimeoutStopped             bool
 }
 
 func newRuntimeTaskStats() *runtimeTaskStats {
 	return &runtimeTaskStats{
 		failCategories:               make(map[string]int),
 		failureSamples:               make(map[string]int),
+		preflightFailureCategories:   make(map[string]int),
 		networkStageFailures:         make(map[string]int),
 		graphFailureCategories:       make(map[string]int),
 		passwordSetFailureCategories: make(map[string]int),
 		emailServiceFailureDetails:   make(map[string]int),
+		riskFailureDetails:           make(map[string]int),
 		sendOTPDiagnosticCounts:      make(map[string]map[string]int),
 	}
 }
@@ -75,6 +84,9 @@ func (s *runtimeTaskStats) RecordFailure(errorMsg string, passwordSet bool, stag
 	if isSendOTPBlockedError(errorMsg) {
 		s.sendOTPBlockedFailures++
 	}
+	if detail := riskFailureDetail(errorMsg, reason); detail != "" {
+		s.riskFailureDetails[detail]++
+	}
 	if detail := emailServiceFailureDetail(errorMsg, reason); detail != "" {
 		s.emailServiceFailureDetails[detail]++
 	}
@@ -89,6 +101,43 @@ func (s *runtimeTaskStats) RecordFailure(errorMsg string, passwordSet bool, stag
 		s.networkStageFailures[stage]++
 	}
 	return reason
+}
+
+func (s *runtimeTaskStats) RecordPreflightEmailCreateFailure(errorMsg string) {
+	if s == nil {
+		return
+	}
+	s.preflightEmailCreateFailures++
+	s.preflightFailureCategories["邮箱创建失败"]++
+	s.emailServiceFailureDetails["邮箱创建失败"]++
+	if normalized := normalizeFailureSample("邮箱创建失败: " + errorMsg); normalized != "" {
+		s.failureSamples[normalized]++
+	}
+}
+
+func (s *runtimeTaskStats) RecordPreflightProxySelectFailure(errorMsg string) {
+	if s == nil {
+		return
+	}
+	s.preflightProxySelectFailures++
+	s.preflightFailureCategories["代理预选失败"]++
+	if normalized := normalizeFailureSample("代理预选失败: " + errorMsg); normalized != "" {
+		s.failureSamples[normalized]++
+	}
+}
+
+func (s *runtimeTaskStats) RecordPreflightRegistrationFailure(errorMsg string) {
+	if s == nil {
+		return
+	}
+	s.preflightRegistrationFailures++
+	s.preflightFailureCategories["预注册失败"]++
+	if detail := riskFailureDetail(errorMsg, classifyError(errorMsg)); detail != "" {
+		s.riskFailureDetails[detail]++
+	}
+	if normalized := normalizeFailureSample("预注册失败: " + errorMsg); normalized != "" {
+		s.failureSamples[normalized]++
+	}
 }
 
 func (s *runtimeTaskStats) RecordRegisteredSkip() {
@@ -141,13 +190,8 @@ func (s *runtimeTaskStats) DiagnosticsSnapshot(clashQuarantined, poolQuarantined
 		PostRegistrationFailures: diagnosticGroup(s.passwordSetFailureCategories),
 		NetworkProxyFailures:     diagnosticGroup(s.networkStageFailures),
 		GraphFailures:            diagnosticGroup(s.graphFailureCategories),
-		RiskFailures: diagnosticGroup(map[string]int{
-			"IP/指纹风控":              s.failCategories["IP/指纹风控"],
-			"send-otp TES/BLOCKED": s.sendOTPBlockedFailures,
-			"Clash风控节点":            s.clashRiskFailures,
-			"被临时拉黑代理":              clashQuarantined + poolQuarantined,
-		}),
-		EmailServiceFailures: diagnosticGroup(s.emailServiceFailureDetails),
+		RiskFailures:             diagnosticGroup(s.riskFailureDetailsSnapshot(clashQuarantined, poolQuarantined)),
+		EmailServiceFailures:     diagnosticGroup(s.emailServiceFailureDetails),
 		ProxyFailures: diagnosticGroup(map[string]int{
 			"Clash网络错误": s.clashNetworkErrors,
 			"Clash风控错误": s.clashRiskFailures,
@@ -158,6 +202,16 @@ func (s *runtimeTaskStats) DiagnosticsSnapshot(clashQuarantined, poolQuarantined
 		SendOTPDiagnostics: s.topSendOTPDiagnostics(topN),
 		TopFailures:        sortedDiagnosticTopItems(s.failureSamples, topN),
 	}
+}
+
+func (s *runtimeTaskStats) riskFailureDetailsSnapshot(clashQuarantined, poolQuarantined int) map[string]int {
+	details := make(map[string]int, len(s.riskFailureDetails)+2)
+	for name, count := range s.riskFailureDetails {
+		details[name] = count
+	}
+	details["Clash风控节点"] = s.clashRiskFailures
+	details["被临时拉黑代理"] = clashQuarantined + poolQuarantined
+	return details
 }
 
 func (s *runtimeTaskStats) topSendOTPDiagnostics(topN int) map[string][]DiagnosticTopItem {
@@ -228,8 +282,15 @@ func (s *runtimeTaskStats) ProgressSummary(completed, success, failed, topN int)
 	if completed > 0 {
 		rate = float64(success) / float64(completed) * 100
 	}
-	return fmt.Sprintf("[Kiro] 进度汇总: 总计=%d, 成功=%d, 失败=%d, 成功率=%.1f%%, 已注册跳过=%d, Graph失败=%d, 网络错误=%d, passwordSet失败=%d, 代理池拉黑=%d, Top失败=%s",
-		completed, success, failed, rate, s.registeredSkipCount, s.graphResolveFailures, s.totalNetworkErrors(), s.passwordSetFailures, proxy.QuarantinedPoolProxyCount(), s.topFailures(topN))
+	return fmt.Sprintf("[Kiro] 进度汇总: 总计=%d, 成功=%d, 失败=%d, 成功率=%.1f%%, 已注册跳过=%d, Graph失败=%d, 网络错误=%d, passwordSet失败=%d, 前置失败=%d, 代理池拉黑=%d, Top失败=%s",
+		completed, success, failed, rate, s.registeredSkipCount, s.graphResolveFailures, s.totalNetworkErrors(), s.passwordSetFailures, s.totalPreflightFailures(), proxy.QuarantinedPoolProxyCount(), s.topFailures(topN))
+}
+
+func (s *runtimeTaskStats) totalPreflightFailures() int {
+	if s == nil {
+		return 0
+	}
+	return s.preflightEmailCreateFailures + s.preflightProxySelectFailures + s.preflightRegistrationFailures
 }
 
 func (s *runtimeTaskStats) totalNetworkErrors() int {
@@ -269,6 +330,30 @@ func (s *runtimeTaskStats) topFailures(n int) string {
 		parts = append(parts, fmt.Sprintf("%s:%d", entries[i].text, entries[i].count))
 	}
 	return strings.Join(parts, "；")
+}
+
+func (s *runtimeTaskStats) logPreflightFailureSummary() {
+	if s == nil || len(s.preflightFailureCategories) == 0 {
+		return
+	}
+	log.Printf("[Kiro] 前置补齐失败:")
+	type preflightEntry struct {
+		name  string
+		count int
+	}
+	entries := make([]preflightEntry, 0, len(s.preflightFailureCategories))
+	for name, count := range s.preflightFailureCategories {
+		entries = append(entries, preflightEntry{name, count})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].count == entries[j].count {
+			return entries[i].name < entries[j].name
+		}
+		return entries[i].count > entries[j].count
+	})
+	for _, entry := range entries {
+		log.Printf("[Kiro]   %s: %d", entry.name, entry.count)
+	}
 }
 
 func normalizeFailureSample(errorMsg string) string {
@@ -362,6 +447,72 @@ func concurrentStartStagger(idx int, concurrency int) time.Duration {
 	return base + time.Duration(jitterMs)*time.Millisecond
 }
 
+type registrarStartPacer struct {
+	mu        sync.Mutex
+	step      time.Duration
+	nextStart time.Time
+}
+
+func newRegistrarStartPacer(step time.Duration) *registrarStartPacer {
+	return &registrarStartPacer{step: step}
+}
+
+func (p *registrarStartPacer) ReserveDelay(now time.Time) time.Duration {
+	if p == nil || p.step <= 0 {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.nextStart.IsZero() || !now.Before(p.nextStart) {
+		p.nextStart = now.Add(p.step)
+		return 0
+	}
+	delay := p.nextStart.Sub(now)
+	p.nextStart = p.nextStart.Add(p.step)
+	return delay
+}
+
+func shouldEnableRegistrarStartPacing(concurrency int, proxyMode string, rawProxy string) bool {
+	return false
+}
+
+type runtimeProxyCountryStartPacer struct {
+	mu        sync.Mutex
+	step      time.Duration
+	nextStart map[string]time.Time
+}
+
+func newRuntimeProxyCountryStartPacer(step time.Duration) *runtimeProxyCountryStartPacer {
+	return &runtimeProxyCountryStartPacer{
+		step:      step,
+		nextStart: make(map[string]time.Time),
+	}
+}
+
+func (p *runtimeProxyCountryStartPacer) ReserveDelay(countryCode string, now time.Time) time.Duration {
+	if p == nil || p.step <= 0 {
+		return 0
+	}
+	countryCode = normalizeRuntimeProxyCountryCode(countryCode)
+	if countryCode == "" {
+		return 0
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.nextStart == nil {
+		p.nextStart = make(map[string]time.Time)
+	}
+	next := p.nextStart[countryCode]
+	if next.IsZero() || !now.Before(next) {
+		p.nextStart[countryCode] = now.Add(p.step)
+		return 0
+	}
+	delay := next.Sub(now)
+	p.nextStart[countryCode] = next.Add(p.step)
+	return delay
+}
+
 // StartTaskRequest 启动任务请求
 type StartTaskRequest struct {
 	Count             int                              `json:"count"`
@@ -383,33 +534,125 @@ type StartTaskRequest struct {
 }
 
 type emailProviderSelector struct {
-	mu        sync.Mutex
-	providers []string
-	next      int
+	mu                  sync.Mutex
+	providers           []string
+	next                int
+	createFailureStreak map[string]int
+	cooldownUntil       map[string]time.Time
 }
 
 const (
-	emailProviderHistoricalMinOTP         = 5
-	emailProviderHistoricalMinSuccess     = 3
-	emailProviderHistoricalMinSuccessRate = 0.50
+	emailProviderHistoricalMinOTP               = 5
+	emailProviderHistoricalMinSuccess           = 3
+	emailProviderHistoricalMinSuccessRate       = 0.50
+	emailProviderCreateFailureCooldownThreshold = 8
+	emailProviderCreateFailureCooldown          = 90 * time.Second
 )
 
 func newEmailProviderSelector(providers []string) *emailProviderSelector {
-	return &emailProviderSelector{providers: append([]string(nil), providers...)}
+	return &emailProviderSelector{
+		providers:           append([]string(nil), providers...),
+		createFailureStreak: make(map[string]int),
+		cooldownUntil:       make(map[string]time.Time),
+	}
 }
 
 func (s *emailProviderSelector) Next() string {
+	provider, _ := s.NextWithContext(context.Background())
+	return provider
+}
+
+func (s *emailProviderSelector) NextWithContext(ctx context.Context) (string, error) {
 	if s == nil {
-		return "outlook"
+		return "outlook", nil
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		provider, wait, ok := s.nextAvailable(time.Now())
+		if ok {
+			return provider, nil
+		}
+		if wait <= 0 {
+			wait = 100 * time.Millisecond
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return "", ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func (s *emailProviderSelector) nextAvailable(now time.Time) (string, time.Duration, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(s.providers) == 0 {
-		return "outlook"
+		return "outlook", 0, true
 	}
-	provider := s.providers[s.next%len(s.providers)]
-	s.next++
-	return provider
+	var minWait time.Duration
+	for offset := 0; offset < len(s.providers); offset++ {
+		idx := (s.next + offset) % len(s.providers)
+		provider := s.providers[idx]
+		until := s.cooldownUntil[provider]
+		if until.After(now) {
+			wait := until.Sub(now)
+			if minWait == 0 || wait < minWait {
+				minWait = wait
+			}
+			continue
+		}
+		if !until.IsZero() {
+			delete(s.cooldownUntil, provider)
+		}
+		s.next = idx + 1
+		return provider, 0, true
+	}
+	return "", minWait, false
+}
+
+func (s *emailProviderSelector) ReportCreateFailure(provider string) bool {
+	if s == nil {
+		return false
+	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" || provider == "outlook" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.createFailureStreak == nil {
+		s.createFailureStreak = make(map[string]int)
+	}
+	if s.cooldownUntil == nil {
+		s.cooldownUntil = make(map[string]time.Time)
+	}
+	s.createFailureStreak[provider]++
+	if s.createFailureStreak[provider] < emailProviderCreateFailureCooldownThreshold {
+		return false
+	}
+	s.createFailureStreak[provider] = 0
+	s.cooldownUntil[provider] = time.Now().Add(emailProviderCreateFailureCooldown)
+	return true
+}
+
+func (s *emailProviderSelector) ReportCreateSuccess(provider string) {
+	if s == nil {
+		return
+	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.createFailureStreak, provider)
+	delete(s.cooldownUntil, provider)
 }
 
 func normalizeStartEmailProviders(providers []string) ([]string, error) {
@@ -1191,6 +1434,29 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 	}
 	var otpTimeoutStreak outlookOTPTimeoutStreak
 	taskStartTime := time.Now()
+	registrarStartPacingEnabled := shouldEnableRegistrarStartPacing(req.Concurrency, proxyMode, taskConfig.Proxy)
+	if registrarStartPacingEnabled {
+		log.Printf("[Kiro] 真实注册启动节流: 步进 %s，全局错峰进入注册流程", registrarStartPacingStep)
+	}
+	registrarStartPacer := newRegistrarStartPacer(registrarStartPacingStep)
+	waitForRegistrarStartPacing := func(registrationIndex int, displayTotal int) bool {
+		if !registrarStartPacingEnabled {
+			return true
+		}
+		delay := registrarStartPacer.ReserveDelay(time.Now())
+		if delay <= 0 {
+			return true
+		}
+		log.Printf("[Kiro][%d/%d] 真实注册启动节流等待 %s，降低同批风控聚集", registrationIndex+1, displayTotal, delay.Truncate(time.Millisecond))
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-Manager.stopCh:
+			return false
+		case <-timer.C:
+			return true
+		}
+	}
 	var batchSuccessMu sync.Mutex
 	batchSuccessEmails := make([]string, 0, successTarget)
 	batchSuccessResults := make(map[string]map[string]interface{})
@@ -1338,6 +1604,8 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 	var otpKillOnce sync.Once
 	postPasswordSuspendedRegions := make(map[string]int)
 	var postPasswordSuspendedRegionsMu sync.Mutex
+	runtimeProxyRiskCountries := newRuntimeProxyCountryRiskTracker()
+	runtimeProxyCountryStartPacer := newRuntimeProxyCountryStartPacer(runtimeProxyCountryStartPacingStep)
 	doTask := func(i int) {
 		select {
 		case <-Manager.stopCh:
@@ -1346,7 +1614,11 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		}
 
 		taskCfg := *taskConfig
-		emailProvider := providerSelector.Next()
+		emailProvider, selectorErr := providerSelector.NextWithContext(taskCtx)
+		if selectorErr != nil {
+			log.Printf("[Kiro][%d/%d] 选择邮箱渠道失败: %v", i+1, displayTotal, selectorErr)
+			return
+		}
 		taskCfg.EmailProvider = emailProvider
 		taskCfg.UseOutlook = emailProvider == "outlook"
 		taskCfg.UseMoeMail = emailProvider == "moemail"
@@ -1421,12 +1693,15 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				return
 			}
 			statsMu.Lock()
-			runtimeStats.RecordFailure("邮箱创建失败: "+err.Error(), false, "注册初始化")
+			runtimeStats.RecordPreflightEmailCreateFailure(err.Error())
 			progressSummary := runtimeStats.ProgressSummary(completedCount, successCount, failedCount, 3)
 			statsMu.Unlock()
 			publishDiagnostics()
 			log.Println(progressSummary)
 			errorMsg := err.Error()
+			if !isSuccessfulDomainPreferenceMiss(errorMsg) && providerSelector.ReportCreateFailure(emailProvider) {
+				log.Printf("[Kiro] %s 邮箱创建连续失败 %d 次，冷却 %s 后再试", providerLabel, emailProviderCreateFailureCooldownThreshold, emailProviderCreateFailureCooldown)
+			}
 			if shouldStopTaskForEmailCreateFailure(errorMsg) {
 				requestTaskStop(fmt.Sprintf("[Kiro] %s 邮箱服务不可用，停止任务；请更换邮箱代理/渠道", providerLabel))
 				return
@@ -1438,6 +1713,23 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			if isEmailProviderRateLimitError(errorMsg) {
 				log.Printf("[Kiro] %s 邮箱服务限流，已重试 %d 次仍失败；本次尝试失败，批次继续；请稍后重试或更换邮箱代理/渠道", providerLabel, len(emailProviderRateLimitBackoffs))
 			}
+		}
+		recordProxySelectFailure := func(err error) {
+			Manager.mu.Lock()
+			completedCount := Manager.completed
+			successCount := Manager.success
+			failedCount := Manager.failed
+			Manager.mu.Unlock()
+			log.Printf("[Kiro][%d/%d] 代理预选失败（前置失败，不计入注册次数，继续补齐）: %v", i+1, displayTotal, err)
+			if err == nil {
+				return
+			}
+			statsMu.Lock()
+			runtimeStats.RecordPreflightProxySelectFailure(err.Error())
+			progressSummary := runtimeStats.ProgressSummary(completedCount, successCount, failedCount, 3)
+			statsMu.Unlock()
+			publishDiagnostics()
+			log.Println(progressSummary)
 		}
 		createTempEmailWithRetry := func(providerLabel string, create func() (string, error)) (string, error) {
 			return createTempEmailWithRateLimitRetry(taskCtx, providerLabel, i+1, displayTotal, create)
@@ -2104,24 +2396,53 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			}
 		}
 
-		registrationIndex, reserved := reserveRegistrationAttempt(i)
-		if !reserved {
-			log.Printf("[Kiro][%d/%d] 注册次数已满，丢弃已创建邮箱并停止领取新尝试", i+1, displayTotal)
-			return
+		if currentEmail != "" && emailProvider != "outlook" && !reusedEmail {
+			providerSelector.ReportCreateSuccess(emailProvider)
 		}
-		i = registrationIndex
-		log.Printf("[Kiro][%d/%d] 开始注册", i+1, displayTotal)
-		itemStart := time.Now()
+
+		var itemStart time.Time
+		var result map[string]interface{}
+		registrationReserved := false
+		reserveBeforeRegistrar := func() bool {
+			if registrationReserved {
+				return true
+			}
+			registrationIndex, reserved := reserveRegistrationAttempt(i)
+			if !reserved {
+				log.Printf("[Kiro][%d/%d] 注册次数已满，丢弃已创建邮箱并停止领取新尝试", i+1, displayTotal)
+				return false
+			}
+			i = registrationIndex
+			registrationReserved = true
+			if !waitForRegistrarStartPacing(i, displayTotal) {
+				result = map[string]interface{}{
+					"status": "failed",
+					"error":  "任务已取消",
+					"email":  currentEmail,
+				}
+				return false
+			}
+			itemStart = time.Now()
+			log.Printf("[Kiro][%d/%d] 开始注册", i+1, displayTotal)
+			return true
+		}
+		releaseRegistrationReservation := func() {
+			if !registrationReserved || successTargetMode {
+				return
+			}
+			registrationCounter.release()
+			registrationReserved = false
+		}
 
 		maxAttempts := req.RetryCount + 1
 		const maxProxySwitches = 3
 
-		var result map[string]interface{}
 		proxySwitches := 0
 		currentClashNode := ""
 		currentClashAssisted := false
 		currentClashFingerprintPrefix := ""
 		currentPoolProxy := ""
+		currentRuntimeProxyCountry := ""
 	retryLoop:
 		for attempt := 0; attempt < maxAttempts; attempt++ {
 			// 每次重试前检查停止信号
@@ -2168,6 +2489,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			}
 			runAttempt := func() bool {
 				currentClashAssisted = false
+				currentRuntimeProxyCountry = ""
 				if clashEnabled {
 					clashMu.Lock()
 					defer clashMu.Unlock()
@@ -2195,6 +2517,9 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 					log.Printf("[Kiro][%d/%d] 浏览器地区已绑定: acceptLanguage=%s, i18next=%s, timeZone=%d",
 						i+1, displayTotal, locale.AcceptLanguage, locale.I18Next, locale.TimeZone)
 
+					if !reserveBeforeRegistrar() {
+						return false
+					}
 					result = runRegistrar(&attemptCfg)
 					return true
 				}
@@ -2223,6 +2548,9 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				}
 
 				if attemptCfg.Proxy == "" {
+					if !reserveBeforeRegistrar() {
+						return false
+					}
 					result = runRegistrar(&attemptCfg)
 					return true
 				}
@@ -2233,18 +2561,24 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 					preferredProxyCountryHit bool
 				)
 				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && proxy.HasURLTemplate(attemptCfg.Proxy) {
-					selection, countryCode, preferredProxyCountryHit, err = selectRuntimeProxyWithCountryPreference(
+					selection, countryCode, preferredProxyCountryHit, err = selectRuntimeProxyWithCountryPolicy(
 						taskCtx,
 						attemptCfg.Proxy,
 						proxy.DefaultRegisterSelectOptions(),
 						detectRuntimeProxyCountryCode,
 						preferredRuntimeProxyCountryMaxAttempts,
+						runtimeProxyRiskCountries,
+						true,
 					)
 				} else {
 					selection, err = proxy.SelectRuntimeProxy(taskCtx, attemptCfg.Proxy, proxy.DefaultRegisterSelectOptions())
 				}
 				if err != nil {
 					log.Printf("[Kiro][%d/%d] 代理候选选择失败: %v", i+1, displayTotal, err)
+					if !registrationReserved {
+						recordProxySelectFailure(err)
+						return false
+					}
 					errorPrefix := "代理无可用节点"
 					if proxyMode == storage.ProxyModePool {
 						errorPrefix = "代理池无可用节点"
@@ -2288,16 +2622,48 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 					if geoErr != nil {
 						log.Printf("[Kiro][%d/%d] 运行时代理出口地区探测失败，保留默认浏览器地区: %v", i+1, displayTotal, geoErr)
 					} else if locale, ok := applyRuntimeProxyCountryLocaleToConfigForSubject(&attemptCfg, countryCode, fingerprintSubjectForTask(&attemptCfg, currentEmail)); ok {
+						currentRuntimeProxyCountry = normalizeRuntimeProxyCountryCode(countryCode)
 						log.Printf("[Kiro][%d/%d] 运行时代理出口地区已绑定: country=%s acceptLanguage=%s, i18next=%s, timeZone=%d",
 							i+1, displayTotal, countryCode, locale.AcceptLanguage, locale.I18Next, locale.TimeZone)
 					} else {
+						currentRuntimeProxyCountry = normalizeRuntimeProxyCountryCode(countryCode)
 						log.Printf("[Kiro][%d/%d] 运行时代理出口地区 %s 暂无地区指纹映射，保留默认浏览器地区", i+1, displayTotal, countryCode)
 					}
+				}
+				if currentRuntimeProxyCountry != "" {
+					delay := runtimeProxyCountryStartPacer.ReserveDelay(currentRuntimeProxyCountry, time.Now())
+					if delay > 0 {
+						log.Printf("[Kiro][%d/%d] 同出口国家真实注册启动节流: country=%s, 等待 %ds，避免短时间并发触发风控",
+							i+1, displayTotal, currentRuntimeProxyCountry, int(delay.Seconds()))
+						timer := time.NewTimer(delay)
+						select {
+						case <-taskCtx.Done():
+							if !timer.Stop() {
+								select {
+								case <-timer.C:
+								default:
+								}
+							}
+							result = map[string]interface{}{
+								"status": "failed",
+								"error":  "任务已取消",
+								"email":  currentEmail,
+							}
+							return false
+						case <-timer.C:
+						}
+					}
+				}
+				if !reserveBeforeRegistrar() {
+					return false
 				}
 				result = runRegistrar(&attemptCfg)
 				return true
 			}
 			if ok := runAttempt(); !ok {
+				if !registrationReserved {
+					return
+				}
 				break
 			}
 			if resultEmail, _ := result["email"].(string); resultEmail != "" {
@@ -2317,12 +2683,25 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				if proxyMode == storage.ProxyModePool && currentPoolProxy != "" {
 					proxy.RecordPoolProxySuccess(currentPoolProxy)
 				}
+				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxyCountry != "" {
+					runtimeProxyRiskCountries.recordSuccess(currentRuntimeProxyCountry)
+				}
 				break
 			}
 
 			errorMsg, _ := result["error"].(string)
 			proxyNetworkErr := isProxyNetworkError(errorMsg)
 			clashRiskErr := isClashNodeRiskFailure(errorMsg)
+			if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxyCountry != "" && isRuntimeProxyCountryRiskFailure(errorMsg) {
+				countryCode, countryCount, cooling, until := runtimeProxyRiskCountries.recordRiskFailure(currentRuntimeProxyCountry)
+				if cooling {
+					log.Printf("[Kiro][%d/%d] 运行时代理地区触发注册/验活风控，短期冷却该出口国家: country=%s count=%d until=%s (%s)",
+						i+1, displayTotal, countryCode, countryCount, until.Format("15:04:05"), errorMsg)
+				} else {
+					log.Printf("[Kiro][%d/%d] 运行时代理地区触发注册/验活风控，累计: country=%s count=%d (%s)",
+						i+1, displayTotal, countryCode, countryCount, errorMsg)
+				}
+			}
 			if currentClashAssisted && currentClashNode != "" {
 				switch {
 				case proxyNetworkErr:
@@ -2536,6 +2915,21 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				continue retryLoop
 			}
 
+			// Step6 提交邮箱 403 等发生在验证码/创建身份之前：邮箱和账号尚未消耗。
+			// 优先同邮箱切换动态代理重试；超过切换上限后作为前置补齐失败释放注册名额。
+			if shouldTreatReservedFailureAsPreflight(result) && (proxy.HasURLTemplate(taskCfg.Proxy) || currentClashAssisted) && proxySwitches < maxProxySwitches {
+				proxySwitches++
+				if currentClashAssisted {
+					log.Printf("[Kiro][%d/%d] 预注册阶段触发风控，切换下一个 Clash 节点重试 (%d/%d): %s",
+						i+1, displayTotal, proxySwitches, maxProxySwitches, errorMsg)
+				} else {
+					log.Printf("[Kiro][%d/%d] 预注册阶段触发风控，切换新 UUID 节点重试 (%d/%d): %s",
+						i+1, displayTotal, proxySwitches, maxProxySwitches, errorMsg)
+				}
+				attempt--
+				continue retryLoop
+			}
+
 			// 不重试的错误类型（含 context 取消 / 被封 / 临时邮箱重复）。
 			// 临时邮箱 send-otp/TES BLOCKED 只失败当前邮箱，不在同一邮箱上重复打。
 			noRetryErrors := []string{"suspended", "临时邮箱不可能已存在", "邮箱创建失败", "context canceled", "context deadline exceeded"}
@@ -2552,6 +2946,24 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			}
 
 			log.Printf("[Kiro][%d/%d] 注册失败: %s，准备重试", i+1, displayTotal, errorMsg)
+		}
+
+		if registrationReserved && shouldTreatReservedFailureAsPreflight(result) {
+			errorMsg, _ := result["error"].(string)
+			releaseRegistrationReservation()
+			Manager.mu.Lock()
+			completedCount := Manager.completed
+			successCount := Manager.success
+			failedCount := Manager.failed
+			Manager.mu.Unlock()
+			log.Printf("[Kiro][%d/%d] 预注册失败（未进入验证码/创建身份流程，不计入注册次数，继续补齐）: %s", i+1, displayTotal, errorMsg)
+			statsMu.Lock()
+			runtimeStats.RecordPreflightRegistrationFailure(errorMsg)
+			progressSummary := runtimeStats.ProgressSummary(completedCount, successCount, failedCount, 3)
+			statsMu.Unlock()
+			publishDiagnostics()
+			log.Println(progressSummary)
+			return
 		}
 
 		itemDuration := time.Since(itemStart).Seconds()
@@ -2852,6 +3264,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			log.Printf("[Kiro] send-otp 诊断汇总: %s", summary)
 		}
 	}
+	runtimeStats.logPreflightFailureSummary()
 	if sucCount > 0 {
 		log.Printf("[Kiro] 成功结果: %s", outDir)
 	}
@@ -3040,6 +3453,9 @@ func classifyError(errorMsg string) string {
 	if strings.Contains(errorMsg, "INVALID_OTP") || strings.Contains(errorMsg, "验证码错误") || strings.Contains(errorMsg, "验证码无效") {
 		return "验证码无效"
 	}
+	if isSubmitEmail403RiskError(errorMsg) {
+		return "IP/指纹风控"
+	}
 	if isSendOTPBlockedError(errorMsg) {
 		return "IP/指纹风控"
 	}
@@ -3103,6 +3519,52 @@ func classifyNetworkErrorStage(errorMsg string) string {
 		return "验活"
 	default:
 		return "其他阶段"
+	}
+}
+
+func isSubmitEmail403RiskError(errorMsg string) bool {
+	lower := strings.ToLower(errorMsg)
+	return strings.Contains(errorMsg, "提交邮箱失败") &&
+		(strings.Contains(lower, "403") || strings.Contains(lower, "forbidden"))
+}
+
+func shouldTreatReservedFailureAsPreflight(result map[string]interface{}) bool {
+	if result == nil || result["status"] == "success" {
+		return false
+	}
+	if passwordSet, _ := result["passwordSet"].(bool); passwordSet {
+		return false
+	}
+	errorMsg, _ := result["error"].(string)
+	errorMsg = strings.TrimSpace(errorMsg)
+	if errorMsg == "" {
+		return false
+	}
+	if isSubmitEmail403RiskError(errorMsg) {
+		return true
+	}
+	lower := strings.ToLower(errorMsg)
+	if strings.Contains(errorMsg, "代理无可用节点") || strings.Contains(errorMsg, "代理池无可用节点") {
+		return true
+	}
+	if strings.Contains(lower, "context canceled") || strings.Contains(errorMsg, "任务已取消") {
+		return true
+	}
+	return false
+}
+
+func riskFailureDetail(errorMsg, reason string) string {
+	switch {
+	case isSendOTPBlockedError(errorMsg):
+		return "send-otp TES/BLOCKED"
+	case isSubmitEmail403RiskError(errorMsg):
+		return "提交邮箱 403"
+	case strings.Contains(errorMsg, "注册被拦截"):
+		return "注册被拦截"
+	case strings.TrimSpace(reason) == "IP/指纹风控":
+		return "IP/指纹风控"
+	default:
+		return ""
 	}
 }
 
@@ -3293,6 +3755,15 @@ func isClashNodeRiskFailure(errorMsg string) bool {
 	lower := strings.ToLower(errorMsg)
 	return (strings.Contains(errorMsg, "IP或浏览器指纹") || strings.Contains(errorMsg, "IP/指纹风控")) &&
 		(strings.Contains(lower, "blocked") || strings.Contains(errorMsg, "风控"))
+}
+
+func isRuntimeProxyCountryRiskFailure(errorMsg string) bool {
+	if errorMsg == "" {
+		return false
+	}
+	return isClashNodeRiskFailure(errorMsg) ||
+		isSubmitEmail403RiskError(errorMsg) ||
+		isPostPasswordSuspendedAccountFailure(errorMsg)
 }
 
 func isModelVerificationAccessDeniedError(errorMsg string) bool {

@@ -8,26 +8,29 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"reg_go/internal/proxy"
 )
 
 const runtimeProxyCountryEndpoint = "http://ip-api.com/json/?fields=status,message,countryCode"
-const preferredRuntimeProxyCountryMaxAttempts = 10
+const preferredRuntimeProxyCountryMaxAttempts = 40
+const runtimeProxyCountryRiskCooldownAfter = 1
+const runtimeProxyCountryRiskCooldown = 10 * time.Minute
 
 type runtimeProxyCountryDetector func(context.Context, string) (string, error)
 
 var preferredRuntimeProxyCountryCodes = map[string]struct{}{
-	"RO": {},
 	"KR": {},
-	"SG": {},
-	"NL": {},
+	"JP": {},
 }
 
 var avoidedRuntimeProxyCountryCodes = map[string]struct{}{
 	"US": {},
 	"HK": {},
+	"SG": {},
+	"TW": {},
 }
 
 func detectRuntimeProxyCountryCode(ctx context.Context, proxyURL string) (string, error) {
@@ -101,7 +104,103 @@ func isAvoidedRuntimeProxyCountryCode(countryCode string) bool {
 	return ok
 }
 
+func hasRuntimeProxyCountryLocale(countryCode string) bool {
+	_, ok := runtimeProxyBrowserLocaleForCountryCode(countryCode)
+	return ok
+}
+
+func isAllowedRuntimeProxyFallbackCountryCode(countryCode string) bool {
+	code := normalizeRuntimeProxyCountryCode(countryCode)
+	if code == "" || isAvoidedRuntimeProxyCountryCode(code) {
+		return false
+	}
+	return hasRuntimeProxyCountryLocale(code)
+}
+
+type runtimeProxyCountryRiskTracker struct {
+	mu            sync.Mutex
+	failures      map[string]int
+	cooldownUntil map[string]time.Time
+	cooldownAfter int
+	cooldown      time.Duration
+	now           func() time.Time
+}
+
+func newRuntimeProxyCountryRiskTracker() *runtimeProxyCountryRiskTracker {
+	return &runtimeProxyCountryRiskTracker{
+		failures:      make(map[string]int),
+		cooldownUntil: make(map[string]time.Time),
+		cooldownAfter: runtimeProxyCountryRiskCooldownAfter,
+		cooldown:      runtimeProxyCountryRiskCooldown,
+		now:           time.Now,
+	}
+}
+
+func (t *runtimeProxyCountryRiskTracker) isCooling(countryCode string) bool {
+	code := normalizeRuntimeProxyCountryCode(countryCode)
+	if t == nil || code == "" {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	until, ok := t.cooldownUntil[code]
+	if !ok {
+		return false
+	}
+	now := t.currentTimeLocked()
+	if !now.Before(until) {
+		delete(t.cooldownUntil, code)
+		return false
+	}
+	return true
+}
+
+func (t *runtimeProxyCountryRiskTracker) recordRiskFailure(countryCode string) (string, int, bool, time.Time) {
+	code := normalizeRuntimeProxyCountryCode(countryCode)
+	if t == nil || code == "" {
+		return "", 0, false, time.Time{}
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.failures == nil {
+		t.failures = make(map[string]int)
+	}
+	if t.cooldownUntil == nil {
+		t.cooldownUntil = make(map[string]time.Time)
+	}
+	t.failures[code]++
+	count := t.failures[code]
+	if count < t.cooldownAfter {
+		return code, count, false, time.Time{}
+	}
+	until := t.currentTimeLocked().Add(t.cooldown)
+	t.cooldownUntil[code] = until
+	return code, count, true, until
+}
+
+func (t *runtimeProxyCountryRiskTracker) recordSuccess(countryCode string) {
+	code := normalizeRuntimeProxyCountryCode(countryCode)
+	if t == nil || code == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.failures, code)
+	delete(t.cooldownUntil, code)
+}
+
+func (t *runtimeProxyCountryRiskTracker) currentTimeLocked() time.Time {
+	if t.now != nil {
+		return t.now()
+	}
+	return time.Now()
+}
+
 func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, opts proxy.SelectOptions, detector runtimeProxyCountryDetector, maxPreferredAttempts int) (proxy.Selection, string, bool, error) {
+	return selectRuntimeProxyWithCountryPolicy(ctx, raw, opts, detector, maxPreferredAttempts, nil, false)
+}
+
+func selectRuntimeProxyWithCountryPolicy(ctx context.Context, raw string, opts proxy.SelectOptions, detector runtimeProxyCountryDetector, maxPreferredAttempts int, riskTracker *runtimeProxyCountryRiskTracker, strictAvoidedFallback bool) (proxy.Selection, string, bool, error) {
 	if !proxy.HasURLTemplate(raw) || detector == nil {
 		selection, err := proxy.SelectRuntimeProxy(ctx, raw, opts)
 		return selection, "", false, err
@@ -147,6 +246,10 @@ func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, op
 		if geoErr != nil {
 			errors = append(errors, fmt.Sprintf("第%d次地区探测失败: %v", attempt, geoErr))
 		}
+		cooling := geoErr == nil && riskTracker != nil && riskTracker.isCooling(countryCode)
+		if cooling {
+			errors = append(errors, fmt.Sprintf("第%d次出口地区 %s 风控冷却中，跳过优先使用", attempt, countryCode))
+		}
 
 		if !hasFirstUsable {
 			firstUsable = selection
@@ -154,14 +257,14 @@ func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, op
 			firstCountryCode = countryCode
 			hasFirstUsable = true
 		}
-		if geoErr == nil && !isAvoidedRuntimeProxyCountryCode(countryCode) && !hasFirstNonAvoided {
+		if geoErr == nil && !cooling && isAllowedRuntimeProxyFallbackCountryCode(countryCode) && !hasFirstNonAvoided {
 			firstNonAvoided = selection
 			firstNonAvoided.SuccessAttempt = attempt
 			firstNonAvoidedCountryCode = countryCode
 			hasFirstNonAvoided = true
 		}
 
-		if geoErr == nil && isPreferredRuntimeProxyCountryCode(countryCode) {
+		if geoErr == nil && !cooling && isPreferredRuntimeProxyCountryCode(countryCode) {
 			selection.Attempts = attempt
 			selection.SuccessAttempt = attempt
 			selection.Duration = time.Since(start)
@@ -170,7 +273,7 @@ func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, op
 		}
 	}
 
-	if hasFirstNonAvoided {
+	if hasFirstNonAvoided && (riskTracker == nil || !riskTracker.isCooling(firstNonAvoidedCountryCode)) {
 		firstNonAvoided.Attempts = maxPreferredAttempts
 		if firstNonAvoided.SuccessAttempt == 0 {
 			firstNonAvoided.SuccessAttempt = 1
@@ -179,8 +282,29 @@ func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, op
 		firstNonAvoided.Errors = errors
 		return firstNonAvoided, firstNonAvoidedCountryCode, false, nil
 	}
+	if hasFirstNonAvoided {
+		errors = append(errors, fmt.Sprintf("缓存候选出口地区 %s 已进入风控冷却，放弃回退", firstNonAvoidedCountryCode))
+	}
 
 	if hasFirstUsable {
+		if riskTracker != nil && riskTracker.isCooling(firstCountryCode) {
+			return proxy.Selection{
+				Templated: true,
+				Attempts:  maxPreferredAttempts,
+				TargetURL: opts.TargetURL,
+				Duration:  time.Since(start),
+				Errors:    errors,
+			}, "", false, fmt.Errorf("代理候选均为回避、冷却或无地区映射出口地区，已尝试 %d 次: %s", maxPreferredAttempts, strings.Join(errors, "；"))
+		}
+		if strictAvoidedFallback && !isAllowedRuntimeProxyFallbackCountryCode(firstCountryCode) {
+			return proxy.Selection{
+				Templated: true,
+				Attempts:  maxPreferredAttempts,
+				TargetURL: opts.TargetURL,
+				Duration:  time.Since(start),
+				Errors:    errors,
+			}, "", false, fmt.Errorf("代理候选均为回避或无地区映射出口地区，已尝试 %d 次: %s", maxPreferredAttempts, strings.Join(errors, "；"))
+		}
 		firstUsable.Attempts = maxPreferredAttempts
 		if firstUsable.SuccessAttempt == 0 {
 			firstUsable.SuccessAttempt = 1

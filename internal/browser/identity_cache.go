@@ -88,7 +88,7 @@ func IdentityForProxy(proxyURL string) *BrowserIdentity {
 	loadIdentityCacheLocked()
 
 	now := time.Now().Unix()
-	if entry, ok := idCache[key]; ok && entry.Identity != nil {
+	if entry, ok := idCache[key]; ok && isConservativeBrowserIdentity(entry.Identity) {
 		if now-entry.CreatedAt < int64(identityCacheTTL.Seconds()) {
 			return refreshVolatile(entry.Identity)
 		}

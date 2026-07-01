@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 
@@ -19,8 +20,6 @@ func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, p
 		return create()
 	}
 
-	var fallbackService email.TempEmailService
-	var fallbackAddress string
 	for attempt := 1; attempt <= successfulDomainPreferenceMaxCreateAttempts; attempt++ {
 		select {
 		case <-ctx.Done():
@@ -32,8 +31,6 @@ func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, p
 		if err != nil {
 			return nil, "", err
 		}
-		fallbackService = service
-		fallbackAddress = address
 
 		domain := normalizeEmailAddressDomain(address)
 		if _, ok := preferredDomains[domain]; ok {
@@ -52,16 +49,16 @@ func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, p
 		}
 	}
 
-	if fallbackAddress != "" {
-		log.Printf("[Kiro][%d/%d] %s 连续 %d 次未命中历史成功域名，使用最后一次创建的邮箱继续", current, total, providerLabel, successfulDomainPreferenceMaxCreateAttempts)
-	}
-	return fallbackService, fallbackAddress, nil
+	return nil, "", fmt.Errorf("%s 连续 %d 次未命中历史成功域名，放弃该临时邮箱并补齐下一次前置创建", providerLabel, successfulDomainPreferenceMaxCreateAttempts)
 }
 
 func successfulDomainsForProvider(provider string) map[string]struct{} {
 	provider = normalizeSuccessfulDomainPreferenceProvider(provider)
 	if provider == "" {
 		return nil
+	}
+	if defaults := defaultSuccessfulDomainsForProvider(provider); len(defaults) > 0 {
+		return defaults
 	}
 	for _, stat := range storage.GetEmailProviderStats() {
 		if strings.ToLower(strings.TrimSpace(stat.Provider)) != provider {
@@ -95,6 +92,15 @@ func successfulDomainsForProvider(provider string) map[string]struct{} {
 	return nil
 }
 
+func defaultSuccessfulDomainsForProvider(provider string) map[string]struct{} {
+	switch normalizeSuccessfulDomainPreferenceProvider(provider) {
+	case "blinkbox":
+		return map[string]struct{}{"@fontdle.com": {}}
+	default:
+		return nil
+	}
+}
+
 func normalizeSuccessfulDomainPreferenceProvider(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "smailpro", "blinkbox":
@@ -102,6 +108,10 @@ func normalizeSuccessfulDomainPreferenceProvider(provider string) string {
 	default:
 		return ""
 	}
+}
+
+func isSuccessfulDomainPreferenceMiss(errorMsg string) bool {
+	return strings.Contains(errorMsg, "未命中历史成功域名")
 }
 
 func normalizeEmailAddressDomain(value string) string {

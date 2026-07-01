@@ -1,6 +1,9 @@
 package task
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRuntimeTaskStatsBuildsDiagnosticBreakdowns(t *testing.T) {
 	stats := newRuntimeTaskStats()
@@ -89,6 +92,34 @@ func TestSendOTPBlockedDiagnosticsAreSeparatedFromOrdinaryEmailFailures(t *testi
 	}
 	if got := diagnostics.RiskFailures.Details["send-otp TES/BLOCKED"]; got != 1 {
 		t.Fatalf("risk TES/BLOCKED detail = %d, want 1; all=%#v", got, diagnostics.RiskFailures.Details)
+	}
+}
+
+func TestPreflightEmailCreateFailureDoesNotCountAsNetworkOrRealRegistrationFailure(t *testing.T) {
+	stats := newRuntimeTaskStats()
+
+	stats.RecordPreflightEmailCreateFailure(`Get "https://blinkboxapp.com/": context deadline exceeded`)
+	diagnostics := stats.DiagnosticsSnapshot(0, 0, 10)
+
+	if got := diagnostics.EmailServiceFailures.Details["邮箱创建失败"]; got != 1 {
+		t.Fatalf("email create detail = %d, want 1; all=%#v", got, diagnostics.EmailServiceFailures.Details)
+	}
+	if diagnostics.NetworkProxyFailures.Total != 0 {
+		t.Fatalf("preflight email create failure should not count as network/proxy diagnostics: %#v", diagnostics.NetworkProxyFailures)
+	}
+	if len(stats.failCategories) != 0 {
+		t.Fatalf("preflight failure should not count as real registration failure categories: %#v", stats.failCategories)
+	}
+	if got := stats.totalNetworkErrors(); got != 0 {
+		t.Fatalf("preflight email create failure should not count as network error, got %d", got)
+	}
+
+	summary := stats.ProgressSummary(0, 0, 0, 3)
+	if !strings.Contains(summary, "前置失败=1") {
+		t.Fatalf("progress summary should include preflight failures: %s", summary)
+	}
+	if !strings.Contains(summary, "网络错误=0") {
+		t.Fatalf("progress summary should not include preflight failures as network errors: %s", summary)
 	}
 }
 

@@ -184,6 +184,16 @@ function notifyTaskComplete(taskName, success, failed, total) {
 }
 
 var _lastTaskDiagnostics = null;
+var _taskDiagnosticsResetBaseline = null;
+var _taskDiagnosticGroupKeys = [
+  { key: 'otpFailures', goKey: 'OTPFailures' },
+  { key: 'postRegistrationFailures', goKey: 'PostRegistrationFailures' },
+  { key: 'networkProxyFailures', goKey: 'NetworkProxyFailures' },
+  { key: 'graphFailures', goKey: 'GraphFailures' },
+  { key: 'riskFailures', goKey: 'RiskFailures' },
+  { key: 'emailServiceFailures', goKey: 'EmailServiceFailures' },
+  { key: 'proxyFailures', goKey: 'ProxyFailures' }
+];
 
 function _diagField(obj, lowerKey, upperKey, fallback) {
   if (!obj) return fallback;
@@ -202,6 +212,112 @@ function _diagGroup(diagnostics, lowerKey, upperKey) {
 
 function _diagTopItems(diagnostics, lowerKey, upperKey) {
   return _diagField(diagnostics, lowerKey, upperKey, []) || [];
+}
+
+function _clonePlainDiagnostics(diagnostics) {
+  if (!diagnostics) return null;
+  try {
+    return JSON.parse(JSON.stringify(diagnostics));
+  } catch (e) {
+    return diagnostics;
+  }
+}
+
+function _diagnosticItemLabel(item) {
+  if (!item) return '';
+  return item.label != null ? item.label : item.Label;
+}
+
+function _diagnosticItemCount(item) {
+  if (!item) return 0;
+  var value = item.count != null ? item.count : item.Count;
+  return parseInt(value, 10) || 0;
+}
+
+function _subtractTopItems(currentItems, baselineItems) {
+  var base = {};
+  (baselineItems || []).forEach(function(item) {
+    var label = _diagnosticItemLabel(item);
+    if (!label) return;
+    base[label] = (base[label] || 0) + _diagnosticItemCount(item);
+  });
+
+  var current = {};
+  (currentItems || []).forEach(function(item) {
+    var label = _diagnosticItemLabel(item);
+    if (!label) return;
+    current[label] = (current[label] || 0) + _diagnosticItemCount(item);
+  });
+
+  var seen = {};
+  var result = [];
+  (currentItems || []).forEach(function(item) {
+    var label = _diagnosticItemLabel(item);
+    if (!label || seen[label]) return;
+    seen[label] = true;
+    var delta = (current[label] || 0) - (base[label] || 0);
+    if (delta > 0) result.push({ label: label, count: delta });
+  });
+  return result;
+}
+
+function _subtractDiagnosticGroup(current, baseline) {
+  current = current || { total: 0, details: {} };
+  baseline = baseline || { total: 0, details: {} };
+  var details = {};
+  var detailTotal = 0;
+  Object.keys(current.details || {}).forEach(function(label) {
+    var delta = (parseInt(current.details[label], 10) || 0) -
+      (parseInt((baseline.details || {})[label], 10) || 0);
+    if (delta > 0) {
+      details[label] = delta;
+      detailTotal += delta;
+    }
+  });
+  var totalDelta = (parseInt(current.total, 10) || 0) - (parseInt(baseline.total, 10) || 0);
+  if (totalDelta < 0) totalDelta = 0;
+  return {
+    total: detailTotal > 0 ? detailTotal : totalDelta,
+    details: details
+  };
+}
+
+function _subtractSendOTPDiagnostics(current, baseline) {
+  current = current || {};
+  baseline = baseline || {};
+  var result = {};
+  Object.keys(current).forEach(function(key) {
+    var items = _subtractTopItems(current[key], baseline[key]);
+    if (items.length) result[key] = items;
+  });
+  return result;
+}
+
+function _diagnosticsAfterReset(diagnostics) {
+  diagnostics = diagnostics || {};
+  if (!_taskDiagnosticsResetBaseline) return diagnostics;
+
+  var baseline = _taskDiagnosticsResetBaseline || {};
+  var result = {};
+  _taskDiagnosticGroupKeys.forEach(function(cfg) {
+    result[cfg.key] = _subtractDiagnosticGroup(
+      _diagGroup(diagnostics, cfg.key, cfg.goKey),
+      _diagGroup(baseline, cfg.key, cfg.goKey)
+    );
+  });
+  result.sendOTPDiagnostics = _subtractSendOTPDiagnostics(
+    _diagField(diagnostics, 'sendOTPDiagnostics', 'SendOTPDiagnostics', {}) || {},
+    _diagField(baseline, 'sendOTPDiagnostics', 'SendOTPDiagnostics', {}) || {}
+  );
+  result.topFailures = _subtractTopItems(
+    _diagTopItems(diagnostics, 'topFailures', 'TopFailures'),
+    _diagTopItems(baseline, 'topFailures', 'TopFailures')
+  );
+  return result;
+}
+
+function _clearTaskDiagnosticsResetBaseline() {
+  _taskDiagnosticsResetBaseline = null;
 }
 
 function _diagLabel(label) {
@@ -290,7 +406,7 @@ function renderTaskDiagnostics(diagnostics) {
   var toggleText = document.getElementById('st-diagnostics-toggle-text');
   if (!summaryEl || !detailsEl) return;
 
-  diagnostics = diagnostics || {};
+  diagnostics = _diagnosticsAfterReset(diagnostics || {});
   var groups = [
     {
       key: 'otpFailures', goKey: 'OTPFailures',
@@ -356,6 +472,11 @@ function toggleTaskDiagnostics() {
   renderTaskDiagnostics(_lastTaskDiagnostics);
 }
 
+function resetTaskDiagnostics() {
+  _taskDiagnosticsResetBaseline = _clonePlainDiagnostics(_lastTaskDiagnostics || {});
+  renderTaskDiagnostics(_lastTaskDiagnostics);
+}
+
 async function startTask() {
   if (typeof setTaskActionState === 'function') setTaskActionState('starting');
   try {
@@ -386,6 +507,7 @@ async function startTask() {
     }
     if (typeof setTaskActionState === 'function') setTaskActionState('running');
     else updateUIStatus(true);
+    _clearTaskDiagnosticsResetBaseline();
     showToast('任务已启动');
     switchToOverviewAfterTaskStart();
   } catch(e) {
@@ -406,6 +528,7 @@ async function startTaskWithConfig(cfg) {
     }
     if (typeof setTaskActionState === 'function') setTaskActionState('running');
     else updateUIStatus(true);
+    _clearTaskDiagnosticsResetBaseline();
     showToast(_tkT('toast.taskStarted', '任务已启动'));
     switchToOverviewAfterTaskStart();
   } catch(e) {
@@ -546,7 +669,11 @@ setInterval(async function() {
     var pct = progressTotal > 0 ? Math.round(progressDone / progressTotal * 100) : 0;
     if (pct > 100) pct = 100;
     document.getElementById('progress-bar').style.width = pct + '%';
-    // 检测任务完成
+    // 检测任务状态切换
+    var wasRunning = _prevRunning;
+    if (!wasRunning && s.running) {
+      _clearTaskDiagnosticsResetBaseline();
+    }
     if (_prevRunning && !s.running && s.completed > 0) {
       notifyTaskComplete('Kiro', s.success, s.failed, s.completed);
       if (typeof loadEmailProviderStats === 'function') loadEmailProviderStats();

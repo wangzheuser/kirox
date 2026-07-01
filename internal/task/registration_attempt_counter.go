@@ -29,6 +29,17 @@ func (c *registrationAttemptCounter) reserve() (int, bool) {
 	return idx, true
 }
 
+func (c *registrationAttemptCounter) release() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.count > 0 {
+		c.count--
+	}
+}
+
 func (c *registrationAttemptCounter) done() bool {
 	if c == nil {
 		return true
