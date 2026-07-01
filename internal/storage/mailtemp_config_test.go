@@ -3,6 +3,8 @@ package storage
 import "testing"
 
 func TestRegistrationConfigAcceptsMailTempProvider(t *testing.T) {
+	withTempStorageConfig(t, "")
+
 	cfg := RegistrationConfig{Count: 1, SuccessTarget: 1, Concurrency: 1, Delay: 0, EmailProviders: []string{"mailtemp"}}
 	if err := SetRegistrationConfig(cfg); err != nil {
 		t.Fatalf("SetRegistrationConfig(mailtemp) error: %v", err)
