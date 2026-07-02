@@ -287,6 +287,51 @@ body {
   padding: 28px 32px;
 }
 
+/* 注册页内容较长，单独显示纵向滚动条，便于拖动定位。 */
+#page-register.active {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(31, 41, 55, 0.28) transparent;
+}
+
+#page-register.active::-webkit-scrollbar {
+  display: block;
+  width: 10px;
+}
+
+#page-register.active::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#page-register.active::-webkit-scrollbar-thumb {
+  background: rgba(31, 41, 55, 0.24);
+  background-clip: content-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+#page-register.active::-webkit-scrollbar-thumb:hover {
+  background: rgba(31, 41, 55, 0.36);
+  background-clip: content-box;
+}
+
+[data-theme="dark"] #page-register.active {
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+[data-theme="dark"] #page-register.active::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  background-clip: content-box;
+}
+
+[data-theme="dark"] #page-register.active::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+  background-clip: content-box;
+}
+
 /* ===== Placeholder pages ===== */
 .page-placeholder {
   display: none;
