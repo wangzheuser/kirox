@@ -114,6 +114,10 @@ export function GetProxy() {
   return window['go']['main']['App']['GetProxy']();
 }
 
+export function GetProxyEgressStats() {
+  return window['go']['main']['App']['GetProxyEgressStats']();
+}
+
 export function GetProxyMode() {
   return window['go']['main']['App']['GetProxyMode']();
 }
@@ -192,6 +196,10 @@ export function ResetOutlookAccountStatusesByEmails(arg1) {
 
 export function ResetProxy() {
   return window['go']['main']['App']['ResetProxy']();
+}
+
+export function ResetProxyEgressStats() {
+  return window['go']['main']['App']['ResetProxyEgressStats']();
 }
 
 export function ResetResultOutputDir() {

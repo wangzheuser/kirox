@@ -52,6 +52,7 @@ func (a *moEmailAdapter) Create() string {
 
 	// 获取可用域名
 	client := NewMoeMailClientWithProxy(config, a.proxy)
+	defer client.CloseIdleConnections()
 	sysConfig, err := client.GetSystemConfig()
 	if err != nil {
 		log.Printf("[MoEmail] 获取系统配置失败: %v", err)

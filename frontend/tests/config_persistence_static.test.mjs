@@ -18,6 +18,11 @@ test('settings page sound switch is persisted through backend APIs', () => {
   assert.doesNotMatch(uiJs, /localStorage\.setItem\(['"]kiro-sound['"]/);
 });
 
+test('kiro.rs auto sync copy describes immediate background sync', () => {
+  assert.match(html, /单个账号注册成功后立即在后台推送到 kiro\.rs/);
+  assert.doesNotMatch(html, /批量注册任务完成后自动将成功账号推送到 kiro\.rs/);
+});
+
 test('verify models setting and frontend API calls are removed', () => {
   assert.doesNotMatch(html, /id="cfg-verify-models"/);
   assert.doesNotMatch(html, /二次模型验活/);

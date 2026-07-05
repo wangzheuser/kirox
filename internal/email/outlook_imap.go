@@ -118,12 +118,13 @@ func refreshOutlookToken(acc OutlookAccount, proxyURL string, allowDirectFallbac
 
 	runtimeProxyURL := proxy.RenderURLTemplate(proxyURL)
 	tryPost := func(p string) (resp *http.Response, err error) {
-		client := httpClientWithProxy(p, emailRequestTimeout)
-		return client.Post(
-			"https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
-			"application/x-www-form-urlencoded",
-			strings.NewReader(form.Encode()),
-		)
+		return doWithProxyHTTPClient(p, emailRequestTimeout, func(client *http.Client) (*http.Response, error) {
+			return client.Post(
+				"https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
+				"application/x-www-form-urlencoded",
+				strings.NewReader(form.Encode()),
+			)
+		})
 	}
 	resp, err := tryPost(runtimeProxyURL)
 	if err != nil && runtimeProxyURL != "" && allowDirectFallback {

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	stdurl "net/url"
@@ -107,7 +108,10 @@ func httpClientWithProxy(proxyURL string, timeout time.Duration) *http.Client {
 		timeout = emailRequestTimeout
 	}
 	transport := &http.Transport{
-		DialContext: (&net.Dialer{Timeout: timeout}).DialContext,
+		DialContext:         (&net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second}).DialContext,
+		MaxIdleConns:        16,
+		MaxIdleConnsPerHost: 1,
+		IdleConnTimeout:     5 * time.Second,
 	}
 	if proxyURL != "" {
 		if u, err := stdurl.Parse(proxyURL); err == nil {
@@ -122,4 +126,38 @@ func httpClientWithProxy(proxyURL string, timeout time.Duration) *http.Client {
 		}
 	}
 	return &http.Client{Timeout: timeout, Transport: transport}
+}
+
+type closeIdleReadCloser struct {
+	io.ReadCloser
+	closeIdle func()
+}
+
+func (c *closeIdleReadCloser) Close() error {
+	err := c.ReadCloser.Close()
+	if c.closeIdle != nil {
+		c.closeIdle()
+	}
+	return err
+}
+
+func doWithProxyHTTPClient(proxyURL string, timeout time.Duration, do func(*http.Client) (*http.Response, error)) (*http.Response, error) {
+	client := httpClientWithProxy(proxyURL, timeout)
+	resp, err := do(client)
+	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		client.CloseIdleConnections()
+		return resp, err
+	}
+	if resp == nil || resp.Body == nil {
+		client.CloseIdleConnections()
+		return resp, err
+	}
+	resp.Body = &closeIdleReadCloser{
+		ReadCloser: resp.Body,
+		closeIdle:  client.CloseIdleConnections,
+	}
+	return resp, nil
 }

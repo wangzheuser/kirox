@@ -34,6 +34,7 @@ const (
 	DefaultRegistrationConcurrency              = 1
 	DefaultRegistrationDelay                    = 1
 	DefaultRegistrationDomainExplorationPercent = 20
+	DefaultRegistrationProxyExplorationPercent  = 50
 
 	RegistrationEmailProviderOutlook        = "outlook"
 	RegistrationEmailProviderMoeMail        = "moemail"
@@ -110,6 +111,7 @@ const (
 	keyRegistrationConcurrency              = "registration_concurrency"
 	keyRegistrationDelay                    = "registration_delay"
 	keyRegistrationDomainExplorationPercent = "registration_domain_exploration_percent"
+	keyRegistrationProxyExplorationPercent  = "registration_proxy_exploration_percent"
 	keyRegistrationRetryCount               = "registration_retry_count"
 	keyRegistrationOTPTimeout               = "registration_otp_timeout"
 	keyRegistrationEmailProviders           = "registration_email_providers"
@@ -128,6 +130,7 @@ type RegistrationConfig struct {
 	Concurrency              int      `json:"concurrency"`
 	Delay                    int      `json:"delay"`
 	DomainExplorationPercent int      `json:"domainExplorationPercent"`
+	ProxyExplorationPercent  int      `json:"proxyExplorationPercent"`
 	RetryCount               int      `json:"retryCount"`
 	OTPTimeout               int      `json:"otpTimeout"`
 	EmailProviders           []string `json:"emailProviders"`
@@ -179,6 +182,7 @@ var configKeyOrder = []string{
 	keyRegistrationConcurrency,
 	keyRegistrationDelay,
 	keyRegistrationDomainExplorationPercent,
+	keyRegistrationProxyExplorationPercent,
 	keyRegistrationRetryCount,
 	keyRegistrationOTPTimeout,
 	keyRegistrationEmailProviders,
@@ -809,6 +813,12 @@ func GetRegistrationConfig() RegistrationConfig {
 			cfg.Saved = true
 		}
 	}
+	if raw := strings.TrimSpace(m[keyRegistrationProxyExplorationPercent]); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			cfg.ProxyExplorationPercent = clampDomainExplorationPercent(value)
+			cfg.Saved = true
+		}
+	}
 	if raw := strings.TrimSpace(m[keyRegistrationRetryCount]); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value >= 0 && value <= 5 {
 			cfg.RetryCount = value
@@ -864,6 +874,7 @@ func SetRegistrationConfig(cfg RegistrationConfig) error {
 		m[keyRegistrationConcurrency] = strconv.Itoa(normalized.Concurrency)
 		m[keyRegistrationDelay] = strconv.Itoa(normalized.Delay)
 		m[keyRegistrationDomainExplorationPercent] = strconv.Itoa(normalized.DomainExplorationPercent)
+		m[keyRegistrationProxyExplorationPercent] = strconv.Itoa(normalized.ProxyExplorationPercent)
 		m[keyRegistrationRetryCount] = strconv.Itoa(normalized.RetryCount)
 		m[keyRegistrationOTPTimeout] = strconv.Itoa(normalized.OTPTimeout)
 		delete(m, "registration_email_provider")
@@ -937,6 +948,7 @@ func defaultRegistrationConfig() RegistrationConfig {
 		Concurrency:              DefaultRegistrationConcurrency,
 		Delay:                    DefaultRegistrationDelay,
 		DomainExplorationPercent: DefaultRegistrationDomainExplorationPercent,
+		ProxyExplorationPercent:  DefaultRegistrationProxyExplorationPercent,
 		RetryCount:               1,
 		OTPTimeout:               60,
 		EmailProviders:           []string{RegistrationEmailProviderOutlook},
@@ -961,6 +973,7 @@ func normalizeRegistrationConfig(cfg RegistrationConfig) (RegistrationConfig, er
 		return RegistrationConfig{}, fmt.Errorf("任务间隔不能小于 0")
 	}
 	out.DomainExplorationPercent = clampDomainExplorationPercent(out.DomainExplorationPercent)
+	out.ProxyExplorationPercent = clampDomainExplorationPercent(out.ProxyExplorationPercent)
 	if out.RetryCount < 0 || out.RetryCount > 5 {
 		return RegistrationConfig{}, fmt.Errorf("重试次数必须在 0-5 之间")
 	}

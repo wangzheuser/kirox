@@ -43,6 +43,7 @@ function switchPage(pageId) {
   }
   if (pageId === 'register' && typeof loadEmailProviderStats === 'function') {
     loadEmailProviderStats();
+    if (typeof loadProxyEgressStats === 'function') loadProxyEgressStats();
   }
 }
 
@@ -813,6 +814,7 @@ function getRegistrationConfigPayload() {
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
     domainExplorationPercent: readIntegerInput('cfg-domain-exploration-percent', 20, 0, 100),
+    proxyExplorationPercent: readIntegerInput('cfg-proxy-exploration-percent', 50, 0, 100),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
@@ -839,6 +841,7 @@ function applyRegistrationConfig(cfg) {
   writeIntegerInput('cfg-concurrency', cfg.concurrency, 1);
   writeIntegerInput('cfg-delay', cfg.delay, 1);
   writeIntegerInput('cfg-domain-exploration-percent', cfg.domainExplorationPercent, 20);
+  writeIntegerInput('cfg-proxy-exploration-percent', cfg.proxyExplorationPercent, 50);
   writeIntegerInput('cfg-retry-count', cfg.retryCount, 1);
   writeIntegerInput('cfg-otp-timeout', cfg.otpTimeout, 60);
   writeCheckboxInput('cfg-reuse-failed-email', cfg.reuseFailedEmail);
@@ -860,6 +863,7 @@ function getFormConfig() {
     concurrency: readIntegerInput('cfg-concurrency', 1, 1),
     delay: readIntegerInput('cfg-delay', 1, 0),
     domainExplorationPercent: readIntegerInput('cfg-domain-exploration-percent', 20, 0, 100),
+    proxyExplorationPercent: readIntegerInput('cfg-proxy-exploration-percent', 50, 0, 100),
     retryCount: readIntegerInput('cfg-retry-count', 1, 0),
     otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
@@ -967,6 +971,7 @@ async function loadRegistrationConfig() {
       concurrency: 1,
       delay: 1,
       domainExplorationPercent: 20,
+      proxyExplorationPercent: 50,
       retryCount: 1,
       otpTimeout: 60,
       reuseFailedEmail: false,
@@ -1205,8 +1210,55 @@ async function resetEmailProviderStats() {
   }
 }
 
+async function loadProxyEgressStats() {
+  var body = document.getElementById('proxy-egress-stats-body');
+  if (!body || !window.go || !window.go.main || !window.go.main.App || !window.go.main.App.GetProxyEgressStats) return;
+  try {
+    var stats = await window.go.main.App.GetProxyEgressStats();
+    stats = Array.isArray(stats) ? stats : [];
+    if (!stats.length) {
+      body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:12px;">暂无统计</td></tr>';
+      return;
+    }
+    body.innerHTML = stats.map(function(stat) {
+      var ip = stat.ip || stat.IP || '';
+      var country = stat.countryCode || stat.CountryCode || '-';
+      var isp = stat.isp || stat.ISP || '';
+      var asn = stat.asn || stat.ASN || '';
+      var cooldown = stat.cooldownUntil || stat.CooldownUntil || '';
+      return '<tr>' +
+        '<td style="font-family:var(--font-mono);">' + _escapeHtml(ip) + '</td>' +
+        '<td>' + _escapeHtml(country || '-') + '</td>' +
+        '<td>' + _escapeHtml([isp, asn].filter(Boolean).join(' / ') || '-') + '</td>' +
+        '<td>' + Number(stat.attemptCount || stat.AttemptCount || 0) + '</td>' +
+        '<td>' + Number(stat.successCount || stat.SuccessCount || 0) + '</td>' +
+        '<td>' + Number(stat.riskFailureCount || stat.RiskFailureCount || 0) + '</td>' +
+        '<td>' + Number(stat.networkFailureCount || stat.NetworkFailureCount || 0) + '</td>' +
+        '<td>' + _escapeHtml(cooldown || '-') + '</td>' +
+        '</tr>';
+    }).join('');
+  } catch(e) {
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:12px;">加载失败: ' + _escapeHtml(e.message || e) + '</td></tr>';
+  }
+}
+
+async function resetProxyEgressStats() {
+  if (!window.go || !window.go.main || !window.go.main.App || !window.go.main.App.ResetProxyEgressStats) return;
+  try {
+    var result = await window.go.main.App.ResetProxyEgressStats();
+    if (result && result.error) {
+      showToast(result.error, 'error');
+      return;
+    }
+    await loadProxyEgressStats();
+    showToast('代理出口统计已重置');
+  } catch(e) {
+    showToast('重置代理出口统计失败: ' + (e.message || e), 'error');
+  }
+}
+
 // 自动保存
-['cfg-count', 'cfg-success-target', 'cfg-domain-exploration-percent', 'cfg-concurrency', 'cfg-delay', 'cfg-retry-count', 'cfg-otp-timeout'].forEach(function(id) {
+['cfg-count', 'cfg-success-target', 'cfg-domain-exploration-percent', 'cfg-proxy-exploration-percent', 'cfg-concurrency', 'cfg-delay', 'cfg-retry-count', 'cfg-otp-timeout'].forEach(function(id) {
   var el = document.getElementById(id);
   if (el) {
     el.addEventListener('change', scheduleRegistrationConfigSave);
@@ -1315,6 +1367,7 @@ async function loadConfig() {
   
   await loadRegistrationConfig();
   loadEmailProviderStats();
+  loadProxyEgressStats();
   loadOutlookAccountsList();
   loadDataDir();
   loadResultOutputDir();

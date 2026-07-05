@@ -113,6 +113,30 @@ func NewRegistrar(cfg *Config) *Registrar {
 	}
 }
 
+// CloseIdleConnections 关闭注册流程相关 HTTP 客户端的空闲连接。
+func (r *Registrar) CloseIdleConnections() {
+	if r == nil {
+		return
+	}
+	if r.Client != nil {
+		r.Client.CloseIdleConnections()
+	}
+	if closer, ok := r.EmailSvc.(idleConnectionCloser); ok {
+		closer.CloseIdleConnections()
+	}
+	if r.Cfg != nil {
+		if closer, ok := r.Cfg.TempEmailService.(idleConnectionCloser); ok {
+			closer.CloseIdleConnections()
+		}
+		if closer, ok := any(r.Cfg.MoeMailProvider).(idleConnectionCloser); ok {
+			closer.CloseIdleConnections()
+		}
+		if closer, ok := any(r.Cfg.CloudMailProvider).(idleConnectionCloser); ok {
+			closer.CloseIdleConnections()
+		}
+	}
+}
+
 // isRetryableError 判断是否为可重试的瞬态网络错误（EOF、连接重置等）
 func isRetryableError(err error) bool {
 	if err == nil {
@@ -368,11 +392,11 @@ func (r *Registrar) Step3Email() error {
 	if r.Cfg.EmailProvider == "mailporary" {
 		log.Println("[3] 使用 Mailporary 临时邮箱")
 		svc := email.NewMailporaryService(r.Cfg.EmailProxy)
+		r.EmailSvc = svc
 		address, err := svc.CreateWithError()
 		if err != nil {
 			return fmt.Errorf("创建 Mailporary 邮箱失败: %w", err)
 		}
-		r.EmailSvc = svc
 		r.Email = address
 		log.Printf("email=%s", r.Email)
 		return nil
@@ -381,11 +405,11 @@ func (r *Registrar) Step3Email() error {
 	if r.Cfg.EmailProvider == "emailnator" {
 		log.Println("[3] 使用 Emailnator 临时邮箱")
 		svc := newEmailnatorTempEmailService(r.Cfg.EmailProxy)
+		r.EmailSvc = svc
 		address := strings.TrimSpace(svc.Create())
 		if address == "" {
 			return fmt.Errorf("创建 Emailnator 邮箱失败")
 		}
-		r.EmailSvc = svc
 		r.Email = address
 		log.Printf("email=%s", r.Email)
 		return nil
@@ -394,11 +418,11 @@ func (r *Registrar) Step3Email() error {
 	if r.Cfg.EmailProvider == "mailgw" {
 		log.Println("[3] 使用 mail.gw 临时邮箱")
 		svc := newMailGWTempEmailService(r.Cfg.EmailProxy)
+		r.EmailSvc = svc
 		address := strings.TrimSpace(svc.Create())
 		if address == "" {
 			return fmt.Errorf("创建 mail.gw 邮箱失败")
 		}
-		r.EmailSvc = svc
 		r.Email = address
 		log.Printf("email=%s", r.Email)
 		return nil
@@ -407,11 +431,11 @@ func (r *Registrar) Step3Email() error {
 	if r.Cfg.EmailProvider == "mailtm" {
 		log.Println("[3] 使用 mail.tm 临时邮箱")
 		svc := newMailTMTempEmailService(r.Cfg.EmailProxy)
+		r.EmailSvc = svc
 		address := strings.TrimSpace(svc.Create())
 		if address == "" {
 			return fmt.Errorf("创建 mail.tm 邮箱失败")
 		}
-		r.EmailSvc = svc
 		r.Email = address
 		log.Printf("email=%s", r.Email)
 		return nil
@@ -420,11 +444,11 @@ func (r *Registrar) Step3Email() error {
 	if r.Cfg.EmailProvider == "tempmail_lol" {
 		log.Println("[3] 使用 TempMail.lol 临时邮箱")
 		svc := newTempMailLOLTempEmailService(r.Cfg.EmailProxy)
+		r.EmailSvc = svc
 		address := strings.TrimSpace(svc.Create())
 		if address == "" {
 			return fmt.Errorf("创建 TempMail.lol 邮箱失败")
 		}
-		r.EmailSvc = svc
 		r.Email = address
 		log.Printf("email=%s", r.Email)
 		return nil

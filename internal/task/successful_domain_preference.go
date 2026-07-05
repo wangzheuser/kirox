@@ -15,10 +15,20 @@ const successfulDomainPreferenceMaxCreateAttempts = 10
 
 type tempEmailServiceCreator func() (email.TempEmailService, string, error)
 
+func closeTempEmailServiceIdleConnections(service email.TempEmailService) {
+	if closer, ok := service.(taskIdleConnectionCloser); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
 func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, providerLabel string, current, total int, domainExplorationPercent int, create tempEmailServiceCreator) (email.TempEmailService, string, error) {
 	preferredDomains := successfulDomainsForProvider(provider)
 	if len(preferredDomains) == 0 {
-		return create()
+		service, address, err := create()
+		if err != nil {
+			closeTempEmailServiceIdleConnections(service)
+		}
+		return service, address, err
 	}
 	domainExplorationPercent = clampDomainExplorationPercent(domainExplorationPercent)
 
@@ -31,6 +41,7 @@ func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, p
 
 		service, address, err := create()
 		if err != nil {
+			closeTempEmailServiceIdleConnections(service)
 			return nil, "", err
 		}
 
@@ -57,6 +68,7 @@ func createTempEmailPreferringSuccessfulDomains(ctx context.Context, provider, p
 				log.Printf("[Kiro][%d/%d] %s 邮箱域名 %s 历史成功率低，重建以优先命中成功域名", current, total, providerLabel, strings.TrimPrefix(domain, "@"))
 			}
 		}
+		closeTempEmailServiceIdleConnections(service)
 	}
 
 	return nil, "", fmt.Errorf("%s 连续 %d 次未命中历史成功域名，放弃该临时邮箱并补齐下一次前置创建", providerLabel, successfulDomainPreferenceMaxCreateAttempts)

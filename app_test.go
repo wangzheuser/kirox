@@ -92,6 +92,16 @@ func TestRegistrationConcurrencyInputAllowsMaximum100(t *testing.T) {
 	}
 }
 
+func TestRegistrationFormIncludesProxyExplorationPercentInput(t *testing.T) {
+	content, err := os.ReadFile("frontend/index.html")
+	if err != nil {
+		t.Fatalf("read frontend/index.html: %v", err)
+	}
+	if !strings.Contains(string(content), `id="cfg-proxy-exploration-percent"`) {
+		t.Fatalf("registration form should include proxy exploration percent input")
+	}
+}
+
 func TestApplyKiroRSSyncResultMarksSuccessAndDeletesRejected(t *testing.T) {
 	dir := t.TempDir()
 	accountsJSON := `[

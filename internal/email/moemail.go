@@ -225,6 +225,12 @@ func GenerateEmailName(taskIndex int) string {
 // NewMoeMailProviderWithProxy 创建使用指定代理的 MoeMail 提供商。
 func NewMoeMailProviderWithProxy(config MoeMailConfig, name string, expiryTime int64, domain string, proxyURL string) (*MoeMailProvider, error) {
 	client := NewMoeMailClientWithProxy(config, proxyURL)
+	created := false
+	defer func() {
+		if !created {
+			client.CloseIdleConnections()
+		}
+	}()
 
 	// 实时获取可用域名列表，验证域名是否可用
 	sysConfig, err := client.GetSystemConfig()
@@ -254,6 +260,7 @@ func NewMoeMailProviderWithProxy(config MoeMailConfig, name string, expiryTime i
 	}
 	log.Printf("[MoeMail] 邮箱创建完成: %s，初始邮件数: %d", email.Address, initialCount)
 
+	created = true
 	return &MoeMailProvider{
 		client:              client,
 		emailID:             email.ID,

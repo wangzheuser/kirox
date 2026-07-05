@@ -57,6 +57,7 @@ func (r *Registrar) Step14KiroAuthorize() (string, error) {
 	authURL := r.Cfg.OIDCBase + "/authorize?" + params.Encode()
 
 	noRedirect := httputil.NewNoRedirectTLSClient(r.Cfg.Proxy, r.Identity.ChromeVer)
+	defer noRedirect.CloseIdleConnections()
 	navHeaders := map[string]string{
 		"Accept":                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 		"User-Agent":                r.Identity.UA,
@@ -108,6 +109,7 @@ func (r *Registrar) Step14KiroAuthorize() (string, error) {
 		"sec-fetch-site":         "cross-site",
 	})
 	client := httputil.NewTLSClient(r.Cfg.Proxy, true, r.Identity.ChromeVer)
+	defer client.CloseIdleConnections()
 	resp2, err := client.Do(req2)
 	if err != nil {
 		return "", err

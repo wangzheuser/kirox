@@ -61,6 +61,8 @@ export function GetOverview():Promise<Record<string, any>>;
 
 export function GetProxy():Promise<string>;
 
+export function GetProxyEgressStats():Promise<Array<storage.ProxyEgressStat>>;
+
 export function GetProxyMode():Promise<string>;
 
 export function GetRegistrationConfig():Promise<storage.RegistrationConfig>;
@@ -100,6 +102,8 @@ export function ResetOutlookAccountStatuses():Promise<Record<string, any>>;
 export function ResetOutlookAccountStatusesByEmails(arg1:Array<string>):Promise<Record<string, any>>;
 
 export function ResetProxy():Promise<Record<string, any>>;
+
+export function ResetProxyEgressStats():Promise<Record<string, any>>;
 
 export function ResetResultOutputDir():Promise<Record<string, any>>;
 

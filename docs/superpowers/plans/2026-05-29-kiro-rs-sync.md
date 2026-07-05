@@ -4,7 +4,7 @@
 
 **Goal:** 为 kirox 增加与 kiro.rs 服务的凭据同步能力，支持注册后自动同步和手动全量同步。
 
-**Architecture:** Go 后端新增 `internal/kirorsync` 包封装 HTTP 调用逻辑；存储层新增 3 个配置项；coordinator 任务完成后通过回调通知前端；前端监听事件弹窗 + 账号池页面新增同步按钮。
+**Architecture:** Go 后端新增 `internal/kirorsync` 包封装 HTTP 调用逻辑；存储层新增 3 个配置项；coordinator 单号成功后入队自动同步并通过回调通知前端；前端监听事件弹窗 + 账号池页面新增同步按钮。
 
 **Tech Stack:** Go (Wails v2), vanilla JavaScript, HTTP REST API
 
@@ -17,7 +17,7 @@
 | Create | `internal/kirorsync/sync.go` | kiro.rs API 调用、字段映射、重试逻辑、并发保护 |
 | Modify | `internal/storage/storage.go` | 新增 3 个配置项 getter/setter |
 | Modify | `internal/task/state.go` | 添加 `OnSyncResult` 回调字段 |
-| Modify | `internal/task/coordinator.go` | runBatch 末尾插入自动同步逻辑 |
+| Modify | `internal/task/coordinator.go` | 成功结果落盘后入队自动同步 |
 | Modify | `app.go` | 新增 4 个 Wails 绑定方法 + startup 注入回调 |
 | Modify | `frontend/index.html` | 设置页新增 kiro.rs 配置区块 + 账号池按钮 |
 | Modify | `frontend/js/app.js` | 设置页加载/保存逻辑 |
@@ -373,40 +373,25 @@ Expected: 无错误输出
 
 ---
 
-## Task 4: 协调器 — 插入自动同步逻辑
+## Task 4: 协调器 — 成功后立即入队自动同步
 
 **Files:**
-- Modify: `internal/task/coordinator.go:688-692`
+- Modify: `internal/task/coordinator.go`
+- Create: `internal/task/kiro_rs_auto_sync.go`
 
-- [ ] **Step 1: 添加 import**
+- [ ] **Step 1: 添加自动同步队列**
 
-在 `coordinator.go` 的 import 块中添加：
+新增后台队列，注册成功后提交单账号任务；worker 串行调用 `kirorsync.SyncAccountsBlocking`，同步成功后更新 `kiroRsSynced`，永久失效则删除本地账号，并通过 `Manager.OnSyncResult` 通知前端。
 
-```go
-"reg_go/internal/kirorsync"
-```
+- [ ] **Step 2: 在成功账号落盘后插入入队逻辑**
 
-- [ ] **Step 2: 在 runBatch 末尾插入同步逻辑**
-
-在 `log.Println("[Kiro] ═══════════════════════════════")` 最后一行（约 line 691）之后、`}` 函数结束之前插入：
+在 `data.SaveKiroSuccess(result, outDir)` 成功返回后立即入队：
 
 ```go
-
-	// 自动同步到 kiro.rs
-	if sucCount > 0 && storage.GetKiroRSAutoSync() && storage.GetKiroRSAPIURL() != "" {
-		accounts, _ := data.LoadAccounts(outDir)
-		if len(accounts) > 0 {
-			log.Printf("[Kiro] 开始自动同步 %d 个账号到 kiro.rs", len(accounts))
-			syncResult := kirorsync.SyncAccounts(
-				storage.GetKiroRSAPIURL(),
-				storage.GetKiroRSAPIKey(),
-				accounts,
-			)
-			log.Printf("[Kiro] kiro.rs 同步完成: 成功 %d / 失败 %d", syncResult.Success, syncResult.Failed)
-			if Manager.OnSyncResult != nil {
-				Manager.OnSyncResult(syncResult)
-			}
-		}
+	if err := data.SaveKiroSuccess(result, outDir); err != nil {
+		log.Printf("[Kiro] 保存结果失败: %v", err)
+	} else {
+		enqueueKiroRSAutoSyncResult(outDir, result)
 	}
 ```
 
@@ -572,7 +557,7 @@ Expected: 无错误输出
             <div class="settings-item">
               <div class="settings-item-main">
                 <div class="settings-item-title">注册后自动同步</div>
-                <div class="settings-item-desc">批量注册任务完成后自动将成功账号推送到 kiro.rs</div>
+                <div class="settings-item-desc">单个账号注册成功后立即在后台推送到 kiro.rs</div>
               </div>
               <div class="settings-item-action">
                 <label style="cursor:pointer;">

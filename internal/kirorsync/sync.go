@@ -55,27 +55,48 @@ type addCredentialResponse struct {
 }
 
 var (
-	syncMu  sync.Mutex
-	syncing bool
-	client  = &http.Client{Timeout: 10 * time.Second}
+	syncMu   sync.Mutex
+	syncCond = sync.NewCond(&syncMu)
+	syncing  bool
+	client   = &http.Client{Timeout: 10 * time.Second}
 )
 
 // SyncAccounts 将账号列表逐条推送到 kiro.rs，失败项自动重试一次。
 // 并发保护：同一时刻只允许一个同步任务执行。
 func SyncAccounts(apiURL, apiKey string, accounts []map[string]interface{}) SyncResult {
+	return syncAccounts(apiURL, apiKey, accounts, false)
+}
+
+// SyncAccountsBlocking 将账号列表逐条推送到 kiro.rs，若已有同步正在执行则等待。
+// 用于自动同步队列，避免高并发注册成功时因为同步互斥而丢弃待同步账号。
+func SyncAccountsBlocking(apiURL, apiKey string, accounts []map[string]interface{}) SyncResult {
+	return syncAccounts(apiURL, apiKey, accounts, true)
+}
+
+func syncAccounts(apiURL, apiKey string, accounts []map[string]interface{}, wait bool) SyncResult {
 	syncMu.Lock()
 	if syncing {
-		syncMu.Unlock()
-		return SyncResult{Error: "同步正在进行中"}
+		if !wait {
+			syncMu.Unlock()
+			return SyncResult{Error: "同步正在进行中"}
+		}
+		for syncing {
+			syncCond.Wait()
+		}
 	}
 	syncing = true
 	syncMu.Unlock()
 	defer func() {
 		syncMu.Lock()
 		syncing = false
+		syncCond.Broadcast()
 		syncMu.Unlock()
 	}()
 
+	return syncAccountsLocked(apiURL, apiKey, accounts)
+}
+
+func syncAccountsLocked(apiURL, apiKey string, accounts []map[string]interface{}) SyncResult {
 	// 过滤有效账号（必须有 refreshToken）
 	var validAccounts []map[string]interface{}
 	for _, acc := range accounts {

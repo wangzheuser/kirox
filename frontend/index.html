@@ -622,7 +622,7 @@
             <div class="settings-item">
               <div class="settings-item-main">
                 <div class="settings-item-title">注册后自动同步</div>
-                <div class="settings-item-desc">批量注册任务完成后自动将成功账号推送到 kiro.rs</div>
+                <div class="settings-item-desc">单个账号注册成功后立即在后台推送到 kiro.rs</div>
               </div>
               <div class="settings-item-action">
                 <label style="cursor:pointer;">
@@ -849,6 +849,10 @@
             <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">域名探索比例(%)</label>
               <input type="number" id="cfg-domain-exploration-percent" value="20" min="0" max="100" class="form-input" style="height:38px;">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">代理出口探索比例(%)</label>
+              <input type="number" id="cfg-proxy-exploration-percent" value="50" min="0" max="100" class="form-input" style="height:38px;">
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block;">重试次数</label>
@@ -1348,6 +1352,36 @@
                   <span data-i18n="register.blinkBox">BlinkBoxApp</span>
                 </div>
               </label>
+            </div>
+          </div>
+
+          <!-- 代理出口累计统计 -->
+          <div id="proxy-egress-stats-card" class="card" style="margin-bottom:16px;padding:14px 16px;background:var(--bg-subtle);border:1px solid var(--border);box-shadow:none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;">
+              <div>
+                <div style="font-size:13px;font-weight:800;color:var(--text);">代理出口累计统计</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">按代理模板和出口 IP 累计；风控只冷却具体出口 IP，地区仅用于浏览器指纹绑定。</div>
+              </div>
+              <button id="btn-reset-proxy-egress-stats" type="button" onclick="resetProxyEgressStats()" class="btn btn-secondary btn-sm">重置统计</button>
+            </div>
+            <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--card);">
+              <table class="accounts-table" style="min-width:760px;font-size:12px;">
+                <thead>
+                  <tr>
+                    <th>出口 IP</th>
+                    <th>国家</th>
+                    <th>ISP / ASN</th>
+                    <th>尝试</th>
+                    <th>成功</th>
+                    <th>风控</th>
+                    <th>网络失败</th>
+                    <th>冷却至</th>
+                  </tr>
+                </thead>
+                <tbody id="proxy-egress-stats-body">
+                  <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:12px;">加载中...</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
 

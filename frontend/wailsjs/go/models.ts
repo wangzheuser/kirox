@@ -164,12 +164,45 @@ export namespace storage {
 	        this.updatedAt = source["updatedAt"];
 	    }
 	}
+	export class ProxyEgressStat {
+	    sourceKey: string;
+	    ip: string;
+	    countryCode: string;
+	    isp: string;
+	    asn: string;
+	    attemptCount: number;
+	    successCount: number;
+	    riskFailureCount: number;
+	    networkFailureCount: number;
+	    cooldownUntil?: string;
+	    updatedAt: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ProxyEgressStat(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceKey = source["sourceKey"];
+	        this.ip = source["ip"];
+	        this.countryCode = source["countryCode"];
+	        this.isp = source["isp"];
+	        this.asn = source["asn"];
+	        this.attemptCount = source["attemptCount"];
+	        this.successCount = source["successCount"];
+	        this.riskFailureCount = source["riskFailureCount"];
+	        this.networkFailureCount = source["networkFailureCount"];
+	        this.cooldownUntil = source["cooldownUntil"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
 	export class RegistrationConfig {
 	    count: number;
 	    successTarget: number;
 	    concurrency: number;
 	    delay: number;
 	    domainExplorationPercent: number;
+	    proxyExplorationPercent: number;
 	    retryCount: number;
 	    otpTimeout: number;
 	    emailProviders: string[];
@@ -189,6 +222,7 @@ export namespace storage {
 	        this.concurrency = source["concurrency"];
 	        this.delay = source["delay"];
 	        this.domainExplorationPercent = source["domainExplorationPercent"];
+	        this.proxyExplorationPercent = source["proxyExplorationPercent"];
 	        this.retryCount = source["retryCount"];
 	        this.otpTimeout = source["otpTimeout"];
 	        this.emailProviders = source["emailProviders"];
@@ -209,6 +243,7 @@ export namespace task {
 	    concurrency: number;
 	    delay: number;
 	    domainExplorationPercent: number;
+	    proxyExplorationPercent: number;
 	    retryCount: number;
 	    otpTimeout: number;
 	    reuseFailedEmail: boolean;
@@ -232,6 +267,7 @@ export namespace task {
 	        this.concurrency = source["concurrency"];
 	        this.delay = source["delay"];
 	        this.domainExplorationPercent = source["domainExplorationPercent"];
+	        this.proxyExplorationPercent = source["proxyExplorationPercent"];
 	        this.retryCount = source["retryCount"];
 	        this.otpTimeout = source["otpTimeout"];
 	        this.reuseFailedEmail = source["reuseFailedEmail"];

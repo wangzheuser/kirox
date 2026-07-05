@@ -317,6 +317,12 @@ type CloudMailProvider struct {
 // NewCloudMailProvider 创建一个 cloud-mail 邮箱（执行 addUser）
 func NewCloudMailProvider(config CloudMailConfig, name, domain string) (*CloudMailProvider, error) {
 	client := NewCloudMailClient(config)
+	created := false
+	defer func() {
+		if !created {
+			client.CloseIdleConnections()
+		}
+	}()
 
 	if domain == "" {
 		if len(config.Domains) > 0 {
@@ -352,6 +358,7 @@ func NewCloudMailProvider(config CloudMailConfig, name, domain string) (*CloudMa
 	}
 	log.Printf("[CloudMail] 邮箱创建完成: %s，初始最大 emailId: %d", addr, baseline)
 
+	created = true
 	return &CloudMailProvider{
 		client:            client,
 		address:           addr,

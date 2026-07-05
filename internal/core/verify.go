@@ -16,6 +16,10 @@ type verifyHTTPClient interface {
 	Do(req *fhttp.Request) (*fhttp.Response, error)
 }
 
+type idleConnectionCloser interface {
+	CloseIdleConnections()
+}
+
 var newVerifyHTTPClient = func(cfg *Config, chromeVer string) verifyHTTPClient {
 	proxy := ""
 	if cfg != nil {
@@ -32,6 +36,9 @@ func (r *Registrar) VerifyAlive(awsToken map[string]interface{}) map[string]inte
 		chromeVer = r.Identity.ChromeVer
 	}
 	client := newVerifyHTTPClient(r.Cfg, chromeVer)
+	if closer, ok := client.(idleConnectionCloser); ok {
+		defer closer.CloseIdleConnections()
+	}
 
 	refreshToken, _ := awsToken["refreshToken"].(string)
 

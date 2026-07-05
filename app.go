@@ -531,6 +531,19 @@ func (a *App) ResetEmailProviderStats() map[string]interface{} {
 	return map[string]interface{}{"success": true}
 }
 
+// GetProxyEgressStats 获取代理出口累计统计。
+func (a *App) GetProxyEgressStats() []storage.ProxyEgressStat {
+	return storage.GetProxyEgressStats()
+}
+
+// ResetProxyEgressStats 清空代理出口累计统计。
+func (a *App) ResetProxyEgressStats() map[string]interface{} {
+	if err := storage.ResetProxyEgressStats(); err != nil {
+		return map[string]interface{}{"error": err.Error()}
+	}
+	return map[string]interface{}{"success": true}
+}
+
 // GetLanguage 获取当前界面语言代码，空字符串表示未设置（前端应回落到 OS 语言）
 func (a *App) GetLanguage() string {
 	return storage.GetLanguage()

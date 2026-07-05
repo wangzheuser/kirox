@@ -84,6 +84,7 @@ func RefreshAccessToken(acc Account) (string, error) {
 		"grantType":    "refresh_token",
 	})
 	client := httputil.NewTLSClient("", true)
+	defer client.CloseIdleConnections()
 	req, _ := fhttp.NewRequest("POST", oidcEndpoint(acc.Region), bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
@@ -112,6 +113,7 @@ func doSubscriptionPost(acc Account, accessToken, path string, payload map[strin
 
 	body, _ := json.Marshal(payload)
 	client := httputil.NewTLSClient("", true)
+	defer client.CloseIdleConnections()
 	req, _ := fhttp.NewRequest("POST", url, bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")

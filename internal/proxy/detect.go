@@ -62,6 +62,7 @@ func Detect(proxyURL string) Info {
 			result <- Info{Scheme: scheme, Error: simplifyProxyErr(SanitizeError(err, runtimeProxyURL)), Templated: templated}
 			return
 		}
+		defer client.CloseIdleConnections()
 		req, _ := fhttp.NewRequest("GET", "http://ip-api.com/json/?lang=zh-CN&fields=status,message,country,regionName,city,isp,query", nil)
 		req.Header.Set("User-Agent", "kirox/proxy-check")
 		resp, err := client.Do(req)

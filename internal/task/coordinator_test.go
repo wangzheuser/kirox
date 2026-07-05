@@ -1043,7 +1043,7 @@ func TestRuntimeProgressSummaryIncludesLiveDiagnostics(t *testing.T) {
 	stats.RecordRegisteredSkip()
 	stats.RecordGraphFailure("Graph网络错误")
 	stats.RecordFailure("门户访问失败: connection reset", false, "")
-	stats.RecordPreflightProxySelectFailure("代理候选均为回避出口地区")
+	stats.RecordPreflightProxySelectFailure("代理候选均不可用或出口 IP 均在冷却中")
 
 	got := stats.ProgressSummary(3, 1, 2, 2)
 	for _, want := range []string{"进度汇总", "总计=3", "成功=1", "失败=2", "成功率=33.3%", "已注册跳过=1", "Graph失败=1", "网络错误=1", "passwordSet失败=1", "前置失败=1", "Top失败="} {
@@ -1186,20 +1186,20 @@ func TestResolveOutlookGraphRegistrationEmailImportedModeSkipsFailure(t *testing
 	}
 }
 
-func TestRuntimeProxyCountryStartPacerSpacesSameCountryOnly(t *testing.T) {
-	pacer := newRuntimeProxyCountryStartPacer(90 * time.Second)
+func TestRuntimeProxyEgressStartPacerSpacesSameIPOnly(t *testing.T) {
+	pacer := newRuntimeProxyEgressStartPacer(90 * time.Second)
 	now := time.Date(2026, 6, 30, 22, 40, 0, 0, time.Local)
 
-	if delay := pacer.ReserveDelay("JP", now); delay != 0 {
-		t.Fatalf("first JP start delay=%v, want 0", delay)
+	if delay := pacer.ReserveDelay("203.0.113.10", now); delay != 0 {
+		t.Fatalf("first IP start delay=%v, want 0", delay)
 	}
-	if delay := pacer.ReserveDelay("JP", now.Add(10*time.Second)); delay != 80*time.Second {
-		t.Fatalf("second JP start delay=%v, want 80s", delay)
+	if delay := pacer.ReserveDelay("203.0.113.10", now.Add(10*time.Second)); delay != 80*time.Second {
+		t.Fatalf("second same IP start delay=%v, want 80s", delay)
 	}
-	if delay := pacer.ReserveDelay("KR", now.Add(10*time.Second)); delay != 0 {
-		t.Fatalf("different country should not wait, delay=%v", delay)
+	if delay := pacer.ReserveDelay("203.0.113.11", now.Add(10*time.Second)); delay != 0 {
+		t.Fatalf("different IP should not wait, delay=%v", delay)
 	}
 	if delay := pacer.ReserveDelay("", now.Add(10*time.Second)); delay != 0 {
-		t.Fatalf("empty country should not be paced, delay=%v", delay)
+		t.Fatalf("empty IP should not be paced, delay=%v", delay)
 	}
 }

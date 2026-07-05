@@ -6,7 +6,7 @@
 
 ## 需求
 
-1. 批量注册任务完成后，自动将本批次成功账号推送到 kiro.rs 的 `POST /api/admin/credentials` 接口
+1. 单个账号注册成功并落盘后，立即异步推送到 kiro.rs 的 `POST /api/admin/credentials` 接口
 2. 账号池页面新增"同步到 kiro.rs"按钮，点击时全量推送所有账号
 3. 在设置页面配置 kiro.rs 的 API 地址、API Key 和自动同步开关
 
@@ -14,9 +14,9 @@
 
 | 决策点 | 选择 | 理由 |
 |---|---|---|
-| 同步触发时机 | 整个批量任务完成后一次性同步 | 简单可靠，避免逐条调用的网络开销 |
+| 同步触发时机 | 单个账号注册成功后立即后台入队同步 | 尽快进入 kiro.rs，避免等待整批任务结束 |
 | 失败处理 | 弹窗通知 + 自动重试一次 | 平衡用户感知与自动化 |
-| 同步范围 | 全量推送，kiro.rs 侧去重 | 最简单，无需本地维护同步状态 |
+| 同步范围 | 自动同步单账号；手动同步支持未同步/全量 | 自动链路及时，手动链路兜底 |
 | 自动同步控制 | 设置页开关 | 用户可控 |
 | 架构方案 | Go 后端直接调用 | 符合现有项目模式，后端驱动业务逻辑 |
 
@@ -33,7 +33,7 @@
 │                         │                           │
 │  ┌──────────────────────┼───────────────────┐      │
 │  │ coordinator.go       │                   │      │
-│  │ (任务完成后触发同步) ▼                   │      │
+│  │ (单号成功后入队同步) ▼                   │      │
 │  │              ┌──────────────┐            │      │
 │  │              │ kirorsync    │            │      │
 │  │              │ (同步模块)   │            │      │
@@ -90,14 +90,17 @@ type SyncDetail struct {
     Error        string `json:"error,omitempty"`
 }
 
-// SyncAccounts 将账号列表逐条推送到 kiro.rs，失败项自动重试一次。
+// SyncAccounts 将账号列表逐条推送到 kiro.rs，失败项自动重试一次；忙时返回错误。
 func SyncAccounts(apiURL, apiKey string, accounts []map[string]interface{}) SyncResult
+
+// SyncAccountsBlocking 等待当前同步结束后执行，用于自动同步队列避免丢单。
+func SyncAccountsBlocking(apiURL, apiKey string, accounts []map[string]interface{}) SyncResult
 
 // TestConnection 测试 kiro.rs 连通性和认证有效性（调用 GET /api/admin/credentials）。
 func TestConnection(apiURL, apiKey string) error
 ```
 
-**并发保护：** 模块内部维护一个 `sync.Mutex`，防止自动同步和手动同步并发执行。若已有同步在进行中，后续调用立即返回 `SyncResult{Error: "同步正在进行中"}`。
+**并发保护：** 模块内部维护互斥状态，防止自动同步和手动同步并发执行。手动同步沿用忙时返回 `SyncResult{Error: "同步正在进行中"}`；自动同步队列使用阻塞入口等待当前同步结束后继续执行，避免高并发成功时漏同步。
 
 字段映射：
 
@@ -117,36 +120,24 @@ func TestConnection(apiURL, apiKey string) error
 1. 遍历账号，构造请求体（跳过 refreshToken 为空的账号）
 2. 逐条 POST 到 `{apiURL}/api/admin/credentials`（kiro.rs 无批量接口）
 3. 单条超时 10s；收集失败项（仅网络错误和 5xx 触发重试，401/400 不重试）
-4. 对可重试失败项等待 2s 后统一重试一次
+4. 对可重试失败项在当前账号上立即重试一次
 5. 返回 SyncResult
 
 ### 3. 任务协调器 (`internal/task/coordinator.go`)
 
 **事件通知机制：** `task` 包不依赖 Wails runtime。在 `Manager` 上注入一个回调函数 `OnSyncResult func(SyncResult)`，由 `app.go` 在应用启动时设置，回调内部调用 `wailsRuntime.EventsEmit`。
 
-在 `runBatch` 函数末尾（统计日志打印后）插入：
+在单个注册结果成功保存到 `accounts.json` 后立即入队：
 
 ```go
-if storage.GetKiroRSAutoSync() && storage.GetKiroRSAPIURL() != "" {
-    accounts, _ := data.LoadAccounts(outDir)  // 本批次成功账号
-    if len(accounts) > 0 {
-        log.Printf("[Kiro] 开始自动同步 %d 个账号到 kiro.rs", len(accounts))
-        result := kirorsync.SyncAccounts(
-            storage.GetKiroRSAPIURL(),
-            storage.GetKiroRSAPIKey(),
-            accounts,
-        )
-        log.Printf("[Kiro] kiro.rs 同步完成: 成功 %d / 失败 %d", result.Success, result.Failed)
-        if Manager.OnSyncResult != nil {
-            Manager.OnSyncResult(result)
-        }
-    }
+if err := data.SaveKiroSuccess(result, outDir); err == nil {
+    enqueueKiroRSAutoSyncResult(outDir, result)
 }
 ```
 
 **数据源说明：**
-- 自动同步：`data.LoadAccounts(outDir)` — 当前批次输出目录的 `accounts.json`（仅本批次成功账号）
-- 手动同步：`data.LoadAccounts(storage.GetResultOutputDir())` — 全量账号池（所有历史成功账号）
+- 自动同步：当前成功邮箱从 `data.LoadAccounts(outDir)` 中重新读取落盘账号快照，然后提交后台串行队列
+- 手动同步：`data.LoadAccounts(storage.GetResultOutputDir())` — 账号池未同步或全量账号
 - 两者数据结构一致，均为 `SaveKiroSuccess` 写入的 JSON 数组
 
 ### 4. App 绑定层 (`app.go`)
@@ -201,10 +192,10 @@ async function syncAccountPoolToKiroRS() { ... }
 
 - API 地址为空时：自动同步静默跳过，手动同步返回错误提示
 - API Key 无效时：kiro.rs 返回 401，记录到 SyncDetail.Error，不重试
-- 网络超时/5xx：单条请求 10s 超时，失败后进入重试队列（等待 2s 后重试一次）
+- 网络超时/5xx：单条请求 10s 超时，当前账号立即重试一次
 - 400 错误（参数无效）：不重试，直接记录失败
 - refreshToken 重复：kiro.rs 侧去重处理，kirox 视为成功
-- 并发保护：同步模块内部互斥，同一时刻只允许一个同步任务执行
+- 并发保护：同步模块内部互斥；自动同步通过后台串行队列等待执行，不跳过待同步账号
 
 ## 安全考虑
 

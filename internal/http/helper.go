@@ -112,6 +112,25 @@ func chromeClientProfile(version string) profiles.ClientProfile {
 
 var newTLSClientWithTimeout = NewTLSClientWithTimeout
 
+func defaultTLSClientTransportOptions() *tls_client.TransportOptions {
+	idleTimeout := 10 * time.Second
+	return &tls_client.TransportOptions{
+		IdleConnTimeout:     &idleTimeout,
+		MaxIdleConns:        32,
+		MaxIdleConnsPerHost: 4,
+	}
+}
+
+func oneShotTLSClientTransportOptions() *tls_client.TransportOptions {
+	idleTimeout := time.Second
+	return &tls_client.TransportOptions{
+		IdleConnTimeout:     &idleTimeout,
+		MaxIdleConns:        0,
+		MaxIdleConnsPerHost: -1,
+		DisableKeepAlives:   true,
+	}
+}
+
 // NewTLSClient 创建带 TLS 指纹伪装的 HTTP 客户端。
 func NewTLSClient(proxy string, followRedirect bool, chromeVer ...string) tls_client.HttpClient {
 	client, err := newTLSClientWithTimeout(proxy, followRedirect, 60, chromeVer...)
@@ -123,6 +142,16 @@ func NewTLSClient(proxy string, followRedirect bool, chromeVer ...string) tls_cl
 
 // NewTLSClientWithTimeout 创建带 TLS 指纹伪装和自定义超时的 HTTP 客户端。
 func NewTLSClientWithTimeout(proxy string, followRedirect bool, timeoutSeconds int, chromeVer ...string) (tls_client.HttpClient, error) {
+	return newTLSClientWithTransportOptions(proxy, followRedirect, timeoutSeconds, defaultTLSClientTransportOptions(), chromeVer...)
+}
+
+// NewOneShotTLSClientWithTimeout 创建短生命周期 TLS 客户端。
+// 用于代理候选探测等单请求场景，禁用 keep-alive，避免大量短任务占住本地代理连接。
+func NewOneShotTLSClientWithTimeout(proxy string, followRedirect bool, timeoutSeconds int, chromeVer ...string) (tls_client.HttpClient, error) {
+	return newTLSClientWithTransportOptions(proxy, followRedirect, timeoutSeconds, oneShotTLSClientTransportOptions(), chromeVer...)
+}
+
+func newTLSClientWithTransportOptions(proxy string, followRedirect bool, timeoutSeconds int, transportOptions *tls_client.TransportOptions, chromeVer ...string) (tls_client.HttpClient, error) {
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = 60
 	}
@@ -139,6 +168,9 @@ func NewTLSClientWithTimeout(proxy string, followRedirect bool, timeoutSeconds i
 		tls_client.WithTimeoutSeconds(timeoutSeconds),
 		tls_client.WithClientProfile(profile),
 		tls_client.WithInsecureSkipVerify(),
+	}
+	if transportOptions != nil {
+		opts = append(opts, tls_client.WithTransportOptions(transportOptions))
 	}
 	if !followRedirect {
 		opts = append(opts, tls_client.WithNotFollowRedirects())

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestSyncAccountsTreatsExistingCredentialAsSuccess(t *testing.T) {
@@ -38,6 +39,66 @@ func TestSyncAccountsTreatsExistingCredentialAsSuccess(t *testing.T) {
 	}
 	if !strings.Contains(result.Details[0].Error, "已存在") {
 		t.Fatalf("detail should retain existing-credential hint: %#v", result.Details[0])
+	}
+}
+
+func TestSyncAccountsBlockingWaitsForActiveSync(t *testing.T) {
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	seenEmails := make(chan string, 2)
+	var requestCount int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/admin/credentials" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		var payload map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		email, _ := payload["email"].(string)
+		seenEmails <- email
+		if atomic.AddInt32(&requestCount, 1) == 1 {
+			close(firstStarted)
+			<-releaseFirst
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"success":true,"credentialId":1,"email":%q,"balance":{"ok":true}}`, email)
+	}))
+	defer server.Close()
+
+	firstDone := make(chan SyncResult, 1)
+	go func() {
+		firstDone <- SyncAccounts(server.URL, "test-key", []map[string]interface{}{
+			{"email": "first@example.com", "refreshToken": "refresh-1"},
+		})
+	}()
+	<-firstStarted
+
+	secondDone := make(chan SyncResult, 1)
+	go func() {
+		secondDone <- SyncAccountsBlocking(server.URL, "test-key", []map[string]interface{}{
+			{"email": "second@example.com", "refreshToken": "refresh-2"},
+		})
+	}()
+
+	select {
+	case result := <-secondDone:
+		t.Fatalf("blocking sync returned before active sync completed: %#v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseFirst)
+	firstResult := <-firstDone
+	secondResult := <-secondDone
+	if firstResult.Error != "" || firstResult.Success != 1 {
+		t.Fatalf("first sync failed: %#v", firstResult)
+	}
+	if secondResult.Error != "" || secondResult.Success != 1 {
+		t.Fatalf("second sync failed: %#v", secondResult)
+	}
+	if firstEmail, secondEmail := <-seenEmails, <-seenEmails; firstEmail != "first@example.com" || secondEmail != "second@example.com" {
+		t.Fatalf("blocking sync should run after active sync, got %q then %q", firstEmail, secondEmail)
 	}
 }
 

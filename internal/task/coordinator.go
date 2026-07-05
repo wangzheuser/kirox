@@ -486,25 +486,25 @@ func shouldEnableRegistrarStartPacing(concurrency int, proxyMode string, rawProx
 	return false
 }
 
-type runtimeProxyCountryStartPacer struct {
+type runtimeProxyEgressStartPacer struct {
 	mu        sync.Mutex
 	step      time.Duration
 	nextStart map[string]time.Time
 }
 
-func newRuntimeProxyCountryStartPacer(step time.Duration) *runtimeProxyCountryStartPacer {
-	return &runtimeProxyCountryStartPacer{
+func newRuntimeProxyEgressStartPacer(step time.Duration) *runtimeProxyEgressStartPacer {
+	return &runtimeProxyEgressStartPacer{
 		step:      step,
 		nextStart: make(map[string]time.Time),
 	}
 }
 
-func (p *runtimeProxyCountryStartPacer) ReserveDelay(countryCode string, now time.Time) time.Duration {
+func (p *runtimeProxyEgressStartPacer) ReserveDelay(egressIP string, now time.Time) time.Duration {
 	if p == nil || p.step <= 0 {
 		return 0
 	}
-	countryCode = normalizeRuntimeProxyCountryCode(countryCode)
-	if countryCode == "" {
+	egressIP = strings.TrimSpace(egressIP)
+	if egressIP == "" {
 		return 0
 	}
 	p.mu.Lock()
@@ -512,14 +512,33 @@ func (p *runtimeProxyCountryStartPacer) ReserveDelay(countryCode string, now tim
 	if p.nextStart == nil {
 		p.nextStart = make(map[string]time.Time)
 	}
-	next := p.nextStart[countryCode]
+	next := p.nextStart[egressIP]
 	if next.IsZero() || !now.Before(next) {
-		p.nextStart[countryCode] = now.Add(p.step)
+		p.nextStart[egressIP] = now.Add(p.step)
 		return 0
 	}
 	delay := next.Sub(now)
-	p.nextStart[countryCode] = next.Add(p.step)
+	p.nextStart[egressIP] = next.Add(p.step)
 	return delay
+}
+
+type taskIdleConnectionCloser interface {
+	CloseIdleConnections()
+}
+
+func closeTaskConfigIdleConnections(cfg *core.Config) {
+	if cfg == nil {
+		return
+	}
+	if closer, ok := cfg.TempEmailService.(taskIdleConnectionCloser); ok {
+		closer.CloseIdleConnections()
+	}
+	if closer, ok := any(cfg.MoeMailProvider).(taskIdleConnectionCloser); ok {
+		closer.CloseIdleConnections()
+	}
+	if closer, ok := any(cfg.CloudMailProvider).(taskIdleConnectionCloser); ok {
+		closer.CloseIdleConnections()
+	}
 }
 
 // StartTaskRequest 启动任务请求
@@ -529,6 +548,7 @@ type StartTaskRequest struct {
 	Concurrency              int                              `json:"concurrency"`
 	Delay                    int                              `json:"delay"`
 	DomainExplorationPercent int                              `json:"domainExplorationPercent"`
+	ProxyExplorationPercent  int                              `json:"proxyExplorationPercent"`
 	RetryCount               int                              `json:"retryCount"`
 	OTPTimeout               int                              `json:"otpTimeout"`
 	ReuseFailedEmail         bool                             `json:"reuseFailedEmail"`
@@ -870,6 +890,7 @@ func recycleReusableFailedEmail(req StartTaskRequest, pool *reusableEmailPool, p
 // StartTask 公开方法（包装器）
 func StartTask(req StartTaskRequest) map[string]interface{} {
 	req.DomainExplorationPercent = clampDomainExplorationPercent(req.DomainExplorationPercent)
+	req.ProxyExplorationPercent = clampDomainExplorationPercent(req.ProxyExplorationPercent)
 	return startTask(req)
 }
 
@@ -1468,11 +1489,6 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			return true
 		}
 	}
-	var batchSuccessMu sync.Mutex
-	batchSuccessEmails := make([]string, 0, successTarget)
-	batchSuccessResults := make(map[string]map[string]interface{})
-	batchSuccessSet := make(map[string]struct{})
-
 	// 共享账号池（并发安全），goroutine 动态领取账号（仅 Outlook 模式使用）
 	var accountPoolMu sync.Mutex
 	accountPoolIdx := 0
@@ -1615,8 +1631,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 	var otpKillOnce sync.Once
 	postPasswordSuspendedRegions := make(map[string]int)
 	var postPasswordSuspendedRegionsMu sync.Mutex
-	runtimeProxyRiskCountries := newRuntimeProxyCountryRiskTracker()
-	runtimeProxyCountryStartPacer := newRuntimeProxyCountryStartPacer(runtimeProxyCountryStartPacingStep)
+	runtimeProxyEgressStartPacer := newRuntimeProxyEgressStartPacer(runtimeProxyCountryStartPacingStep)
 	doTask := func(i int) {
 		select {
 		case <-Manager.stopCh:
@@ -1625,6 +1640,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		}
 
 		taskCfg := *taskConfig
+		defer closeTaskConfigIdleConnections(&taskCfg)
 		emailProvider, selectorErr := providerSelector.NextWithContext(taskCtx)
 		if selectorErr != nil {
 			log.Printf("[Kiro][%d/%d] 选择邮箱渠道失败: %v", i+1, displayTotal, selectorErr)
@@ -1831,12 +1847,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 Mailporary 邮箱", i+1, displayTotal)
 				service := email.NewMailporaryService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("Mailporary", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("Mailporary", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "emailnator" {
@@ -1845,12 +1861,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 Emailnator 邮箱", i+1, displayTotal)
 				service := email.NewEmailnatorService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("Emailnator", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("Emailnator", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "mailgw" {
@@ -1859,12 +1875,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 mail.gw 邮箱", i+1, displayTotal)
 				service := email.NewMailGWService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("mail.gw", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("mail.gw", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "mailtm" {
@@ -1873,12 +1889,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 mail.tm 邮箱", i+1, displayTotal)
 				service := email.NewMailTMService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("mail.tm", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("mail.tm", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "tempmail_lol" {
@@ -1887,12 +1903,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 TempMail.lol 邮箱", i+1, displayTotal)
 				service := email.NewTempMailLOLService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("TempMail.lol", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMail.lol", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "guerrillamail" {
@@ -1901,12 +1917,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 GuerrillaMail 邮箱", i+1, displayTotal)
 				service := email.NewGuerrillaMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("GuerrillaMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("GuerrillaMail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "mailtemp" {
@@ -1915,12 +1931,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 MailTemp 邮箱", i+1, displayTotal)
 				service := email.NewMailTempService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("MailTemp", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MailTemp", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "tempmail_plus" {
@@ -1929,12 +1945,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 TempMail.plus 邮箱", i+1, displayTotal)
 				service := email.NewTempMailPlusService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("TempMail.plus", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMail.plus", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "inboxkitten" {
@@ -1943,12 +1959,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 InboxKitten 邮箱", i+1, displayTotal)
 				service := email.NewInboxKittenService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("InboxKitten", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("InboxKitten", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "inboxes" {
@@ -1957,12 +1973,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 Inboxes 邮箱", i+1, displayTotal)
 				service := email.NewInboxesService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("Inboxes", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("Inboxes", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "freecustom" {
@@ -1971,12 +1987,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 FreeCustom.Email 邮箱", i+1, displayTotal)
 				service := email.NewFreeCustomService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("FreeCustom.Email", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("FreeCustom.Email", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if channel, ok := email.FreeCustomFixedDomainChannel(emailProvider); ok {
@@ -1985,12 +2001,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 %s 邮箱", i+1, displayTotal, channel.Label)
 				service := email.NewFreeCustomFixedDomainService(taskCfg.EmailProxy, channel.Domain)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry(channel.Label, service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure(channel.Label, err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "dropmail" {
@@ -1999,12 +2015,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 DropMail 邮箱", i+1, displayTotal)
 				service := email.NewDropMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("DropMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("DropMail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "mailcatch" {
@@ -2013,12 +2029,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 MailCatch 邮箱", i+1, displayTotal)
 				service := email.NewMailCatchService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("MailCatch", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MailCatch", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "tempmailo" {
@@ -2027,12 +2043,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 TempMailo 邮箱", i+1, displayTotal)
 				service := email.NewTempMailoService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("TempMailo", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMailo", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "smailpro" {
@@ -2042,6 +2058,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				log.Printf("[Kiro][%d/%d] 创建 SmailPro 邮箱", i+1, displayTotal)
 				service, address, err := createTempEmailPreferringSuccessfulDomains(taskCtx, "smailpro", "SmailPro", i+1, displayTotal, req.DomainExplorationPercent, func() (email.TempEmailService, string, error) {
 					service := email.NewSmailProService(taskCfg.EmailProxy)
+					taskCfg.TempEmailService = service
 					address, err := createTempEmailWithRetry("SmailPro", service.CreateWithError)
 					return service, address, err
 				})
@@ -2058,12 +2075,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 TempMailbox 邮箱", i+1, displayTotal)
 				service := email.NewTempMailboxService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("TempMailbox", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMailbox", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "minuteinbox" {
@@ -2072,12 +2089,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 MinuteInbox 邮箱", i+1, displayTotal)
 				service := email.NewMinuteInboxService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("MinuteInbox", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MinuteInbox", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "generator_email" {
@@ -2086,12 +2103,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 Generator.Email 邮箱", i+1, displayTotal)
 				service := email.NewGeneratorEmailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("Generator.Email", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("Generator.Email", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "mailtowin" {
@@ -2100,12 +2117,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 MailToWin 邮箱", i+1, displayTotal)
 				service := email.NewMailToWinService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("MailToWin", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MailToWin", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "mail2me" {
@@ -2114,12 +2131,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 Mail2Me 邮箱", i+1, displayTotal)
 				service := email.NewMail2MeService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("Mail2Me", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("Mail2Me", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "pickmemail" {
@@ -2128,12 +2145,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 PickMeMail 邮箱", i+1, displayTotal)
 				service := email.NewPickMeMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("PickMeMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("PickMeMail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "maximail" {
@@ -2142,12 +2159,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 MaxiMail 邮箱", i+1, displayTotal)
 				service := email.NewMaxiMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("MaxiMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MaxiMail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "emlpro" {
@@ -2156,12 +2173,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 EmlPro 邮箱", i+1, displayTotal)
 				service := email.NewEmlProService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("EmlPro", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("EmlPro", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "freeml" {
@@ -2170,12 +2187,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 FreeML 邮箱", i+1, displayTotal)
 				service := email.NewFreeMLService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("FreeML", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("FreeML", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "emlhub" {
@@ -2184,12 +2201,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 EmlHub 邮箱", i+1, displayTotal)
 				service := email.NewEmlHubService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("EmlHub", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("EmlHub", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "emltmp" {
@@ -2198,12 +2215,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 EmlTmp 邮箱", i+1, displayTotal)
 				service := email.NewEmlTmpService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("EmlTmp", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("EmlTmp", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "mailpwr" {
@@ -2212,12 +2229,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 MailPwr 邮箱", i+1, displayTotal)
 				service := email.NewMailPwrService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("MailPwr", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MailPwr", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "tenmail" {
@@ -2226,12 +2243,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 10Mail 邮箱", i+1, displayTotal)
 				service := email.NewTenMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("10Mail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("10Mail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "dropmail_me" {
@@ -2240,12 +2257,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 DropMail.me 邮箱", i+1, displayTotal)
 				service := email.NewDropMailMeService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("DropMail.me", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("DropMail.me", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "mimimail" {
@@ -2254,12 +2271,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 MimiMail 邮箱", i+1, displayTotal)
 				service := email.NewMimiMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("MimiMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("MimiMail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "pickmail" {
@@ -2268,12 +2285,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 PickMail 邮箱", i+1, displayTotal)
 				service := email.NewPickMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("PickMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("PickMail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "spymail" {
@@ -2282,12 +2299,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 SpyMail 邮箱", i+1, displayTotal)
 				service := email.NewSpyMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("SpyMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("SpyMail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "yomail" {
@@ -2296,12 +2313,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 YoMail 邮箱", i+1, displayTotal)
 				service := email.NewYoMailService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("YoMail", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("YoMail", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "tmio_bltiwd" {
@@ -2310,12 +2327,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 TempMailIO bltiwd.com 邮箱", i+1, displayTotal)
 				service := email.NewTempMailIOBltiwdService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("TempMailIO bltiwd.com", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMailIO bltiwd.com", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "tmio_wnbaldwy" {
@@ -2324,12 +2341,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 TempMailIO wnbaldwy.com 邮箱", i+1, displayTotal)
 				service := email.NewTempMailIOWnbaldwyService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("TempMailIO wnbaldwy.com", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMailIO wnbaldwy.com", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "tmio_bwmyga" {
@@ -2338,12 +2355,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 TempMailIO bwmyga.com 邮箱", i+1, displayTotal)
 				service := email.NewTempMailIOBwmygaService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("TempMailIO bwmyga.com", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMailIO bwmyga.com", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "tmio_ozsaip" {
@@ -2352,12 +2369,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 TempMailIO ozsaip.com 邮箱", i+1, displayTotal)
 				service := email.NewTempMailIOOzsaipService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("TempMailIO ozsaip.com", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("TempMailIO ozsaip.com", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "gonebox" {
@@ -2366,12 +2383,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 GoneBox 邮箱", i+1, displayTotal)
 				service := email.NewGoneBoxService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("GoneBox", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("GoneBox", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "openinbox" {
@@ -2380,12 +2397,12 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			} else {
 				log.Printf("[Kiro][%d/%d] 创建 OpenInbox 邮箱", i+1, displayTotal)
 				service := email.NewOpenInboxService(taskCfg.EmailProxy)
+				taskCfg.TempEmailService = service
 				address, err := createTempEmailWithRetry("OpenInbox", service.CreateWithError)
 				if err != nil {
 					recordEmailCreateFailure("OpenInbox", err)
 					return
 				}
-				taskCfg.TempEmailService = service
 				currentEmail = address
 			}
 		} else if emailProvider == "blinkbox" {
@@ -2395,6 +2412,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				log.Printf("[Kiro][%d/%d] 创建 BlinkBoxApp 邮箱", i+1, displayTotal)
 				service, address, err := createTempEmailPreferringSuccessfulDomains(taskCtx, "blinkbox", "BlinkBoxApp", i+1, displayTotal, req.DomainExplorationPercent, func() (email.TempEmailService, string, error) {
 					service := email.NewBlinkBoxService(taskCfg.EmailProxy)
+					taskCfg.TempEmailService = service
 					address, err := createTempEmailWithRetry("BlinkBoxApp", service.CreateWithError)
 					return service, address, err
 				})
@@ -2458,7 +2476,8 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		currentClashAssisted := false
 		currentClashFingerprintPrefix := ""
 		currentPoolProxy := ""
-		currentRuntimeProxyCountry := ""
+		currentRuntimeProxySourceKey := ""
+		currentRuntimeProxyEgress := runtimeProxyEgressInfo{}
 	retryLoop:
 		for attempt := 0; attempt < maxAttempts; attempt++ {
 			// 每次重试前检查停止信号
@@ -2499,13 +2518,15 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			attemptCfg := taskCfg
 			runRegistrar := func(cfg *core.Config) map[string]interface{} {
 				reg := core.NewRegistrar(cfg)
+				defer reg.CloseIdleConnections()
 				reg.Ctx = taskCtx
 				reg.TaskLabel = fmt.Sprintf("%d/%d", i+1, displayTotal)
 				return reg.Run()
 			}
 			runAttempt := func() bool {
 				currentClashAssisted = false
-				currentRuntimeProxyCountry = ""
+				currentRuntimeProxySourceKey = ""
+				currentRuntimeProxyEgress = runtimeProxyEgressInfo{}
 				if clashEnabled {
 					clashMu.Lock()
 					defer clashMu.Unlock()
@@ -2572,21 +2593,24 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				}
 
 				var (
-					selection                proxy.Selection
-					countryCode              string
-					preferredProxyCountryHit bool
+					selection               proxy.Selection
+					egress                  runtimeProxyEgressInfo
+					preferredProxyEgressHit bool
 				)
 				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && proxy.HasURLTemplate(attemptCfg.Proxy) {
-					selection, countryCode, preferredProxyCountryHit, err = selectRuntimeProxyWithCountryPolicy(
+					currentRuntimeProxySourceKey = runtimeProxySourceKey(attemptCfg.Proxy)
+					selection, egress, preferredProxyEgressHit, err = selectRuntimeProxyWithStoredEgressPolicy(
 						taskCtx,
 						attemptCfg.Proxy,
 						proxy.DefaultRegisterSelectOptions(),
-						detectRuntimeProxyCountryCode,
-						preferredRuntimeProxyCountryMaxAttempts,
-						runtimeProxyRiskCountries,
-						true,
+						detectRuntimeProxyEgressInfo,
+						runtimeProxyEgressMaxAttempts,
+						req.ProxyExplorationPercent,
 					)
 				} else {
+					if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && strings.TrimSpace(attemptCfg.Proxy) != "" {
+						currentRuntimeProxySourceKey = runtimeProxySourceKey(attemptCfg.Proxy)
+					}
 					selection, err = proxy.SelectRuntimeProxy(taskCtx, attemptCfg.Proxy, proxy.DefaultRegisterSelectOptions())
 				}
 				if err != nil {
@@ -2628,29 +2652,34 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				}
 				if !currentClashAssisted {
 					var geoErr error
-					if countryCode == "" {
-						countryCode, geoErr = detectRuntimeProxyCountryCode(taskCtx, attemptCfg.Proxy)
-					} else if preferredProxyCountryHit {
-						log.Printf("[Kiro][%d/%d] 运行时代理命中优选出口地区: country=%s", i+1, displayTotal, countryCode)
+					if egress.IP == "" {
+						egress, geoErr = detectRuntimeProxyEgressInfo(taskCtx, attemptCfg.Proxy)
+						egress = normalizeRuntimeProxyEgressInfo(egress)
+					} else if preferredProxyEgressHit {
+						log.Printf("[Kiro][%d/%d] 运行时代理命中历史成功出口 IP: ip=%s country=%s", i+1, displayTotal, egress.IP, egress.CountryCode)
 					} else if proxyMode == storage.ProxyModeNormal && selection.Templated {
-						log.Printf("[Kiro][%d/%d] 运行时代理未命中优选出口地区，回退首个可用出口: country=%s", i+1, displayTotal, countryCode)
+						log.Printf("[Kiro][%d/%d] 运行时代理使用探索/回退出口 IP: ip=%s country=%s", i+1, displayTotal, egress.IP, egress.CountryCode)
 					}
 					if geoErr != nil {
-						log.Printf("[Kiro][%d/%d] 运行时代理出口地区探测失败，保留默认浏览器地区: %v", i+1, displayTotal, geoErr)
-					} else if locale, ok := applyRuntimeProxyCountryLocaleToConfigForSubject(&attemptCfg, countryCode, fingerprintSubjectForTask(&attemptCfg, currentEmail)); ok {
-						currentRuntimeProxyCountry = normalizeRuntimeProxyCountryCode(countryCode)
+						log.Printf("[Kiro][%d/%d] 运行时代理出口探测失败，保留默认浏览器地区: %v", i+1, displayTotal, geoErr)
+					} else if locale, ok := applyRuntimeProxyCountryLocaleToConfigForSubject(&attemptCfg, egress.CountryCode, fingerprintSubjectForTask(&attemptCfg, currentEmail)); ok {
+						currentRuntimeProxyEgress = egress
 						log.Printf("[Kiro][%d/%d] 运行时代理出口地区已绑定: country=%s acceptLanguage=%s, i18next=%s, timeZone=%d",
-							i+1, displayTotal, countryCode, locale.AcceptLanguage, locale.I18Next, locale.TimeZone)
+							i+1, displayTotal, egress.CountryCode, locale.AcceptLanguage, locale.I18Next, locale.TimeZone)
 					} else {
-						currentRuntimeProxyCountry = normalizeRuntimeProxyCountryCode(countryCode)
-						log.Printf("[Kiro][%d/%d] 运行时代理出口地区 %s 暂无地区指纹映射，保留默认浏览器地区", i+1, displayTotal, countryCode)
+						currentRuntimeProxyEgress = egress
+						if egress.CountryCode == "" {
+							log.Printf("[Kiro][%d/%d] 运行时代理出口 IP 已识别但无地区信息: ip=%s，保留默认浏览器地区", i+1, displayTotal, egress.IP)
+						} else {
+							log.Printf("[Kiro][%d/%d] 运行时代理出口地区 %s 暂无地区指纹映射，保留默认浏览器地区", i+1, displayTotal, egress.CountryCode)
+						}
 					}
 				}
-				if currentRuntimeProxyCountry != "" {
-					delay := runtimeProxyCountryStartPacer.ReserveDelay(currentRuntimeProxyCountry, time.Now())
+				if currentRuntimeProxyEgress.IP != "" {
+					delay := runtimeProxyEgressStartPacer.ReserveDelay(currentRuntimeProxyEgress.IP, time.Now())
 					if delay > 0 {
-						log.Printf("[Kiro][%d/%d] 同出口国家真实注册启动节流: country=%s, 等待 %ds，避免短时间并发触发风控",
-							i+1, displayTotal, currentRuntimeProxyCountry, int(delay.Seconds()))
+						log.Printf("[Kiro][%d/%d] 同出口 IP 真实注册启动节流: ip=%s, 等待 %ds，避免短时间并发触发风控",
+							i+1, displayTotal, currentRuntimeProxyEgress.IP, int(delay.Seconds()))
 						timer := time.NewTimer(delay)
 						select {
 						case <-taskCtx.Done():
@@ -2672,6 +2701,11 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				}
 				if !reserveBeforeRegistrar() {
 					return false
+				}
+				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxySourceKey != "" && currentRuntimeProxyEgress.IP != "" {
+					if err := recordRuntimeProxyEgressAttempt(currentRuntimeProxySourceKey, currentRuntimeProxyEgress); err != nil {
+						log.Printf("[Kiro][%d/%d] 记录代理出口尝试统计失败: ip=%s err=%v", i+1, displayTotal, currentRuntimeProxyEgress.IP, err)
+					}
 				}
 				result = runRegistrar(&attemptCfg)
 				return true
@@ -2699,8 +2733,10 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				if proxyMode == storage.ProxyModePool && currentPoolProxy != "" {
 					proxy.RecordPoolProxySuccess(currentPoolProxy)
 				}
-				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxyCountry != "" {
-					runtimeProxyRiskCountries.recordSuccess(currentRuntimeProxyCountry)
+				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxySourceKey != "" && currentRuntimeProxyEgress.IP != "" {
+					if err := recordRuntimeProxyEgressSuccess(currentRuntimeProxySourceKey, currentRuntimeProxyEgress); err != nil {
+						log.Printf("[Kiro][%d/%d] 记录代理出口成功统计失败: ip=%s err=%v", i+1, displayTotal, currentRuntimeProxyEgress.IP, err)
+					}
 				}
 				break
 			}
@@ -2708,14 +2744,18 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			errorMsg, _ := result["error"].(string)
 			proxyNetworkErr := isProxyNetworkError(errorMsg)
 			clashRiskErr := isClashNodeRiskFailure(errorMsg)
-			if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxyCountry != "" && isRuntimeProxyCountryRiskFailure(errorMsg) {
-				countryCode, countryCount, cooling, until := runtimeProxyRiskCountries.recordRiskFailure(currentRuntimeProxyCountry)
-				if cooling {
-					log.Printf("[Kiro][%d/%d] 运行时代理地区触发注册/验活风控，短期冷却该出口国家: country=%s count=%d until=%s (%s)",
-						i+1, displayTotal, countryCode, countryCount, until.Format("15:04:05"), errorMsg)
-				} else {
-					log.Printf("[Kiro][%d/%d] 运行时代理地区触发注册/验活风控，累计: country=%s count=%d (%s)",
-						i+1, displayTotal, countryCode, countryCount, errorMsg)
+			if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxySourceKey != "" && currentRuntimeProxyEgress.IP != "" {
+				if isRuntimeProxyCountryRiskFailure(errorMsg) {
+					if err := recordRuntimeProxyEgressRiskFailure(currentRuntimeProxySourceKey, currentRuntimeProxyEgress); err != nil {
+						log.Printf("[Kiro][%d/%d] 记录代理出口风控统计失败: ip=%s err=%v", i+1, displayTotal, currentRuntimeProxyEgress.IP, err)
+					} else {
+						log.Printf("[Kiro][%d/%d] 运行时代理出口 IP 触发注册/验活风控，短期冷却该出口 IP: ip=%s country=%s (%s)",
+							i+1, displayTotal, currentRuntimeProxyEgress.IP, currentRuntimeProxyEgress.CountryCode, errorMsg)
+					}
+				} else if proxyNetworkErr {
+					if err := recordRuntimeProxyEgressNetworkFailure(currentRuntimeProxySourceKey, currentRuntimeProxyEgress); err != nil {
+						log.Printf("[Kiro][%d/%d] 记录代理出口网络失败统计失败: ip=%s err=%v", i+1, displayTotal, currentRuntimeProxyEgress.IP, err)
+					}
 				}
 			}
 			if currentClashAssisted && currentClashNode != "" {
@@ -3057,19 +3097,10 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			}
 		}
 		if success {
-			emailAddr, _ := result["email"].(string)
-			if strings.TrimSpace(emailAddr) != "" {
-				batchSuccessMu.Lock()
-				emailKey := strings.ToLower(strings.TrimSpace(emailAddr))
-				batchSuccessResults[emailKey] = result
-				if _, exists := batchSuccessSet[emailKey]; !exists {
-					batchSuccessSet[emailKey] = struct{}{}
-					batchSuccessEmails = append(batchSuccessEmails, emailAddr)
-				}
-				batchSuccessMu.Unlock()
-			}
 			if err := data.SaveKiroSuccess(result, outDir); err != nil {
 				log.Printf("[Kiro] 保存结果失败: %v", err)
+			} else {
+				enqueueKiroRSAutoSyncResult(outDir, result)
 			}
 		}
 		if successTargetMode && successCount >= successTarget {
@@ -3286,68 +3317,6 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 	}
 	log.Println("[Kiro] ═══════════════════════════════")
 
-	// 自动同步到 kiro.rs
-	if sucCount > 0 && storage.GetKiroRSAutoSync() && storage.GetKiroRSAPIURL() != "" {
-		batchSuccessMu.Lock()
-		currentBatchSuccessEmails := append([]string(nil), batchSuccessEmails...)
-		currentBatchSuccessResults := make(map[string]map[string]interface{}, len(batchSuccessResults))
-		for emailKey, result := range batchSuccessResults {
-			currentBatchSuccessResults[emailKey] = result
-		}
-		batchSuccessMu.Unlock()
-
-		accounts, loadErr := data.LoadAccounts(outDir)
-		if loadErr != nil {
-			log.Printf("[Kiro] 自动同步前读取账号文件失败: %v", loadErr)
-		}
-		selectedAccounts, missingEmails := selectAccountsByEmail(accounts, currentBatchSuccessEmails)
-		if len(missingEmails) > 0 {
-			log.Printf("[Kiro] 自动同步前检测到 %d 个成功账号尚未落盘，尝试补写: %s", len(missingEmails), strings.Join(missingEmails, ", "))
-			for _, missingEmail := range missingEmails {
-				emailKey := strings.ToLower(strings.TrimSpace(missingEmail))
-				result := currentBatchSuccessResults[emailKey]
-				if result == nil {
-					log.Printf("[Kiro] 自动同步补写失败，内存中缺少成功结果: %s", missingEmail)
-					continue
-				}
-				if err := data.SaveKiroSuccess(result, outDir); err != nil {
-					log.Printf("[Kiro] 自动同步补写账号失败 %s: %v", missingEmail, err)
-				}
-			}
-
-			accounts, loadErr = data.LoadAccounts(outDir)
-			if loadErr != nil {
-				log.Printf("[Kiro] 自动同步补写后读取账号文件失败: %v", loadErr)
-			}
-			selectedAccounts, missingEmails = selectAccountsByEmail(accounts, currentBatchSuccessEmails)
-			if len(missingEmails) > 0 {
-				log.Printf("[Kiro] 自动同步前仍缺失 %d 个成功账号: %s", len(missingEmails), strings.Join(missingEmails, ", "))
-			}
-		}
-		log.Printf("[Kiro] 自动同步账号校验: 注册成功 %d 个 / 本批唯一邮箱 %d 个 / 已落盘 %d 个 / 待同步 %d 个",
-			sucCount, len(currentBatchSuccessEmails), len(selectedAccounts), len(selectedAccounts))
-		if len(selectedAccounts) > 0 {
-			log.Printf("[Kiro] 开始自动同步 %d 个账号到 kiro.rs", len(selectedAccounts))
-			syncResult := kirorsync.SyncAccounts(
-				storage.GetKiroRSAPIURL(),
-				storage.GetKiroRSAPIKey(),
-				selectedAccounts,
-			)
-			updated, removedRejected, _, applyErr := applyKiroRSSyncResult(outDir, syncResult)
-			if applyErr != nil {
-				log.Printf("[Kiro] kiro.rs 同步状态更新失败: %v", applyErr)
-			} else if updated > 0 {
-				log.Printf("[Kiro] kiro.rs 同步状态已更新: %d 个账号标记为已同步", updated)
-			}
-			if removedRejected > 0 {
-				log.Printf("[Kiro] kiro.rs 自动同步已删除本地永久失效账号: %d 个", removedRejected)
-			}
-			log.Printf("[Kiro] kiro.rs 同步完成: 成功 %d / 失败 %d", syncResult.Success, syncResult.Failed)
-			if Manager.OnSyncResult != nil {
-				Manager.OnSyncResult(syncResult)
-			}
-		}
-	}
 }
 
 func selectAccountsByEmail(accounts []map[string]interface{}, emails []string) ([]map[string]interface{}, []string) {

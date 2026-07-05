@@ -2,212 +2,141 @@ package task
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"reg_go/internal/proxy"
+	"reg_go/internal/storage"
 )
 
-const runtimeProxyCountryEndpoint = "http://ip-api.com/json/?fields=status,message,countryCode"
-const preferredRuntimeProxyCountryMaxAttempts = 40
-const runtimeProxyCountryRiskCooldownAfter = 1
-const runtimeProxyCountryRiskCooldown = 10 * time.Minute
+const runtimeProxyEgressEndpoint = "http://ip-api.com/json/?fields=status,message,countryCode,query,isp,as"
+const runtimeProxyEgressMaxAttempts = 10
+const runtimeProxyEgressRiskCooldown = 10 * time.Minute
 
-type runtimeProxyCountryDetector func(context.Context, string) (string, error)
+type runtimeProxyEgressDetector func(context.Context, string) (runtimeProxyEgressInfo, error)
 
-var preferredRuntimeProxyCountryCodes = map[string]struct{}{
-	"KR": {},
-	"JP": {},
+type runtimeProxyEgressInfo struct {
+	IP          string
+	CountryCode string
+	ISP         string
+	ASN         string
 }
 
-var avoidedRuntimeProxyCountryCodes = map[string]struct{}{
-	"US": {},
-	"HK": {},
-	"SG": {},
-	"TW": {},
+type runtimeProxyEgressSelectionPolicy struct {
+	ExplorationPercent int
+	IsCooling          func(runtimeProxyEgressInfo) bool
+	HasSuccess         func(runtimeProxyEgressInfo) bool
 }
 
-func detectRuntimeProxyCountryCode(ctx context.Context, proxyURL string) (string, error) {
+func detectRuntimeProxyEgressInfo(ctx context.Context, proxyURL string) (runtimeProxyEgressInfo, error) {
 	proxyURL = strings.TrimSpace(proxyURL)
 	if proxyURL == "" {
-		return "", fmt.Errorf("proxy is empty")
+		return runtimeProxyEgressInfo{}, fmt.Errorf("proxy is empty")
 	}
 	u, err := url.Parse(proxyURL)
 	if err != nil {
-		return "", err
+		return runtimeProxyEgressInfo{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
-	client := &http.Client{
-		Timeout: 8 * time.Second,
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(u),
-		},
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, runtimeProxyCountryEndpoint, nil)
+	client, transport := newRuntimeProxyEgressHTTPClient(u, 8*time.Second)
+	defer transport.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, runtimeProxyEgressEndpoint, nil)
 	if err != nil {
-		return "", err
+		return runtimeProxyEgressInfo{}, err
 	}
 	req.Header.Set("User-Agent", "kirox-proxy-locale/1.0")
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return runtimeProxyEgressInfo{}, err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return "", fmt.Errorf("country endpoint HTTP %d", resp.StatusCode)
+		return runtimeProxyEgressInfo{}, fmt.Errorf("egress endpoint HTTP %d", resp.StatusCode)
 	}
-	return parseRuntimeProxyCountryCode(body)
+	return parseRuntimeProxyEgressInfo(body)
+}
+
+func newRuntimeProxyEgressHTTPClient(proxyURL *url.URL, timeout time.Duration) (*http.Client, *http.Transport) {
+	if timeout <= 0 {
+		timeout = 8 * time.Second
+	}
+	transport := &http.Transport{
+		Proxy:                 http.ProxyURL(proxyURL),
+		DialContext:           (&net.Dialer{Timeout: timeout, KeepAlive: -1}).DialContext,
+		DisableKeepAlives:     true,
+		MaxIdleConns:          0,
+		MaxIdleConnsPerHost:   -1,
+		IdleConnTimeout:       time.Second,
+		ResponseHeaderTimeout: timeout,
+	}
+	return &http.Client{Timeout: timeout, Transport: transport}, transport
 }
 
 func parseRuntimeProxyCountryCode(body []byte) (string, error) {
+	egress, err := parseRuntimeProxyEgressPayload(body, false)
+	if err != nil {
+		return "", err
+	}
+	if egress.CountryCode == "" {
+		return "", fmt.Errorf("country endpoint returned empty countryCode")
+	}
+	return egress.CountryCode, nil
+}
+
+func parseRuntimeProxyEgressInfo(body []byte) (runtimeProxyEgressInfo, error) {
+	return parseRuntimeProxyEgressPayload(body, true)
+}
+
+func parseRuntimeProxyEgressPayload(body []byte, requireIP bool) (runtimeProxyEgressInfo, error) {
 	var data struct {
 		Status      string `json:"status"`
 		Message     string `json:"message"`
 		CountryCode string `json:"countryCode"`
+		Query       string `json:"query"`
+		ISP         string `json:"isp"`
+		ASN         string `json:"as"`
 	}
 	if err := json.Unmarshal(body, &data); err != nil {
-		return "", err
+		return runtimeProxyEgressInfo{}, err
 	}
 	if strings.EqualFold(data.Status, "fail") {
 		if data.Message != "" {
-			return "", fmt.Errorf("%s", data.Message)
+			return runtimeProxyEgressInfo{}, fmt.Errorf("%s", data.Message)
 		}
-		return "", fmt.Errorf("country endpoint returned fail")
+		return runtimeProxyEgressInfo{}, fmt.Errorf("egress endpoint returned fail")
 	}
-	code := strings.ToUpper(strings.TrimSpace(data.CountryCode))
-	if code == "" {
-		return "", fmt.Errorf("country endpoint returned empty countryCode")
+	egress := runtimeProxyEgressInfo{
+		IP:          strings.TrimSpace(data.Query),
+		CountryCode: normalizeRuntimeProxyCountryCode(data.CountryCode),
+		ISP:         strings.TrimSpace(data.ISP),
+		ASN:         strings.TrimSpace(data.ASN),
 	}
-	return code, nil
+	if requireIP && egress.IP == "" {
+		return runtimeProxyEgressInfo{}, fmt.Errorf("egress endpoint returned empty query")
+	}
+	return egress, nil
 }
 
 func normalizeRuntimeProxyCountryCode(countryCode string) string {
 	return strings.ToUpper(strings.TrimSpace(countryCode))
 }
 
-func isPreferredRuntimeProxyCountryCode(countryCode string) bool {
-	_, ok := preferredRuntimeProxyCountryCodes[normalizeRuntimeProxyCountryCode(countryCode)]
-	return ok
-}
-
-func isAvoidedRuntimeProxyCountryCode(countryCode string) bool {
-	_, ok := avoidedRuntimeProxyCountryCodes[normalizeRuntimeProxyCountryCode(countryCode)]
-	return ok
-}
-
-func hasRuntimeProxyCountryLocale(countryCode string) bool {
-	_, ok := runtimeProxyBrowserLocaleForCountryCode(countryCode)
-	return ok
-}
-
-func isAllowedRuntimeProxyFallbackCountryCode(countryCode string) bool {
-	code := normalizeRuntimeProxyCountryCode(countryCode)
-	if code == "" || isAvoidedRuntimeProxyCountryCode(code) {
-		return false
-	}
-	return hasRuntimeProxyCountryLocale(code)
-}
-
-type runtimeProxyCountryRiskTracker struct {
-	mu            sync.Mutex
-	failures      map[string]int
-	cooldownUntil map[string]time.Time
-	cooldownAfter int
-	cooldown      time.Duration
-	now           func() time.Time
-}
-
-func newRuntimeProxyCountryRiskTracker() *runtimeProxyCountryRiskTracker {
-	return &runtimeProxyCountryRiskTracker{
-		failures:      make(map[string]int),
-		cooldownUntil: make(map[string]time.Time),
-		cooldownAfter: runtimeProxyCountryRiskCooldownAfter,
-		cooldown:      runtimeProxyCountryRiskCooldown,
-		now:           time.Now,
-	}
-}
-
-func (t *runtimeProxyCountryRiskTracker) isCooling(countryCode string) bool {
-	code := normalizeRuntimeProxyCountryCode(countryCode)
-	if t == nil || code == "" {
-		return false
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	until, ok := t.cooldownUntil[code]
-	if !ok {
-		return false
-	}
-	now := t.currentTimeLocked()
-	if !now.Before(until) {
-		delete(t.cooldownUntil, code)
-		return false
-	}
-	return true
-}
-
-func (t *runtimeProxyCountryRiskTracker) recordRiskFailure(countryCode string) (string, int, bool, time.Time) {
-	code := normalizeRuntimeProxyCountryCode(countryCode)
-	if t == nil || code == "" {
-		return "", 0, false, time.Time{}
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.failures == nil {
-		t.failures = make(map[string]int)
-	}
-	if t.cooldownUntil == nil {
-		t.cooldownUntil = make(map[string]time.Time)
-	}
-	t.failures[code]++
-	count := t.failures[code]
-	if count < t.cooldownAfter {
-		return code, count, false, time.Time{}
-	}
-	until := t.currentTimeLocked().Add(t.cooldown)
-	t.cooldownUntil[code] = until
-	return code, count, true, until
-}
-
-func (t *runtimeProxyCountryRiskTracker) recordSuccess(countryCode string) {
-	code := normalizeRuntimeProxyCountryCode(countryCode)
-	if t == nil || code == "" {
-		return
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	delete(t.failures, code)
-	delete(t.cooldownUntil, code)
-}
-
-func (t *runtimeProxyCountryRiskTracker) currentTimeLocked() time.Time {
-	if t.now != nil {
-		return t.now()
-	}
-	return time.Now()
-}
-
-func selectRuntimeProxyWithCountryPreference(ctx context.Context, raw string, opts proxy.SelectOptions, detector runtimeProxyCountryDetector, maxPreferredAttempts int) (proxy.Selection, string, bool, error) {
-	return selectRuntimeProxyWithCountryPolicy(ctx, raw, opts, detector, maxPreferredAttempts, nil, false)
-}
-
-func selectRuntimeProxyWithCountryPolicy(ctx context.Context, raw string, opts proxy.SelectOptions, detector runtimeProxyCountryDetector, maxPreferredAttempts int, riskTracker *runtimeProxyCountryRiskTracker, strictAvoidedFallback bool) (proxy.Selection, string, bool, error) {
+func selectRuntimeProxyWithEgressPolicy(ctx context.Context, raw string, opts proxy.SelectOptions, detector runtimeProxyEgressDetector, maxPreferredAttempts int, policy runtimeProxyEgressSelectionPolicy) (proxy.Selection, runtimeProxyEgressInfo, bool, error) {
 	if !proxy.HasURLTemplate(raw) || detector == nil {
 		selection, err := proxy.SelectRuntimeProxy(ctx, raw, opts)
-		return selection, "", false, err
-	}
-	if maxPreferredAttempts <= 1 {
-		selection, err := proxy.SelectRuntimeProxy(ctx, raw, opts)
-		return selection, "", false, err
+		return selection, runtimeProxyEgressInfo{}, false, err
 	}
 	if maxPreferredAttempts < 1 {
 		maxPreferredAttempts = 1
@@ -217,12 +146,9 @@ func selectRuntimeProxyWithCountryPolicy(ctx context.Context, raw string, opts p
 	singleAttemptOpts := opts
 	singleAttemptOpts.MaxAttempts = 1
 
-	var firstUsable proxy.Selection
-	firstCountryCode := ""
-	hasFirstUsable := false
-	var firstNonAvoided proxy.Selection
-	firstNonAvoidedCountryCode := ""
-	hasFirstNonAvoided := false
+	var firstNonCooling proxy.Selection
+	var firstNonCoolingEgress runtimeProxyEgressInfo
+	hasFirstNonCooling := false
 	var errors []string
 	for attempt := 1; attempt <= maxPreferredAttempts; attempt++ {
 		if err := ctx.Err(); err != nil {
@@ -232,7 +158,7 @@ func selectRuntimeProxyWithCountryPolicy(ctx context.Context, raw string, opts p
 				TargetURL: opts.TargetURL,
 				Duration:  time.Since(start),
 				Errors:    errors,
-			}, "", false, err
+			}, runtimeProxyEgressInfo{}, false, err
 		}
 
 		selection, err := proxy.SelectRuntimeProxy(ctx, raw, singleAttemptOpts)
@@ -241,77 +167,50 @@ func selectRuntimeProxyWithCountryPolicy(ctx context.Context, raw string, opts p
 			continue
 		}
 
-		countryCode, geoErr := detector(ctx, selection.ProxyURL)
-		countryCode = normalizeRuntimeProxyCountryCode(countryCode)
+		egress, geoErr := detector(ctx, selection.ProxyURL)
+		egress = normalizeRuntimeProxyEgressInfo(egress)
 		if geoErr != nil {
-			errors = append(errors, fmt.Sprintf("第%d次地区探测失败: %v", attempt, geoErr))
+			errors = append(errors, fmt.Sprintf("第%d次出口探测失败: %v", attempt, geoErr))
+			if !hasFirstNonCooling {
+				firstNonCooling = selection
+				firstNonCooling.SuccessAttempt = attempt
+				firstNonCoolingEgress = egress
+				hasFirstNonCooling = true
+			}
+			continue
 		}
-		cooling := geoErr == nil && riskTracker != nil && riskTracker.isCooling(countryCode)
+
+		cooling := policy.IsCooling != nil && policy.IsCooling(egress)
 		if cooling {
-			errors = append(errors, fmt.Sprintf("第%d次出口地区 %s 风控冷却中，跳过优先使用", attempt, countryCode))
+			errors = append(errors, fmt.Sprintf("第%d次出口 IP %s 风控冷却中，跳过", attempt, egress.IP))
+			continue
 		}
 
-		if !hasFirstUsable {
-			firstUsable = selection
-			firstUsable.SuccessAttempt = attempt
-			firstCountryCode = countryCode
-			hasFirstUsable = true
-		}
-		if geoErr == nil && !cooling && isAllowedRuntimeProxyFallbackCountryCode(countryCode) && !hasFirstNonAvoided {
-			firstNonAvoided = selection
-			firstNonAvoided.SuccessAttempt = attempt
-			firstNonAvoidedCountryCode = countryCode
-			hasFirstNonAvoided = true
+		if !hasFirstNonCooling {
+			firstNonCooling = selection
+			firstNonCooling.SuccessAttempt = attempt
+			firstNonCoolingEgress = egress
+			hasFirstNonCooling = true
 		}
 
-		if geoErr == nil && !cooling && isPreferredRuntimeProxyCountryCode(countryCode) {
+		preferred := policy.HasSuccess != nil && policy.HasSuccess(egress)
+		if preferred || shouldExploreRuntimeProxyEgress(policy.ExplorationPercent) {
 			selection.Attempts = attempt
 			selection.SuccessAttempt = attempt
 			selection.Duration = time.Since(start)
 			selection.Errors = errors
-			return selection, countryCode, true, nil
+			return selection, egress, preferred, nil
 		}
 	}
 
-	if hasFirstNonAvoided && (riskTracker == nil || !riskTracker.isCooling(firstNonAvoidedCountryCode)) {
-		firstNonAvoided.Attempts = maxPreferredAttempts
-		if firstNonAvoided.SuccessAttempt == 0 {
-			firstNonAvoided.SuccessAttempt = 1
+	if hasFirstNonCooling {
+		firstNonCooling.Attempts = maxPreferredAttempts
+		if firstNonCooling.SuccessAttempt == 0 {
+			firstNonCooling.SuccessAttempt = 1
 		}
-		firstNonAvoided.Duration = time.Since(start)
-		firstNonAvoided.Errors = errors
-		return firstNonAvoided, firstNonAvoidedCountryCode, false, nil
-	}
-	if hasFirstNonAvoided {
-		errors = append(errors, fmt.Sprintf("缓存候选出口地区 %s 已进入风控冷却，放弃回退", firstNonAvoidedCountryCode))
-	}
-
-	if hasFirstUsable {
-		if riskTracker != nil && riskTracker.isCooling(firstCountryCode) {
-			return proxy.Selection{
-				Templated: true,
-				Attempts:  maxPreferredAttempts,
-				TargetURL: opts.TargetURL,
-				Duration:  time.Since(start),
-				Errors:    errors,
-			}, "", false, fmt.Errorf("代理候选均为回避、冷却或无地区映射出口地区，已尝试 %d 次: %s", maxPreferredAttempts, strings.Join(errors, "；"))
-		}
-		if strictAvoidedFallback && !isAllowedRuntimeProxyFallbackCountryCode(firstCountryCode) {
-			return proxy.Selection{
-				Templated: true,
-				Attempts:  maxPreferredAttempts,
-				TargetURL: opts.TargetURL,
-				Duration:  time.Since(start),
-				Errors:    errors,
-			}, "", false, fmt.Errorf("代理候选均为回避或无地区映射出口地区，已尝试 %d 次: %s", maxPreferredAttempts, strings.Join(errors, "；"))
-		}
-		firstUsable.Attempts = maxPreferredAttempts
-		if firstUsable.SuccessAttempt == 0 {
-			firstUsable.SuccessAttempt = 1
-		}
-		firstUsable.Duration = time.Since(start)
-		firstUsable.Errors = errors
-		return firstUsable, firstCountryCode, false, nil
+		firstNonCooling.Duration = time.Since(start)
+		firstNonCooling.Errors = errors
+		return firstNonCooling, firstNonCoolingEgress, false, nil
 	}
 
 	return proxy.Selection{
@@ -320,5 +219,68 @@ func selectRuntimeProxyWithCountryPolicy(ctx context.Context, raw string, opts p
 		TargetURL: opts.TargetURL,
 		Duration:  time.Since(start),
 		Errors:    errors,
-	}, "", false, fmt.Errorf("代理候选均不可用或无法探测地区，已尝试 %d 次: %s", maxPreferredAttempts, strings.Join(errors, "；"))
+	}, runtimeProxyEgressInfo{}, false, fmt.Errorf("代理候选均不可用或出口 IP 均在冷却中，已尝试 %d 次: %s", maxPreferredAttempts, strings.Join(errors, "；"))
+}
+
+func normalizeRuntimeProxyEgressInfo(egress runtimeProxyEgressInfo) runtimeProxyEgressInfo {
+	egress.IP = strings.TrimSpace(egress.IP)
+	egress.CountryCode = normalizeRuntimeProxyCountryCode(egress.CountryCode)
+	egress.ISP = strings.TrimSpace(egress.ISP)
+	egress.ASN = strings.TrimSpace(egress.ASN)
+	return egress
+}
+
+func shouldExploreRuntimeProxyEgress(percent int) bool {
+	percent = clampDomainExplorationPercent(percent)
+	if percent <= 0 {
+		return false
+	}
+	if percent >= 100 {
+		return true
+	}
+	return rand.Intn(100) < percent
+}
+
+func runtimeProxySourceKey(raw string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(raw)))
+	return hex.EncodeToString(sum[:])
+}
+
+func runtimeProxyEgressStorageIdentity(egress runtimeProxyEgressInfo) storage.ProxyEgressIdentity {
+	egress = normalizeRuntimeProxyEgressInfo(egress)
+	return storage.ProxyEgressIdentity{
+		IP:          egress.IP,
+		CountryCode: egress.CountryCode,
+		ISP:         egress.ISP,
+		ASN:         egress.ASN,
+	}
+}
+
+func selectRuntimeProxyWithStoredEgressPolicy(ctx context.Context, raw string, opts proxy.SelectOptions, detector runtimeProxyEgressDetector, maxPreferredAttempts int, explorationPercent int) (proxy.Selection, runtimeProxyEgressInfo, bool, error) {
+	sourceKey := runtimeProxySourceKey(raw)
+	return selectRuntimeProxyWithEgressPolicy(ctx, raw, opts, detector, maxPreferredAttempts, runtimeProxyEgressSelectionPolicy{
+		ExplorationPercent: explorationPercent,
+		IsCooling: func(egress runtimeProxyEgressInfo) bool {
+			return storage.IsProxyEgressCooling(sourceKey, egress.IP, time.Now())
+		},
+		HasSuccess: func(egress runtimeProxyEgressInfo) bool {
+			return storage.HasProxyEgressSuccess(sourceKey, egress.IP)
+		},
+	})
+}
+
+func recordRuntimeProxyEgressAttempt(sourceKey string, egress runtimeProxyEgressInfo) error {
+	return storage.RecordProxyEgressAttempt(sourceKey, runtimeProxyEgressStorageIdentity(egress))
+}
+
+func recordRuntimeProxyEgressSuccess(sourceKey string, egress runtimeProxyEgressInfo) error {
+	return storage.RecordProxyEgressRegistrationSuccess(sourceKey, runtimeProxyEgressStorageIdentity(egress))
+}
+
+func recordRuntimeProxyEgressRiskFailure(sourceKey string, egress runtimeProxyEgressInfo) error {
+	return storage.RecordProxyEgressRiskFailure(sourceKey, runtimeProxyEgressStorageIdentity(egress), runtimeProxyEgressRiskCooldown)
+}
+
+func recordRuntimeProxyEgressNetworkFailure(sourceKey string, egress runtimeProxyEgressInfo) error {
+	return storage.RecordProxyEgressNetworkFailure(sourceKey, runtimeProxyEgressStorageIdentity(egress))
 }

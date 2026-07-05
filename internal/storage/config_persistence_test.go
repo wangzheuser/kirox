@@ -58,6 +58,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 		Concurrency:              3,
 		Delay:                    0,
 		DomainExplorationPercent: 35,
+		ProxyExplorationPercent:  45,
 		EmailProviders:           []string{"moemail", "emailnator", "moemail"},
 		MoeMailDomainMode:        "custom",
 		MoeMailDomains:           []string{"alpha.example", "beta.example"},
@@ -96,7 +97,7 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	if got := GetSoundEnabled(); got {
 		t.Fatalf("sound false should persist")
 	}
-	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || got.DomainExplorationPercent != 35 || strings.Join(got.EmailProviders, ",") != "moemail,emailnator" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.ReuseFailedEmail || !got.Saved {
+	if got := GetRegistrationConfig(); got.Count != 7 || got.SuccessTarget != 5 || got.Concurrency != 3 || got.Delay != 0 || got.DomainExplorationPercent != 35 || got.ProxyExplorationPercent != 45 || strings.Join(got.EmailProviders, ",") != "moemail,emailnator" || got.MoeMailDomainMode != "custom" || strings.Join(got.MoeMailDomains, ",") != "alpha.example,beta.example" || !got.ReuseFailedEmail || !got.Saved {
 		t.Fatalf("registration config round-trip failed: got %+v", got)
 	}
 
@@ -115,6 +116,9 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	}
 	if got := saved[keyRegistrationDomainExplorationPercent]; got != "35" {
 		t.Fatalf("domain exploration percent should be persisted, got %q", got)
+	}
+	if got := saved[keyRegistrationProxyExplorationPercent]; got != "45" {
+		t.Fatalf("proxy exploration percent should be persisted, got %q", got)
 	}
 }
 
@@ -161,7 +165,7 @@ func TestRegistrationConfigDefaultsAndValidation(t *testing.T) {
 	withTempStorageConfig(t, "")
 
 	defaults := GetRegistrationConfig()
-	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || defaults.DomainExplorationPercent != 20 || strings.Join(defaults.EmailProviders, ",") != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.ReuseFailedEmail || defaults.Saved {
+	if defaults.Count != 1 || defaults.SuccessTarget != 0 || defaults.Concurrency != 1 || defaults.Delay != 1 || defaults.DomainExplorationPercent != 20 || defaults.ProxyExplorationPercent != 50 || strings.Join(defaults.EmailProviders, ",") != "outlook" || defaults.MoeMailDomainMode != "random" || defaults.ReuseFailedEmail || defaults.Saved {
 		t.Fatalf("registration defaults mismatch: got %+v", defaults)
 	}
 
@@ -193,6 +197,20 @@ func TestRegistrationConfigDefaultsAndValidation(t *testing.T) {
 	}
 	if got := GetRegistrationConfig(); got.DomainExplorationPercent != 0 {
 		t.Fatalf("DomainExplorationPercent should clamp to 0, got %+v", got)
+	}
+
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: 0, ProxyExplorationPercent: 150, EmailProviders: []string{"outlook"}}); err != nil {
+		t.Fatalf("proxy exploration percent > 100 should be clamped, not rejected: %v", err)
+	}
+	if got := GetRegistrationConfig(); got.ProxyExplorationPercent != 100 {
+		t.Fatalf("ProxyExplorationPercent should clamp to 100, got %+v", got)
+	}
+
+	if err := SetRegistrationConfig(RegistrationConfig{Count: 1, Concurrency: 1, Delay: 0, ProxyExplorationPercent: -5, EmailProviders: []string{"outlook"}}); err != nil {
+		t.Fatalf("proxy exploration percent < 0 should be clamped, not rejected: %v", err)
+	}
+	if got := GetRegistrationConfig(); got.ProxyExplorationPercent != 0 {
+		t.Fatalf("ProxyExplorationPercent should clamp to 0, got %+v", got)
 	}
 }
 

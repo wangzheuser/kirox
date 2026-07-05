@@ -308,7 +308,9 @@ func doOutlookGraphRequestWithProxyFallback(proxyURL string, makeReq func() (*ht
 	if err != nil {
 		return nil, err
 	}
-	resp, err := httpClientWithProxy(proxyURL, emailRequestTimeout).Do(req)
+	resp, err := doWithProxyHTTPClient(proxyURL, emailRequestTimeout, func(client *http.Client) (*http.Response, error) {
+		return client.Do(req)
+	})
 	if err == nil || !shouldFallbackOutlookGraphProxy(err, proxyURL) {
 		return resp, err
 	}
@@ -317,7 +319,9 @@ func doOutlookGraphRequestWithProxyFallback(proxyURL string, makeReq func() (*ht
 	if reqErr != nil {
 		return nil, reqErr
 	}
-	return httpClientWithProxy("", emailRequestTimeout).Do(req)
+	return doWithProxyHTTPClient("", emailRequestTimeout, func(client *http.Client) (*http.Response, error) {
+		return client.Do(req)
+	})
 }
 
 func shouldFallbackOutlookGraphProxy(err error, proxyURL string) bool {

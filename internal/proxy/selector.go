@@ -132,10 +132,11 @@ func CheckCandidate(ctx context.Context, proxyURL, targetURL string, timeout tim
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	client, err := httputil.NewTLSClientWithTimeout(proxyURL, true, timeoutSeconds(timeout))
+	client, err := httputil.NewOneShotTLSClientWithTimeout(proxyURL, true, timeoutSeconds(timeout))
 	if err != nil {
 		return err
 	}
+	defer client.CloseIdleConnections()
 
 	req, err := fhttp.NewRequest("GET", targetURL, nil)
 	if err != nil {
