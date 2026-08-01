@@ -63,12 +63,13 @@
       logs: { title: '运行日志', copyLog: '复制日志', empty: '暂无日志' },
       register: {
         newTask: '新建注册任务', count: '注册数量', successTarget: '注册成功数量', concurrency: '并发数', delay: '延迟 (秒)',
-        emailProvider: '邮箱提供商', outlook: '微软邮箱', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten', freeCustom: 'FreeCustom.Email', fceDitpay: 'FreeCustom ditpay', fceJunkstopper: 'FreeCustom junkstopper', fceAreueally: 'FreeCustom areueally', dropMail: 'DropMail', mailCatch: 'MailCatch', tempMailo: 'TempMailo', minuteInbox: 'MinuteInbox', smailPro: 'SmailPro', tempMailbox: 'TempMailbox', generatorEmail: 'Generator.Email', mailToWin: 'MailToWin', mail2Me: 'Mail2Me', pickMeMail: 'PickMeMail', maxiMail: 'MaxiMail', emlPro: 'EmlPro', freeML: 'FreeML', emlHub: 'EmlHub', emlTmp: 'EmlTmp', mailPwr: 'MailPwr', tenMail: '10Mail', dropMailMe: 'DropMail.me', mimiMail: 'MimiMail', pickMail: 'PickMail', spyMail: 'SpyMail', yoMail: 'YoMail', tmioBltiwd: 'TempMailIO bltiwd', tmioWnbaldwy: 'TempMailIO wnbaldwy', tmioBwmyga: 'TempMailIO bwmyga', tmioOzsaip: 'TempMailIO ozsaip', goneBox: 'GoneBox', openInbox: 'OpenInbox', blinkBox: 'BlinkBoxApp',
+        emailProvider: '邮箱提供商', outlook: '微软邮箱', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', inboxes: 'Inboxes', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten', freeCustom: 'FreeCustom.Email', fceDitpay: 'FreeCustom ditpay', fceJunkstopper: 'FreeCustom junkstopper', fceAreueally: 'FreeCustom areueally', dropMail: 'DropMail', mailCatch: 'MailCatch', tempMailo: 'TempMailo', minuteInbox: 'MinuteInbox', smailPro: 'SmailPro', tempMailbox: 'TempMailbox', generatorEmail: 'Generator.Email', mailToWin: 'MailToWin', mail2Me: 'Mail2Me', pickMeMail: 'PickMeMail', maxiMail: 'MaxiMail', emlPro: 'EmlPro', freeML: 'FreeML', emlHub: 'EmlHub', emlTmp: 'EmlTmp', mailPwr: 'MailPwr', tenMail: '10Mail', dropMailMe: 'DropMail.me', mimiMail: 'MimiMail', pickMail: 'PickMail', spyMail: 'SpyMail', yoMail: 'YoMail', tmioBltiwd: 'TempMailIO bltiwd', tmioWnbaldwy: 'TempMailIO wnbaldwy', tmioBwmyga: 'TempMailIO bwmyga', tmioOzsaip: 'TempMailIO ozsaip', goneBox: 'GoneBox', openInbox: 'OpenInbox', blinkBox: 'BlinkBoxApp',
         selectDomain: '选择域名', selectAllDomain: '全选域名',
         domainHint: '邮箱名将自动生成随机字符串',
         outlookHint: '使用微软邮箱进行注册。',
         moemailHint: '使用 MoeMail 临时邮箱进行注册，每次任务会自动生成新邮箱。',
         emailnatorHint: '使用 Emailnator Gmail 风格临时邮箱进行注册，零配置。',
+        inboxesHint: '使用 Inboxes 多域名临时邮箱进行注册，零配置。',
         mailgwHint: '使用 mail.gw 零配置临时邮箱进行注册。',
         mailtmHint: '使用 mail.tm 零配置临时邮箱进行注册。',
         tempmailLolHint: '使用 TempMail.lol 随机临时邮箱进行注册。',
@@ -308,12 +309,13 @@
       logs: { title: 'Logs', copyLog: 'Copy logs', empty: 'No logs' },
       register: {
         newTask: 'New registration task', count: 'Count', successTarget: 'Success target', concurrency: 'Concurrency', delay: 'Delay (s)',
-        emailProvider: 'Email provider', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten', freeCustom: 'FreeCustom.Email', fceDitpay: 'FreeCustom ditpay', fceJunkstopper: 'FreeCustom junkstopper', fceAreueally: 'FreeCustom areueally', dropMail: 'DropMail', mailCatch: 'MailCatch', tempMailo: 'TempMailo', minuteInbox: 'MinuteInbox', smailPro: 'SmailPro', tempMailbox: 'TempMailbox', generatorEmail: 'Generator.Email', mailToWin: 'MailToWin', mail2Me: 'Mail2Me', pickMeMail: 'PickMeMail', maxiMail: 'MaxiMail', emlPro: 'EmlPro', freeML: 'FreeML', emlHub: 'EmlHub', emlTmp: 'EmlTmp', mailPwr: 'MailPwr', tenMail: '10Mail', dropMailMe: 'DropMail.me', mimiMail: 'MimiMail', pickMail: 'PickMail', spyMail: 'SpyMail', yoMail: 'YoMail', tmioBltiwd: 'TempMailIO bltiwd', tmioWnbaldwy: 'TempMailIO wnbaldwy', tmioBwmyga: 'TempMailIO bwmyga', tmioOzsaip: 'TempMailIO ozsaip', goneBox: 'GoneBox', openInbox: 'OpenInbox', blinkBox: 'BlinkBoxApp',
+        emailProvider: 'Email provider', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', inboxes: 'Inboxes', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten', freeCustom: 'FreeCustom.Email', fceDitpay: 'FreeCustom ditpay', fceJunkstopper: 'FreeCustom junkstopper', fceAreueally: 'FreeCustom areueally', dropMail: 'DropMail', mailCatch: 'MailCatch', tempMailo: 'TempMailo', minuteInbox: 'MinuteInbox', smailPro: 'SmailPro', tempMailbox: 'TempMailbox', generatorEmail: 'Generator.Email', mailToWin: 'MailToWin', mail2Me: 'Mail2Me', pickMeMail: 'PickMeMail', maxiMail: 'MaxiMail', emlPro: 'EmlPro', freeML: 'FreeML', emlHub: 'EmlHub', emlTmp: 'EmlTmp', mailPwr: 'MailPwr', tenMail: '10Mail', dropMailMe: 'DropMail.me', mimiMail: 'MimiMail', pickMail: 'PickMail', spyMail: 'SpyMail', yoMail: 'YoMail', tmioBltiwd: 'TempMailIO bltiwd', tmioWnbaldwy: 'TempMailIO wnbaldwy', tmioBwmyga: 'TempMailIO bwmyga', tmioOzsaip: 'TempMailIO ozsaip', goneBox: 'GoneBox', openInbox: 'OpenInbox', blinkBox: 'BlinkBoxApp',
         selectDomain: 'Select domain', selectAllDomain: 'Select all',
         domainHint: 'Email username is auto-generated as random string',
         outlookHint: 'Register using Microsoft mailboxes.',
         moemailHint: 'Register using MoeMail temp mailboxes. A new mailbox is generated per task.',
         emailnatorHint: 'Register using Emailnator Gmail-style temporary mailboxes. No setup required.',
+        inboxesHint: 'Register using Inboxes multi-domain temporary mailboxes. No setup required.',
         mailgwHint: 'Register using mail.gw temporary mailboxes. No setup required.',
         mailtmHint: 'Register using mail.tm temporary mailboxes. No setup required.',
         tempmailLolHint: 'Register using TempMail.lol random temporary mailboxes. No setup required.',
@@ -553,12 +555,13 @@
       logs: { title: 'ログ', copyLog: 'ログをコピー', empty: 'ログなし' },
       register: {
         newTask: '新規登録タスク', count: '登録数', successTarget: '成功目標数', concurrency: '同時実行数', delay: '遅延 (秒)',
-        emailProvider: 'メールプロバイダ', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten', freeCustom: 'FreeCustom.Email', fceDitpay: 'FreeCustom ditpay', fceJunkstopper: 'FreeCustom junkstopper', fceAreueally: 'FreeCustom areueally', dropMail: 'DropMail', mailCatch: 'MailCatch', tempMailo: 'TempMailo', minuteInbox: 'MinuteInbox', smailPro: 'SmailPro', tempMailbox: 'TempMailbox', generatorEmail: 'Generator.Email', mailToWin: 'MailToWin', mail2Me: 'Mail2Me', pickMeMail: 'PickMeMail', maxiMail: 'MaxiMail', emlPro: 'EmlPro', freeML: 'FreeML', emlHub: 'EmlHub', emlTmp: 'EmlTmp', mailPwr: 'MailPwr', tenMail: '10Mail', dropMailMe: 'DropMail.me', mimiMail: 'MimiMail', pickMail: 'PickMail', spyMail: 'SpyMail', yoMail: 'YoMail', tmioBltiwd: 'TempMailIO bltiwd', tmioWnbaldwy: 'TempMailIO wnbaldwy', tmioBwmyga: 'TempMailIO bwmyga', tmioOzsaip: 'TempMailIO ozsaip', goneBox: 'GoneBox', openInbox: 'OpenInbox', blinkBox: 'BlinkBoxApp',
+        emailProvider: 'メールプロバイダ', outlook: 'Microsoft', moemail: 'MoeMail', cloudmail: 'Cloud-Mail', emailnator: 'Emailnator', inboxes: 'Inboxes', mailgw: 'mail.gw', mailtm: 'mail.tm', tempmailLol: 'TempMail.lol', guerrillaMail: 'GuerrillaMail', inboxKitten: 'InboxKitten', freeCustom: 'FreeCustom.Email', fceDitpay: 'FreeCustom ditpay', fceJunkstopper: 'FreeCustom junkstopper', fceAreueally: 'FreeCustom areueally', dropMail: 'DropMail', mailCatch: 'MailCatch', tempMailo: 'TempMailo', minuteInbox: 'MinuteInbox', smailPro: 'SmailPro', tempMailbox: 'TempMailbox', generatorEmail: 'Generator.Email', mailToWin: 'MailToWin', mail2Me: 'Mail2Me', pickMeMail: 'PickMeMail', maxiMail: 'MaxiMail', emlPro: 'EmlPro', freeML: 'FreeML', emlHub: 'EmlHub', emlTmp: 'EmlTmp', mailPwr: 'MailPwr', tenMail: '10Mail', dropMailMe: 'DropMail.me', mimiMail: 'MimiMail', pickMail: 'PickMail', spyMail: 'SpyMail', yoMail: 'YoMail', tmioBltiwd: 'TempMailIO bltiwd', tmioWnbaldwy: 'TempMailIO wnbaldwy', tmioBwmyga: 'TempMailIO bwmyga', tmioOzsaip: 'TempMailIO ozsaip', goneBox: 'GoneBox', openInbox: 'OpenInbox', blinkBox: 'BlinkBoxApp',
         selectDomain: 'ドメイン選択', selectAllDomain: 'すべて選択',
         domainHint: 'ユーザー名はランダム文字列で自動生成されます',
         outlookHint: 'Microsoft メールで登録します。',
         moemailHint: 'MoeMail の使い捨てメールで登録します。タスクごとに新しいメールが生成されます。',
         emailnatorHint: 'Emailnator の Gmail 形式の一時メールで登録します。設定は不要です。',
+        inboxesHint: 'Inboxes の複数ドメイン対応一時メールで登録します。設定は不要です。',
         mailgwHint: 'mail.gw の一時メールで登録します。設定は不要です。',
         mailtmHint: 'mail.tm の一時メールで登録します。設定は不要です。',
         tempmailLolHint: 'TempMail.lol のランダム一時メールで登録します。設定は不要です。',
@@ -1215,4 +1218,3 @@
   // 顶层快捷函数
   window.t = t;
 })();
-

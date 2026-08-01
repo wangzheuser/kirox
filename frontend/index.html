@@ -962,6 +962,18 @@
                   <span data-i18n="register.emailnator">Emailnator</span>
                 </div>
               </label>
+              <label class="email-provider-card" onclick="toggleEmailProvider('inboxes'); return false;">
+                <input type="checkbox" name="email-provider" value="inboxes" style="display:none;">
+                <div id="provider-inboxes" class="email-provider-content">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#0ea5e9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+                    <path d="M3 7l9 6 9-6"></path>
+                    <path d="M7 3h10"></path>
+                    <path d="M7 21h10"></path>
+                  </svg>
+                  <span data-i18n="register.inboxes">Inboxes</span>
+                </div>
+              </label>
               <label class="email-provider-card" onclick="toggleEmailProvider('guerrillamail'); return false;">
                 <input type="checkbox" name="email-provider" value="guerrillamail" style="display:none;">
                 <div id="provider-guerrillamail" class="email-provider-content">

@@ -142,7 +142,7 @@ document.addEventListener('keydown', function(e) {
 
 // 当前选中的邮箱提供商（多选）
 var selectedEmailProviders = ['outlook'];
-var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'fce_areueally', 'fce_junkstopper', 'fce_ditpay', 'dropmail', 'mailcatch', 'tempmailo', 'minuteinbox', 'smailpro', 'tempmailbox', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip', 'gonebox', 'openinbox', 'blinkbox'];
+var emailProviderNames = ['outlook', 'moemail', 'mailporary', 'cloudmail', 'emailnator', 'inboxes', 'mailgw', 'mailtm', 'tempmail_lol', 'guerrillamail', 'inboxkitten', 'freecustom', 'fce_areueally', 'fce_junkstopper', 'fce_ditpay', 'dropmail', 'mailcatch', 'tempmailo', 'minuteinbox', 'smailpro', 'tempmailbox', 'generator_email', 'mailtowin', 'mail2me', 'pickmemail', 'maximail', 'emlpro', 'freeml', 'emlhub', 'emltmp', 'mailpwr', 'tenmail', 'dropmail_me', 'mimimail', 'pickmail', 'spymail', 'yomail', 'tmio_bltiwd', 'tmio_wnbaldwy', 'tmio_bwmyga', 'tmio_ozsaip', 'gonebox', 'openinbox', 'blinkbox'];
 var selectedMoeMailDomains = [];
 var allMoeMailDomains = []; // 存储所有可用域名及其配置映射
 var selectedCloudMailDomains = [];
@@ -243,6 +243,10 @@ function updateEmailProviderHint(provider, options) {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.emailnatorHint', '使用 Emailnator Gmail 风格临时邮箱进行注册，零配置。');
     hintDiv.setAttribute('data-i18n', 'register.emailnatorHint');
+  } else if (provider === 'inboxes') {
+    hintDiv.removeAttribute('data-i18n');
+    hintDiv.textContent = _uiT('register.inboxesHint', '使用 Inboxes 多域名临时邮箱进行注册，零配置。');
+    hintDiv.setAttribute('data-i18n', 'register.inboxesHint');
   } else if (provider === 'mailgw') {
     hintDiv.removeAttribute('data-i18n');
     hintDiv.textContent = _uiT('register.mailgwHint', '使用 mail.gw 零配置临时邮箱进行注册。');

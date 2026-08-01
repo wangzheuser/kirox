@@ -709,24 +709,29 @@ func effectiveEmailProvidersForBatchByStats(providers []string, stats []storage.
 	}
 
 	winners := make([]string, 0, len(original))
+	others := make([]string, 0, len(original))
 	for _, provider := range original {
 		key := strings.ToLower(strings.TrimSpace(provider))
 		stat, ok := statByProvider[key]
 		if !ok {
+			others = append(others, provider)
 			continue
 		}
 		if stat.OTPReceivedCount < emailProviderHistoricalMinOTP || stat.RegistrationSuccessCount < emailProviderHistoricalMinSuccess {
+			others = append(others, provider)
 			continue
 		}
 		successRate := float64(stat.RegistrationSuccessCount) / float64(stat.OTPReceivedCount)
 		if successRate >= emailProviderHistoricalMinSuccessRate {
 			winners = append(winners, provider)
+		} else {
+			others = append(others, provider)
 		}
 	}
 	if len(winners) == 0 {
 		return original
 	}
-	return winners
+	return append(winners, others...)
 }
 
 func startRequestUsesProvider(req StartTaskRequest, provider string) bool {

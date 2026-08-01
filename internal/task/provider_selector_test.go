@@ -93,7 +93,7 @@ func TestEmailProviderSelectorSetIsImmutable(t *testing.T) {
 	}
 }
 
-func TestEffectiveEmailProvidersForBatchPrefersHistoricalWinner(t *testing.T) {
+func TestEffectiveEmailProvidersForBatchOrdersHistoricalWinnerFirstWithoutDroppingSelected(t *testing.T) {
 	got := effectiveEmailProvidersForBatchByStats(
 		[]string{"pickmail", "blinkbox"},
 		[]storage.EmailProviderStat{
@@ -102,8 +102,8 @@ func TestEffectiveEmailProvidersForBatchPrefersHistoricalWinner(t *testing.T) {
 		},
 	)
 
-	if len(got) != 1 || got[0] != "blinkbox" {
-		t.Fatalf("historical high-success provider should be preferred, got %#v", got)
+	if len(got) != 2 || got[0] != "blinkbox" || got[1] != "pickmail" {
+		t.Fatalf("historical winner should be ordered first without dropping selected providers, got %#v", got)
 	}
 }
 
