@@ -122,6 +122,51 @@ func TestConfigStorageRoundTripsAllPersistentSettings(t *testing.T) {
 	}
 }
 
+func TestAccountsCacheCopiesCallerDataBeforeFlush(t *testing.T) {
+	withTempStorageConfig(t, "")
+	dataDir := t.TempDir()
+	if _, err := SetDataDirPath(dataDir); err != nil {
+		t.Fatal(err)
+	}
+
+	_accountsMu.Lock()
+	_accountsCache = nil
+	_accountsLoaded = false
+	_accountsDirty = false
+	_accountsVersion = 0
+	if _flushTimer != nil {
+		_flushTimer.Stop()
+		_flushTimer = nil
+	}
+	_accountsMu.Unlock()
+	t.Cleanup(func() {
+		_ = FlushAccountsSync()
+		_accountsMu.Lock()
+		_accountsCache = nil
+		_accountsLoaded = false
+		_accountsDirty = false
+		_accountsVersion = 0
+		_accountsMu.Unlock()
+	})
+
+	input := []map[string]interface{}{{"email": "original@example.com"}}
+	SetAccountsCached(input)
+	input[0]["email"] = "mutated@example.com"
+	got := GetAccountsCached()
+	got[0]["email"] = "second-mutation@example.com"
+	if err := FlushAccountsSync(); err != nil {
+		t.Fatal(err)
+	}
+
+	persisted, err := loadJSON(GetAccountsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(persisted) != 1 || persisted[0]["email"] != "original@example.com" {
+		t.Fatalf("caller mutation leaked into account cache: %#v", persisted)
+	}
+}
+
 func TestConfigStorageSerializesConcurrentSettersWithoutDroppingKeys(t *testing.T) {
 	withTempStorageConfig(t, "")
 

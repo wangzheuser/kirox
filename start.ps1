@@ -323,16 +323,20 @@ function Test-FrontendDependencies {
         return $false
     }
 
-    $script = @'
-const fs = require("fs");
-const pkg = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-const sections = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
-const hasDeps = sections.some((section) => pkg[section] && Object.keys(pkg[section]).length > 0);
-process.exit(hasDeps ? 0 : 1);
-'@
+    try {
+        $package = Get-Content -LiteralPath $packageJson -Raw | ConvertFrom-Json
+    }
+    catch {
+        Fail-Start "无法解析前端 package.json：$($_.Exception.Message)"
+    }
 
-    & node -e $script $packageJson
-    return ($LASTEXITCODE -eq 0)
+    foreach ($section in @('dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies')) {
+        $property = $package.PSObject.Properties[$section]
+        if ($property -and $property.Value -and @($property.Value.PSObject.Properties).Count -gt 0) {
+            return $true
+        }
+    }
+    return $false
 }
 
 function Ensure-FrontendDependencies {

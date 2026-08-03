@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log"
 	"math/rand"
 	stdurl "net/url"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"reg_go/internal/fileutil"
 	"reg_go/internal/storage"
 )
 
@@ -67,19 +69,15 @@ func loadIdentityCacheLocked() {
 	}
 }
 
-func saveIdentityCacheLocked() {
+func saveIdentityCacheLocked() error {
 	if idCache == nil {
-		return
+		return nil
 	}
 	b, err := json.Marshal(idCache)
 	if err != nil {
-		return
+		return err
 	}
-	os.MkdirAll(filepath.Dir(identityCachePath()), 0o755)
-	tmp := identityCachePath() + ".tmp"
-	if os.WriteFile(tmp, b, 0o600) == nil {
-		_ = os.Rename(tmp, identityCachePath())
-	}
+	return fileutil.WriteFileAtomic(identityCachePath(), b, 0o600)
 }
 
 func pruneIdentityCacheLocked(now int64) bool {
@@ -134,7 +132,9 @@ func IdentityForProxy(proxyURL string) *BrowserIdentity {
 	if entry, ok := idCache[key]; ok && isConservativeBrowserIdentity(entry.Identity) {
 		if now-entry.CreatedAt < int64(identityCacheTTL.Seconds()) {
 			if dirty {
-				saveIdentityCacheLocked()
+				if err := saveIdentityCacheLocked(); err != nil {
+					log.Printf("保存浏览器身份缓存失败: %v", err)
+				}
 			}
 			return refreshVolatile(entry.Identity)
 		}
@@ -143,7 +143,9 @@ func IdentityForProxy(proxyURL string) *BrowserIdentity {
 	id := RandomIdentity()
 	idCache[key] = cachedIdentity{Identity: id, CreatedAt: now}
 	pruneIdentityCacheLocked(now)
-	saveIdentityCacheLocked()
+	if err := saveIdentityCacheLocked(); err != nil {
+		log.Printf("保存浏览器身份缓存失败: %v", err)
+	}
 	return refreshVolatile(id)
 }
 

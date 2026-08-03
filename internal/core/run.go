@@ -240,7 +240,7 @@ func (r *Registrar) Run() map[string]interface{} {
 	// ========== 到达此处说明 SetPassword 已成功，邮箱已被消耗 ==========
 
 	if r.ctxCancelled() {
-		return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
+		return postPasswordFailureResult(r, "任务已取消", nil, nil, nil)
 	}
 
 	finalSteps := []struct {
@@ -253,7 +253,7 @@ func (r *Registrar) Run() map[string]interface{} {
 		if err := s.fn(); err != nil {
 			friendlyErr := r.formatError(s.name, err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
+			return postPasswordFailureResult(r, friendlyErr, nil, nil, nil)
 		}
 	}
 
@@ -261,7 +261,7 @@ func (r *Registrar) Run() map[string]interface{} {
 	if r.Ctx != nil {
 		select {
 		case <-r.Ctx.Done():
-			return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
+			return postPasswordFailureResult(r, "任务已取消", nil, nil, nil)
 		case <-time.After(2 * time.Second):
 		}
 	} else {
@@ -287,12 +287,12 @@ func (r *Registrar) Run() map[string]interface{} {
 		if attempt == 2 {
 			friendlyErr := r.formatError("SSOToken", err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
+			return postPasswordFailureResult(r, friendlyErr, nil, nil, nil)
 		}
 	}
 
 	if r.ctxCancelled() {
-		return map[string]interface{}{"status": "failed", "error": "任务已取消", "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
+		return postPasswordFailureResult(r, "任务已取消", awsToken, nil, nil)
 	}
 
 	// Step14: Kiro 授权（最多重试3次）
@@ -309,7 +309,7 @@ func (r *Registrar) Run() map[string]interface{} {
 		if attempt == 2 {
 			friendlyErr := r.formatError("KiroAuthorize", err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
+			return postPasswordFailureResult(r, friendlyErr, awsToken, nil, nil)
 		}
 	}
 
@@ -327,7 +327,7 @@ func (r *Registrar) Run() map[string]interface{} {
 		if attempt == 2 {
 			friendlyErr := r.formatError("KiroExchange", err)
 			log.Printf("%s %s", prefix, friendlyErr)
-			return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email, "passwordSet": true, "otpReceived": r.OTPReceived}
+			return postPasswordFailureResult(r, friendlyErr, awsToken, nil, nil)
 		}
 	}
 
@@ -368,6 +368,13 @@ func buildFinalRegistrationResult(r *Registrar, awsToken, kiroTokens map[string]
 
 	result := basePostPasswordRegistrationResult(r, awsToken, kiroTokens, verify)
 	result["status"] = "success"
+	return result
+}
+
+func postPasswordFailureResult(r *Registrar, errorMsg string, awsToken, kiroTokens, verify map[string]interface{}) map[string]interface{} {
+	result := basePostPasswordRegistrationResult(r, awsToken, kiroTokens, verify)
+	result["status"] = "failed"
+	result["error"] = errorMsg
 	return result
 }
 

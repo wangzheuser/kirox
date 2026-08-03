@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reg_go/internal/fileutil"
 )
 
 // PoolEntry 多代理池条目
@@ -79,14 +81,7 @@ func savePoolLocked() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(poolPath), 0o755); err != nil {
-		return err
-	}
-	tmp := poolPath + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, poolPath)
+	return fileutil.WriteFileAtomic(poolPath, b, 0o600)
 }
 
 // List 返回当前所有代理（含禁用项）
@@ -196,16 +191,15 @@ func Delete(id string) error {
 	return fmt.Errorf("代理不存在")
 }
 
-// PickRandom 按权重抽签返回一个启用的代理 URL；池为空或全部禁用返回空串。
-// 使用 weightPower 软化：让低权重也有非零概率被命中，避免全部任务落到单一代理。
-func PickRandom() string {
+// PickRandomEntry 按权重抽签返回一个未隔离的启用条目。
+func PickRandomEntry() (PoolEntry, bool) {
 	poolMu.Lock()
 	defer poolMu.Unlock()
 	loadPoolLocked()
 
 	type cand struct {
-		url  string
-		soft float64
+		entry PoolEntry
+		soft  float64
 	}
 	candidates := make([]cand, 0, len(poolEntries))
 	var total float64
@@ -221,20 +215,29 @@ func PickRandom() string {
 			w = 1
 		}
 		soft := math.Pow(float64(w), weightPower)
-		candidates = append(candidates, cand{e.URL, soft})
+		candidates = append(candidates, cand{e, soft})
 		total += soft
 	}
 	if total <= 0 || len(candidates) == 0 {
-		return ""
+		return PoolEntry{}, false
 	}
 	r := rand.Float64() * total
 	for _, c := range candidates {
 		r -= c.soft
 		if r <= 0 {
-			return c.url
+			return c.entry, true
 		}
 	}
-	return candidates[len(candidates)-1].url
+	return candidates[len(candidates)-1].entry, true
+}
+
+// PickRandom 保留现有调用契约。
+func PickRandom() string {
+	entry, ok := PickRandomEntry()
+	if !ok {
+		return ""
+	}
+	return entry.URL
 }
 
 func RecordPoolProxyNetworkFailure(proxyURL string) {

@@ -55,3 +55,17 @@ func TestProxyPoolQuarantinesAfterThreeNetworkFailures(t *testing.T) {
 		t.Fatalf("success should clear quarantine")
 	}
 }
+
+func TestPickRandomEntryReturnsFalseWhenAllEntriesQuarantined(t *testing.T) {
+	InitPool(t.TempDir())
+	entry, err := Add(PoolEntry{Name: "only", URL: "http://only.example:8080", Weight: 1, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < poolQuarantineFailures; i++ {
+		RecordPoolProxyNetworkFailure(entry.URL)
+	}
+	if picked, ok := PickRandomEntry(); ok {
+		t.Fatalf("all quarantined pool must not return a direct fallback or entry: %#v", picked)
+	}
+}

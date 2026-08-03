@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reg_go/internal/fileutil"
 )
 
 const proxyEgressStatsFileName = "proxy_egress_stats.json"
@@ -115,22 +117,11 @@ func readProxyEgressStatsUnlocked() (map[string]ProxyEgressStat, error) {
 
 func writeProxyEgressStatsUnlocked(stats map[string]ProxyEgressStat) error {
 	path := proxyEgressStatsFilePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(stats, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := fmt.Sprintf("%s.tmp.%d.%d", path, os.Getpid(), time.Now().UnixNano())
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return fileutil.WriteFileAtomic(path, data, 0o600)
 }
 
 func sortedProxyEgressStats(stats map[string]ProxyEgressStat) []ProxyEgressStat {

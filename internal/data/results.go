@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reg_go/internal/fileutil"
 )
 
 var accountsJSONMu sync.RWMutex
@@ -83,6 +85,54 @@ func SaveKiroSuccess(result map[string]interface{}, outDir string) error {
 	}
 	log.Printf("[Kiro] 结果已保存: %s", path)
 	return nil
+}
+
+// SaveKiroRecovery 保存已设密码但后置步骤失败的账号凭据，避免邮箱和账号无法恢复。
+func SaveKiroRecovery(result map[string]interface{}, outDir string) error {
+	if result == nil {
+		return nil
+	}
+	passwordSet, _ := result["passwordSet"].(bool)
+	if !passwordSet {
+		return nil
+	}
+	emailAddr, _ := result["email"].(string)
+	if strings.TrimSpace(emailAddr) == "" {
+		return fmt.Errorf("恢复记录缺少 email 字段")
+	}
+	item := map[string]interface{}{
+		"email":        emailAddr,
+		"password":     result["password"],
+		"clientId":     result["client_id"],
+		"clientSecret": result["client_secret"],
+		"deviceCode":   result["device_code"],
+		"awsToken":     result["aws_token"],
+		"kiroTokens":   result["kiro_tokens"],
+		"verify":       result["verify"],
+		"error":        result["error"],
+		"passwordSet":  true,
+		"updatedAt":    time.Now().Format(time.RFC3339),
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return err
+	}
+	path := filepath.Join(outDir, "registration_recovery.json")
+	accountsJSONMu.Lock()
+	defer accountsJSONMu.Unlock()
+	existing, err := loadJSONArray(path)
+	if err != nil {
+		return err
+	}
+	merged := make([]map[string]interface{}, 0, len(existing)+1)
+	for _, entry := range existing {
+		existingEmail, _ := entry["email"].(string)
+		if strings.EqualFold(strings.TrimSpace(existingEmail), strings.TrimSpace(emailAddr)) {
+			continue
+		}
+		merged = append(merged, entry)
+	}
+	merged = append(merged, item)
+	return writeJSONArrayAtomic(path, merged)
 }
 
 // LoadAccounts 读取 outDir/accounts.json 中保存的账号列表（按写入顺序返回）。
@@ -208,33 +258,5 @@ func writeJSONArrayAtomic(path string, arr []map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-
-	tmpFile, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return err
-	}
-	tmp := tmpFile.Name()
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = os.Remove(tmp)
-		}
-	}()
-
-	if _, err := tmpFile.Write(b); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Chmod(0o644); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return err
-	}
-	cleanup = false
-	return nil
+	return fileutil.WriteFileAtomic(path, b, 0o600)
 }

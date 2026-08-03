@@ -15,6 +15,7 @@ import (
 	"reg_go/internal/data"
 	"reg_go/internal/email"
 	"reg_go/internal/kirorsync"
+	"reg_go/internal/logutil"
 	"reg_go/internal/proxy"
 	"reg_go/internal/storage"
 	"reg_go/internal/subscription"
@@ -36,7 +37,7 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	// 重定向日志到内存
 	log.SetOutput(&logWriter{app: a})
-	log.SetFlags(log.Ltime)
+	log.SetFlags(log.Ldate | log.Ltime)
 
 	// 初始化代理池（按数据目录持久化）
 	proxy.InitPool(storage.GetDataDir())
@@ -58,7 +59,12 @@ func (a *App) startup(ctx context.Context) {
 
 // shutdown 在应用关闭时调用
 func (a *App) shutdown(ctx context.Context) {
-	storage.FlushAccountsSync()
+	if err := task.Shutdown(15 * time.Second); err != nil {
+		log.Printf("[Kiro] 退出时停止注册任务失败: %v", err)
+	}
+	if err := storage.FlushAccountsSync(); err != nil {
+		log.Printf("[Kiro] 退出时保存账号缓存失败: %v", err)
+	}
 }
 
 // OpenURL 在系统默认浏览器中打开 URL
@@ -72,7 +78,7 @@ type logWriter struct {
 }
 
 func (w *logWriter) Write(p []byte) (int, error) {
-	msg := addGoroutineLabel(string(p))
+	msg := addGoroutineLabel(redactSensitiveLog(string(p)))
 	task.Manager.AppendLog(msg)
 	_, err := os.Stderr.Write([]byte(msg))
 	return len(p), err
@@ -80,8 +86,12 @@ func (w *logWriter) Write(p []byte) (int, error) {
 
 var (
 	goroutineHeaderRE = regexp.MustCompile(`^goroutine ([0-9]+) `)
-	logTimestampRE    = regexp.MustCompile(`^(\d{2}:\d{2}:\d{2})(\s+)`)
+	logTimestampRE    = regexp.MustCompile(`^(?:(?:\d{4}/\d{2}/\d{2})\s+)?\d{2}:\d{2}:\d{2}(\s+)`)
 )
+
+func redactSensitiveLog(msg string) string {
+	return logutil.Redact(msg)
+}
 
 func addGoroutineLabel(msg string) string {
 	if msg == "" {
@@ -127,7 +137,7 @@ func addGoroutineLabelToLine(line, label string) string {
 	if m == nil {
 		return label + " " + line
 	}
-	return line[:m[3]] + " " + label + " " + line[m[5]:]
+	return line[:m[2]] + " " + label + " " + line[m[3]:]
 }
 
 // GetStatus 获取任务状态

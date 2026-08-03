@@ -2,6 +2,7 @@ package storage
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -156,5 +157,25 @@ func TestEmailProviderStatsConcurrentRecording(t *testing.T) {
 	}
 	if got := stat.DomainAttempts["@example.org"]; got != workers {
 		t.Fatalf("DomainAttempts[@example.org] = %d, want %d", got, workers)
+	}
+}
+
+func TestEmailProviderStatsQuarantinesCorruptFileAndContinues(t *testing.T) {
+	withTempStorageConfig(t, "")
+	path := emailProviderStatsFilePath()
+	if err := os.WriteFile(path, make([]byte, 64), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RecordEmailProviderOTPReceived("mailtm"); err != nil {
+		t.Fatalf("record after corruption: %v", err)
+	}
+	stat := findEmailProviderStat(t, GetEmailProviderStats(), "mailtm")
+	if stat.OTPReceivedCount != 1 {
+		t.Fatalf("unexpected recovered stats: %#v", stat)
+	}
+	matches, err := filepath.Glob(path + ".corrupt-*")
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("corrupt file was not quarantined: matches=%#v err=%v", matches, err)
 	}
 }

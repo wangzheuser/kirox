@@ -47,7 +47,7 @@ function _escapeLogHtml(s) {
 }
 
 // 将一行日志解析为带高亮 span 的 HTML。
-// 识别模式: "HH:MM:SS [prefix] [step] rest"
+// 识别模式: "YYYY/MM/DD HH:MM:SS [prefix] [step] rest"
 function _formatLogLine(line) {
   var raw = line.replace(/\r?\n$/, '');
   if (!raw) return '';
@@ -77,7 +77,7 @@ function _formatLogLine(line) {
   var html = '';
   var rest = display;
 
-  var m = rest.match(/^(\d{2}:\d{2}:\d{2})\s*/);
+  var m = rest.match(/^((?:\d{4}\/\d{2}\/\d{2}\s+)?\d{2}:\d{2}:\d{2})\s*/);
   if (m) {
     html += '<span class="log-time">' + _escapeLogHtml(m[1]) + '</span>';
     rest = rest.slice(m[0].length);

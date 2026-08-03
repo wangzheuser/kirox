@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -377,6 +378,82 @@ func TestShouldRecycleReusableEmailRejectsPasswordSet(t *testing.T) {
 
 	if shouldRecycleReusableEmail(result) {
 		t.Fatalf("passwordSet=true should not recycle reusable email")
+	}
+}
+
+func TestNormalizeStartTaskRequestRejectsUnsafeBounds(t *testing.T) {
+	base := StartTaskRequest{Count: 1, Concurrency: 1, OTPTimeout: 60}
+	for name, mutate := range map[string]func(*StartTaskRequest){
+		"concurrency":    func(req *StartTaskRequest) { req.Concurrency = 101 },
+		"retry":          func(req *StartTaskRequest) { req.RetryCount = 6 },
+		"otp":            func(req *StartTaskRequest) { req.OTPTimeout = 601 },
+		"success target": func(req *StartTaskRequest) { req.SuccessTarget = 2 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := base
+			mutate(&req)
+			if _, err := normalizeStartTaskRequest(req); err == nil {
+				t.Fatalf("expected invalid %s to be rejected", name)
+			}
+		})
+	}
+}
+
+func TestValidateSelectedDomainConfigsRejectsEmptySelectedDomain(t *testing.T) {
+	err := validateSelectedDomainConfigs("MoeMail", []string{"selected.example"}, map[string][]string{"selected.example": nil})
+	if err == nil || !strings.Contains(err.Error(), "selected.example") {
+		t.Fatalf("expected missing selected domain config error, got %v", err)
+	}
+}
+
+func TestStopKeepsTaskRunningUntilBatchDone(t *testing.T) {
+	Manager.mu.Lock()
+	oldRunning, oldStopCh, oldDoneCh, oldCancel := Manager.running, Manager.stopCh, Manager.doneCh, Manager.cancelFunc
+	Manager.running = true
+	Manager.stopCh = make(chan struct{})
+	Manager.doneCh = make(chan struct{})
+	Manager.cancelFunc = nil
+	done := Manager.doneCh
+	Manager.mu.Unlock()
+	t.Cleanup(func() {
+		Manager.mu.Lock()
+		Manager.running, Manager.stopCh, Manager.doneCh, Manager.cancelFunc = oldRunning, oldStopCh, oldDoneCh, oldCancel
+		Manager.mu.Unlock()
+	})
+
+	result := StopTask(true)
+	if result["status"] != "stopping" {
+		t.Fatalf("unexpected stop result: %#v", result)
+	}
+	if started := StartTask(StartTaskRequest{Count: 1, Concurrency: 1, OTPTimeout: 60, EmailProviders: []string{"mailtm"}}); !strings.Contains(fmt.Sprint(started["error"]), "运行中") {
+		t.Fatalf("new task must be rejected while previous batch is stopping: %#v", started)
+	}
+	close(done)
+}
+
+func TestOutlookRegistrationTrackerTryMarkAttemptIsAtomic(t *testing.T) {
+	tracker := newOutlookRegistrationAddressTracker()
+	account := email.OutlookAccount{Email: "source@example.com", RegistrationEmail: "final@example.com"}
+	const workers = 50
+	var wg sync.WaitGroup
+	results := make(chan bool, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results <- tracker.TryMarkAttempt(account)
+		}()
+	}
+	wg.Wait()
+	close(results)
+	winners := 0
+	for ok := range results {
+		if ok {
+			winners++
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("expected exactly one atomic reservation, got %d", winners)
 	}
 }
 

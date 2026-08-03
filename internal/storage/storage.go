@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"reg_go/internal/fileutil"
 	"reg_go/internal/proxy"
 )
 
@@ -327,18 +328,10 @@ func saveConfigMapUnlocked(m map[string]string) error {
 
 	// 写入前对现有配置做一次 .bak 备份，作为意外损坏时的恢复点（best-effort，失败不阻断保存）。
 	if existing, err := readConfigFile(path); err == nil && len(existing) > 0 {
-		_ = os.WriteFile(path+".bak", existing, 0600)
+		_ = fileutil.WriteFileAtomic(path+".bak", existing, 0o600)
 	}
 
-	tmp := fmt.Sprintf("%s.tmp.%d.%d", path, os.Getpid(), time.Now().UnixNano())
-	if err := os.WriteFile(tmp, []byte(b.String()), 0600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return fileutil.WriteFileAtomic(path, []byte(b.String()), 0o600)
 }
 
 func modifyConfigMap(fn func(map[string]string) error) error {
@@ -1329,8 +1322,7 @@ func migrateData(oldDir, newDir string) (int, error) {
 		if err != nil {
 			return migrated, err
 		}
-		os.MkdirAll(filepath.Dir(dst), 0755)
-		if err := os.WriteFile(dst, data, 0600); err != nil {
+		if err := fileutil.WriteFileAtomic(dst, data, 0o600); err != nil {
 			return migrated, err
 		}
 		migrated++
@@ -1346,11 +1338,13 @@ func GetAccountsPath() string {
 // ===== Accounts 内存缓存（消除并发文件 I/O 瓶颈）=====
 
 var (
-	_accountsCache  []map[string]interface{}
-	_accountsMu     sync.RWMutex
-	_accountsLoaded bool
-	_accountsDirty  bool
-	_flushTimer     *time.Timer
+	_accountsCache   []map[string]interface{}
+	_accountsMu      sync.RWMutex
+	_accountsLoaded  bool
+	_accountsDirty   bool
+	_accountsVersion uint64
+	_flushTimer      *time.Timer
+	_flushMu         sync.Mutex
 )
 
 func loadAccountsCache() {
@@ -1372,8 +1366,7 @@ func GetAccountsCached() []map[string]interface{} {
 	if !_accountsLoaded {
 		loadAccountsCache()
 	}
-	result := make([]map[string]interface{}, len(_accountsCache))
-	copy(result, _accountsCache)
+	result := cloneAccountMaps(_accountsCache)
 	_accountsMu.Unlock()
 	return result
 }
@@ -1381,10 +1374,11 @@ func GetAccountsCached() []map[string]interface{} {
 // SetAccountsCached 替换账号列表并触发异步刷盘
 func SetAccountsCached(accounts []map[string]interface{}) {
 	_accountsMu.Lock()
-	_accountsCache = accounts
+	_accountsCache = cloneAccountMaps(accounts)
 	_accountsLoaded = true
 	_accountsDirty = true
-	scheduleFlush()
+	_accountsVersion++
+	scheduleFlushLocked(500 * time.Millisecond)
 	_accountsMu.Unlock()
 }
 
@@ -1396,42 +1390,70 @@ func ModifyAccountsCached(fn func([]map[string]interface{}) []map[string]interfa
 	}
 	_accountsCache = fn(_accountsCache)
 	_accountsDirty = true
-	scheduleFlush()
+	_accountsVersion++
+	scheduleFlushLocked(500 * time.Millisecond)
 	_accountsMu.Unlock()
 }
 
-func scheduleFlush() {
+func scheduleFlushLocked(delay time.Duration) {
 	if _flushTimer != nil {
 		_flushTimer.Stop()
 	}
-	_flushTimer = time.AfterFunc(500*time.Millisecond, flushAccountsToDisk)
+	_flushTimer = time.AfterFunc(delay, func() {
+		if err := flushAccountsToDisk(); err != nil {
+			log.Printf("账号缓存刷盘失败，将自动重试: %v", err)
+		}
+	})
 }
 
-func flushAccountsToDisk() {
-	_accountsMu.RLock()
-	if !_accountsDirty {
-		_accountsMu.RUnlock()
-		return
+func cloneAccountMaps(accounts []map[string]interface{}) []map[string]interface{} {
+	cloned := make([]map[string]interface{}, len(accounts))
+	for i, account := range accounts {
+		if account == nil {
+			continue
+		}
+		cloned[i] = make(map[string]interface{}, len(account))
+		for key, value := range account {
+			cloned[i][key] = value
+		}
 	}
-	data := make([]map[string]interface{}, len(_accountsCache))
-	copy(data, _accountsCache)
-	_accountsMu.RUnlock()
+	return cloned
+}
+
+func flushAccountsToDisk() error {
+	_flushMu.Lock()
+	defer _flushMu.Unlock()
+
+	_accountsMu.Lock()
+	if !_accountsDirty {
+		_accountsMu.Unlock()
+		return nil
+	}
+	data := cloneAccountMaps(_accountsCache)
+	version := _accountsVersion
+	_accountsMu.Unlock()
 
 	err := SaveJSON(GetAccountsPath(), data)
 
 	_accountsMu.Lock()
-	if err == nil {
+	if err == nil && version == _accountsVersion {
 		_accountsDirty = false
+	} else if err != nil && _accountsDirty {
+		scheduleFlushLocked(time.Second)
 	}
 	_accountsMu.Unlock()
+	return err
 }
 
 // FlushAccountsSync 同步刷盘（程序退出前调用）
-func FlushAccountsSync() {
+func FlushAccountsSync() error {
+	_accountsMu.Lock()
 	if _flushTimer != nil {
 		_flushTimer.Stop()
+		_flushTimer = nil
 	}
-	flushAccountsToDisk()
+	_accountsMu.Unlock()
+	return flushAccountsToDisk()
 }
 
 // ===== JSON 存储读写 =====
@@ -1468,10 +1490,5 @@ func saveJSON(filePath string, items []map[string]interface{}) error {
 	if err != nil {
 		return err
 	}
-	os.MkdirAll(filepath.Dir(filePath), 0755)
-	tmpFile := filePath + ".tmp"
-	if err := os.WriteFile(tmpFile, b, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmpFile, filePath)
+	return fileutil.WriteFileAtomic(filePath, b, 0o600)
 }

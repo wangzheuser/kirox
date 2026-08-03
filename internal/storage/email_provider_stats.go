@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reg_go/internal/fileutil"
 )
 
 const emailProviderStatsFileName = "email_provider_stats.json"
@@ -68,7 +70,12 @@ func readEmailProviderStatsUnlocked() (map[string]EmailProviderStat, error) {
 	}
 	var stats map[string]EmailProviderStat
 	if err := json.Unmarshal(data, &stats); err != nil {
-		return nil, err
+		corruptPath := fmt.Sprintf("%s.corrupt-%s", path, time.Now().Format("20060102-150405.000000000"))
+		if renameErr := os.Rename(path, corruptPath); renameErr != nil {
+			return nil, fmt.Errorf("解析邮箱渠道统计失败: %w（隔离损坏文件失败: %v）", err, renameErr)
+		}
+		log.Printf("邮箱渠道统计文件损坏，已隔离为 %s: %v", corruptPath, err)
+		return map[string]EmailProviderStat{}, nil
 	}
 	if stats == nil {
 		stats = map[string]EmailProviderStat{}
@@ -90,22 +97,11 @@ func readEmailProviderStatsUnlocked() (map[string]EmailProviderStat, error) {
 
 func writeEmailProviderStatsUnlocked(stats map[string]EmailProviderStat) error {
 	path := emailProviderStatsFilePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(stats, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := fmt.Sprintf("%s.tmp.%d.%d", path, os.Getpid(), time.Now().UnixNano())
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
+	return fileutil.WriteFileAtomic(path, data, 0o600)
 }
 
 func sortedEmailProviderStats(stats map[string]EmailProviderStat) []EmailProviderStat {

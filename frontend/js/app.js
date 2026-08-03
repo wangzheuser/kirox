@@ -815,8 +815,8 @@ function getRegistrationConfigPayload() {
     delay: readIntegerInput('cfg-delay', 1, 0),
     domainExplorationPercent: readIntegerInput('cfg-domain-exploration-percent', 20, 0, 100),
     proxyExplorationPercent: readIntegerInput('cfg-proxy-exploration-percent', 50, 0, 100),
-    retryCount: readIntegerInput('cfg-retry-count', 1, 0),
-    otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
+    retryCount: readIntegerInput('cfg-retry-count', 1, 0, 5),
+    otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30, 600),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
     emailProviders: getSelectedEmailProviders(),
     moemailDomainMode: selection.moemailDomainMode,
@@ -864,8 +864,8 @@ function getFormConfig() {
     delay: readIntegerInput('cfg-delay', 1, 0),
     domainExplorationPercent: readIntegerInput('cfg-domain-exploration-percent', 20, 0, 100),
     proxyExplorationPercent: readIntegerInput('cfg-proxy-exploration-percent', 50, 0, 100),
-    retryCount: readIntegerInput('cfg-retry-count', 1, 0),
-    otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30),
+    retryCount: readIntegerInput('cfg-retry-count', 1, 0, 5),
+    otpTimeout: readIntegerInput('cfg-otp-timeout', 60, 30, 600),
     reuseFailedEmail: readCheckboxInput('cfg-reuse-failed-email'),
     emailProviders: getSelectedEmailProviders()
   };
@@ -933,20 +933,21 @@ function getFormConfig() {
 
 async function saveConfig(options) {
   options = options || {};
-  if (registrationConfigApplying) return;
+  if (registrationConfigApplying) return { skipped: true };
   try {
     var result = await window.go.main.App.SetRegistrationConfig(getRegistrationConfigPayload());
     if (result && result.error) {
-      if (!options.silent) showToast(result.error, 'error');
-      return;
+      throw new Error(result.error);
     }
     if (!options.silent && result && result.config) {
       applyRegistrationConfig(result.config);
       showToast('注册配置已保存');
     }
+    return result;
   } catch(e) {
     console.error('配置保存失败:', e);
     if (!options.silent) showToast('注册配置保存失败: ' + e.message, 'error');
+    throw e;
   }
 }
 
@@ -955,7 +956,9 @@ function scheduleRegistrationConfigSave() {
   if (registrationSaveTimer) clearTimeout(registrationSaveTimer);
   registrationSaveTimer = setTimeout(function() {
     registrationSaveTimer = null;
-    saveConfig({ silent: true });
+    saveConfig({ silent: true }).catch(function(e) {
+      console.error('自动保存注册配置失败:', e);
+    });
   }, 300);
 }
 

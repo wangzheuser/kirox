@@ -1,7 +1,10 @@
 package data
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -180,5 +183,35 @@ func TestSaveKiroSuccessConcurrentUniqueEmails(t *testing.T) {
 		if _, ok := seen[email]; !ok {
 			t.Fatalf("missing saved account %s", email)
 		}
+	}
+}
+
+func TestSaveKiroRecoveryPersistsConsumedAccountCredentials(t *testing.T) {
+	dir := t.TempDir()
+	result := map[string]interface{}{
+		"status":        "failed",
+		"error":         "验活失败",
+		"email":         "recover@example.com",
+		"password":      "Password123!",
+		"passwordSet":   true,
+		"client_id":     "client-id",
+		"client_secret": "client-secret",
+		"device_code":   "device-code",
+		"aws_token":     map[string]interface{}{"refreshToken": "refresh-token"},
+	}
+	if err := SaveKiroRecovery(result, dir); err != nil {
+		t.Fatalf("SaveKiroRecovery: %v", err)
+	}
+
+	b, err := os.ReadFile(filepath.Join(dir, "registration_recovery.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []map[string]interface{}
+	if err := json.Unmarshal(b, &entries); err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0]["email"] != "recover@example.com" || entries[0]["password"] != "Password123!" || entries[0]["clientSecret"] != "client-secret" {
+		t.Fatalf("unexpected recovery entry: %#v", entries)
 	}
 }

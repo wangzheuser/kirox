@@ -161,9 +161,16 @@ test('Outlook Graph registration email strategy is persisted through backend API
 
 test('registration OTP timeout defaults to sixty seconds in UI config', () => {
   assert.match(html, /id="cfg-otp-timeout" value="60"/);
-  assert.match(appJs, /otpTimeout:\s*readIntegerInput\(['"]cfg-otp-timeout['"],\s*60,\s*30\)/);
+  assert.match(appJs, /otpTimeout:\s*readIntegerInput\(['"]cfg-otp-timeout['"],\s*60,\s*30,\s*600\)/);
   assert.match(appJs, /writeIntegerInput\(['"]cfg-otp-timeout['"],\s*cfg\.otpTimeout,\s*60\)/);
   assert.match(appJs, /otpTimeout:\s*60/);
+});
+
+test('registration start stops when config persistence fails and clamps retry inputs', () => {
+  const taskJs = fs.readFileSync(new URL('../js/task.js', import.meta.url), 'utf8');
+  assert.match(appJs, /retryCount:\s*readIntegerInput\(['"]cfg-retry-count['"],\s*1,\s*0,\s*5\)/);
+  assert.match(appJs, /throw new Error\(result\.error\)/);
+  assert.match(taskJs, /await saveConfig\(\{ silent: true \}\)/);
 });
 
 test('registration domain exploration percent defaults to twenty and is clamped in UI config', () => {

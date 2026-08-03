@@ -19,6 +19,27 @@ func TestAddGoroutineLabelInsertsLabelAfterTimestamp(t *testing.T) {
 	}
 }
 
+func TestAddGoroutineLabelSupportsDateTimestamp(t *testing.T) {
+	got := addGoroutineLabel("2026/08/03 12:55:40 [Kiro] 开始\n")
+
+	if !regexp.MustCompile(`^2026/08/03 12:55:40 \[g\d+\] \[Kiro\] 开始\n$`).MatchString(got) {
+		t.Fatalf("expected goroutine label after date timestamp, got %q", got)
+	}
+}
+
+func TestRedactSensitiveLog(t *testing.T) {
+	input := `邮箱 user@example.com 验证码: 123456 accessToken=access-value refreshToken:"refresh-value" password=secret-value https://proxy-user:proxy-pass@proxy.example:443`
+	got := redactSensitiveLog(input)
+	for _, secret := range []string{"user@example.com", "123456", "access-value", "refresh-value", "secret-value", "proxy-pass"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("sensitive value %q leaked in %q", secret, got)
+		}
+	}
+	if !strings.Contains(got, "u***@example.com") {
+		t.Fatalf("masked email should retain its domain, got %q", got)
+	}
+}
+
 func TestAddGoroutineLabelPrefixesLinesWithoutTimestamp(t *testing.T) {
 	got := addGoroutineLabel("plain message\n")
 

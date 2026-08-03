@@ -2,12 +2,15 @@ package task
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	"reg_go/internal/logutil"
 )
 
 // State 任务状态（从原 App 脱离为独立单例）
@@ -15,6 +18,7 @@ type State struct {
 	mu                   sync.Mutex
 	running              bool
 	stopCh               chan struct{}
+	doneCh               chan struct{}
 	cancelFunc           context.CancelFunc // 强制取消所有 HTTP 请求
 	total                int
 	completed            int
@@ -28,6 +32,7 @@ type State struct {
 	logs                 []string
 	logsMu               sync.Mutex
 	logFile              *lumberjack.Logger // 日志文件写入器，支持自动轮转
+	logDir               string
 	// OnSyncResult 同步完成回调（由 app.go 注入，用于通知前端）
 	OnSyncResult func(interface{})
 }
@@ -147,15 +152,72 @@ func (s *State) InitLogFile(outputDir string) error {
 		return err
 	}
 
+	filename := filepath.Join(outputDir, "app.log")
+	if s.logFile != nil {
+		if err := s.logFile.Close(); err != nil {
+			return err
+		}
+		s.logFile = nil
+	}
+	if err := truncateTrailingNUL(filename); err != nil {
+		return err
+	}
+	logPaths := []string{filename}
+	backups, err := filepath.Glob(filepath.Join(outputDir, "app-*.log"))
+	if err != nil {
+		return err
+	}
+	logPaths = append(logPaths, backups...)
+	for _, logPath := range logPaths {
+		if err := logutil.RedactFileOnce(logPath); err != nil {
+			return err
+		}
+	}
 	s.logFile = &lumberjack.Logger{
-		Filename:   filepath.Join(outputDir, "app.log"),
+		Filename:   filename,
 		MaxSize:    64,    // 单文件最大 64MB
 		MaxBackups: 1,     // 保留 1 个备份文件（当前文件 + 1 个轮转备份）
 		MaxAge:     0,     // 不按时间清理
 		Compress:   false, // 不压缩
 		LocalTime:  true,  // 使用本地时间
 	}
+	s.logDir = outputDir
 	return nil
+}
+
+func truncateTrailingNUL(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.Size() == 0 {
+		return err
+	}
+
+	const blockSize int64 = 4096
+	buf := make([]byte, blockSize)
+	for end := info.Size(); end > 0; {
+		start := max(int64(0), end-blockSize)
+		n, readErr := f.ReadAt(buf[:end-start], start)
+		if readErr != nil && n == 0 {
+			return readErr
+		}
+		for i := n - 1; i >= 0; i-- {
+			if buf[i] != 0 {
+				if start+int64(i)+1 == info.Size() {
+					return nil
+				}
+				return f.Truncate(start + int64(i) + 1)
+			}
+		}
+		end = start
+	}
+	return f.Truncate(0)
 }
 
 // CloseLogFile 关闭日志文件写入器（在任务结束时调用）
@@ -164,9 +226,17 @@ func (s *State) CloseLogFile() error {
 	defer s.logsMu.Unlock()
 
 	if s.logFile != nil {
-		err := s.logFile.Close()
+		closeErr := s.logFile.Close()
 		s.logFile = nil
-		return err
+		logPaths := []string{filepath.Join(s.logDir, "app.log")}
+		backups, globErr := filepath.Glob(filepath.Join(s.logDir, "app-*.log"))
+		logPaths = append(logPaths, backups...)
+		var markerErr error
+		for _, logPath := range logPaths {
+			markerErr = errors.Join(markerErr, logutil.MarkFileRedacted(logPath))
+		}
+		s.logDir = ""
+		return errors.Join(closeErr, globErr, markerErr)
 	}
 	return nil
 }
