@@ -171,13 +171,11 @@ func selectRuntimeProxyWithEgressPolicy(ctx context.Context, raw string, opts pr
 		egress = normalizeRuntimeProxyEgressInfo(egress)
 		if geoErr != nil {
 			errors = append(errors, fmt.Sprintf("第%d次出口探测失败: %v", attempt, geoErr))
-			if !hasFirstNonCooling {
-				firstNonCooling = selection
-				firstNonCooling.SuccessAttempt = attempt
-				firstNonCoolingEgress = egress
-				hasFirstNonCooling = true
-			}
-			continue
+			selection.Attempts = attempt
+			selection.SuccessAttempt = attempt
+			selection.Duration = time.Since(start)
+			selection.Errors = errors
+			return selection, egress, false, nil
 		}
 
 		cooling := policy.IsCooling != nil && policy.IsCooling(egress)

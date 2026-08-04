@@ -17,8 +17,8 @@ const (
 	DefaultProbeTarget       = "https://oidc.us-east-1.amazonaws.com/ping"
 	defaultSelectAttempts    = 5
 	defaultCandidateTimeout  = 15 * time.Second
-	defaultDetectAttempts    = 1
-	defaultDetectTimeout     = 8 * time.Second
+	defaultDetectAttempts    = 3
+	defaultDetectTimeout     = 2500 * time.Millisecond
 	maxSelectorErrorMessages = 5
 )
 

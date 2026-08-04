@@ -118,10 +118,8 @@ func detectTemplatedProxy(proxyURL string) Info {
 
 // detectTemplatedProxyWithOptions 使用指定选项检测模板代理，便于单元测试注入阻塞场景。
 func detectTemplatedProxyWithOptions(proxyURL string, opts SelectOptions) Info {
+	opts = normalizeSelectOptions(opts)
 	totalTimeout := opts.Timeout * time.Duration(opts.MaxAttempts)
-	if totalTimeout <= 0 {
-		totalTimeout = 8 * time.Second
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), totalTimeout)
 	defer cancel()
 
@@ -232,7 +230,8 @@ func simplifyProxyErr(s string) string {
 		return "检测超时"
 	case strings.Contains(s, "HTTPS 代理握手失败"):
 		return "HTTPS 代理握手失败，请确认代理服务是否支持 HTTPS 代理协议"
-	case strings.Contains(s, "代理 CONNECT 失败"):
+	case strings.Contains(lower, "proxy responded with non 200 code:"),
+		strings.Contains(lower, "代理 connect 失败"):
 		return s
 	case strings.Contains(lower, "connection refused"):
 		return "连接被拒绝"

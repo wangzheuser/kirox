@@ -445,9 +445,9 @@ function renderProxyDetectCard(state, payload) {
   }
   if (state === 'ok') {
     var loc = [payload.country, payload.region, payload.city].filter(Boolean).join(' · ');
-    var okTitle = payload.clash ? '✓ Clash 节点可用' : (payload.pool ? '✓ 代理池可用' : '✓ 可用');
+    var okTitle = payload.clash ? '✓ Clash 节点可用' : (payload.pool ? '✓ 本次抽样可用' : '✓ 可用');
     var poolNote = payload.pool
-      ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">第 ' + (payload.successAttempt || payload.attempts || 1) + ' 个 UUID 节点可用；注册前会重新抽样并绑定可用节点。' + (payload.durationMs ? '耗时 ' + payload.durationMs + 'ms。' : '') + '</div>'
+      ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">本次抽样第 ' + (payload.successAttempt || payload.attempts || 1) + ' 个 UUID 节点可用；注册前会重新抽样并绑定可用节点。' + (payload.durationMs ? '耗时 ' + payload.durationMs + 'ms。' : '') + '</div>'
       : '';
     var templateNote = payload.templated && !payload.pool ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">模板代理已使用 32 位无短横线会话 ID 完成检测；注册时每次尝试会重新生成会话代理。</div>' : '';
     var clashNote = payload.clash
@@ -462,11 +462,11 @@ function renderProxyDetectCard(state, payload) {
     box.innerHTML =
       '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
         '<span style="font-weight:600;color:#10b981;">' + okTitle + '</span>' +
-        '<span style="padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.15);color:#10b981;font-size:11px;font-weight:600;">' + (payload.scheme || '').toUpperCase() + '</span>' +
-        (payload.ip ? '<span style="color:var(--text);font-weight:600;">' + payload.ip + '</span>' : '') +
-        (loc ? '<span style="color:var(--muted);">· ' + loc + '</span>' : '') +
+        '<span style="padding:1px 6px;border-radius:4px;background:rgba(16,185,129,0.15);color:#10b981;font-size:11px;font-weight:600;">' + proxyEscapeHtml((payload.scheme || '').toUpperCase()) + '</span>' +
+        (payload.ip ? '<span style="color:var(--text);font-weight:600;">' + proxyEscapeHtml(payload.ip) + '</span>' : '') +
+        (loc ? '<span style="color:var(--muted);">· ' + proxyEscapeHtml(loc) + '</span>' : '') +
       '</div>' +
-      (payload.isp ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">' + payload.isp + '</div>' : '') +
+      (payload.isp ? '<div style="margin-top:4px;color:var(--muted);font-size:11px;">' + proxyEscapeHtml(payload.isp) + '</div>' : '') +
       clashNote +
       poolNote +
       templateNote;
@@ -481,13 +481,13 @@ function renderProxyDetectCard(state, payload) {
   var staleBackendHint = /解析 Clash API 响应失败: unexpected end of JSON input/.test(errorText)
     ? '<div style="margin-top:4px;font-size:11px;">当前前端已更新，但 Go/Wails 后端仍像旧版本：请完全退出应用后重新启动或重新构建后再检测。</div>'
     : '';
-  box.innerHTML = '✗ 检测失败：' + proxyEscapeHtml(errorText) +
+  box.innerHTML = (payload && payload.pool ? '✗ 配置已保存，本次抽样失败：' : '✗ 检测失败：') + proxyEscapeHtml(errorText) +
     staleBackendHint +
     (payload && payload.clash ? '<div style="margin-top:4px;font-size:11px;">Clash 节点检测失败' +
       (payload.clashGroup ? ' · 代理组 ' + proxyEscapeHtml(payload.clashGroup) : '') +
       (payload.clashNode ? ' · 节点 ' + proxyEscapeHtml(payload.clashNode) : '') +
       (payload.attempts ? ' · 已尝试 ' + payload.attempts + ' 个节点' : '') + '。</div>' : '') +
-    (payload && payload.pool ? '<div style="margin-top:4px;font-size:11px;">已连续抽样 ' + (payload.attempts || 0) + ' 个 UUID 节点，均不可用。</div>' : '') +
+    (payload && payload.pool ? '<div style="margin-top:4px;font-size:11px;">本次已抽样 ' + (payload.attempts || 0) + ' 个 UUID 节点，均失败。</div>' : '') +
     (payload && payload.templated && !payload.pool ? '<div style="margin-top:4px;font-size:11px;">已尝试使用临时 UUID 检测模板代理。</div>' : '') +
     errDetails;
 }
@@ -547,10 +547,14 @@ async function saveProxy() {
       showToast(tr('toast.proxyCleared', '代理已清除'));
       return;
     }
-    showToast(tr('toast.proxySaved', '代理已保存'));
     var d = result.detect;
-    if (d && d.ok) renderProxyDetectCard('ok', d);
-    else renderProxyDetectCard('error', d || {});
+    if (d && d.ok) {
+      showToast(tr('toast.proxySaved', '代理已保存'));
+      renderProxyDetectCard('ok', d);
+    } else {
+      showToast('代理配置已保存，本次抽样失败', 'error');
+      renderProxyDetectCard('error', d || {});
+    }
   } catch(e) {
     showToast(tr('toast.operationFailed', '操作失败') + ': ' + e.message, 'error');
     renderProxyDetectCard('error', { error: e.message });

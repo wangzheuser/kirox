@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"strings"
 	"testing"
@@ -207,5 +208,48 @@ func TestSelectRuntimeProxyWithEgressPolicyPrefersHistoricalSuccess(t *testing.T
 	}
 	if selection.SuccessAttempt != 2 || !strings.Contains(selection.ProxyURL, ids[1]) {
 		t.Fatalf("historical successful IP should be selected on second candidate, attempt=%d proxy=%q", selection.SuccessAttempt, selection.ProxyURL)
+	}
+}
+
+func TestSelectRuntimeProxyWithEgressPolicyReturnsValidatedCandidateWhenGeoProbeFails(t *testing.T) {
+	checks := 0
+	detections := 0
+	opts := proxy.SelectOptions{
+		MaxAttempts: 1,
+		Timeout:     time.Second,
+		TargetURL:   "https://example.test/ping",
+		UUIDFactory: func() string { return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+		Check: func(_ context.Context, _, _ string, _ time.Duration) error {
+			checks++
+			return nil
+		},
+	}
+	detect := func(_ context.Context, _ string) (runtimeProxyEgressInfo, error) {
+		detections++
+		return runtimeProxyEgressInfo{}, errors.New("geo endpoint unavailable")
+	}
+
+	selection, egress, preferred, err := selectRuntimeProxyWithEgressPolicy(
+		context.Background(),
+		"http://session-{uuid}:secret@127.0.0.1:9200",
+		opts,
+		detect,
+		runtimeProxyEgressMaxAttempts,
+		runtimeProxyEgressSelectionPolicy{},
+	)
+	if err != nil {
+		t.Fatalf("已验活候选不应因可选地理探测失败而被丢弃: %v", err)
+	}
+	if checks != 1 || detections != 1 {
+		t.Fatalf("代理/地理探测次数 = %d/%d, want 1/1", checks, detections)
+	}
+	if selection.Attempts != 1 || selection.SuccessAttempt != 1 || selection.ProxyURL == "" {
+		t.Fatalf("应立即返回首个已验活候选: %+v", selection)
+	}
+	if preferred || egress != (runtimeProxyEgressInfo{}) {
+		t.Fatalf("地理探测失败不应标记历史优选: preferred=%v egress=%+v", preferred, egress)
+	}
+	if len(selection.Errors) != 1 || !strings.Contains(selection.Errors[0], "出口探测失败") {
+		t.Fatalf("地理探测失败详情应保留: %v", selection.Errors)
 	}
 }

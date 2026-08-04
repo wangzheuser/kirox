@@ -203,7 +203,7 @@ async function testProxyEntryByIdx(idx) {
       var loc = [info.country, info.region, info.city].filter(Boolean).join(' · ');
       showToast((info.scheme || '').toUpperCase() + ' · ' + (info.ip || '') + (loc ? ' (' + loc + ')' : ''));
     } else {
-      showToast('不可用: ' + ((info && info.error) || '未知错误'), 'error');
+      showToast('本次抽样失败: ' + ((info && info.error) || '未知错误'), 'error');
     }
   } catch (e) {
     showToast('测试失败: ' + e.message, 'error');
