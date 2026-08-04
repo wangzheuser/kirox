@@ -147,6 +147,36 @@ func TestRuntimeProxyEgressSelectionSamplesMultipleCandidates(t *testing.T) {
 	}
 }
 
+func TestRuntimeProxyEgressSelectionCapsRepeatedErrors(t *testing.T) {
+	opts := proxy.SelectOptions{
+		MaxAttempts: 1,
+		Timeout:     time.Second,
+		TargetURL:   "https://example.test/ping",
+		UUIDFactory: func() string { return "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+		Check: func(context.Context, string, string, time.Duration) error {
+			return errors.New("proxy unavailable")
+		},
+	}
+
+	selection, _, _, err := selectRuntimeProxyWithEgressPolicy(
+		context.Background(),
+		"http://session-{uuid}:secret@127.0.0.1:9200",
+		opts,
+		func(context.Context, string) (runtimeProxyEgressInfo, error) { return runtimeProxyEgressInfo{}, nil },
+		runtimeProxyEgressMaxAttempts,
+		runtimeProxyEgressSelectionPolicy{},
+	)
+	if err == nil {
+		t.Fatalf("all unavailable proxies should fail")
+	}
+	if selection.Attempts != runtimeProxyEgressMaxAttempts || len(selection.Errors) != runtimeProxySelectionMaxErrors {
+		t.Fatalf("attempts/errors = %d/%d, want %d/%d", selection.Attempts, len(selection.Errors), runtimeProxyEgressMaxAttempts, runtimeProxySelectionMaxErrors)
+	}
+	if strings.Contains(err.Error(), "第6次") {
+		t.Fatalf("error should be capped: %v", err)
+	}
+}
+
 func TestRuntimeProxyEgressHTTPClientDisablesIdleProxyConnections(t *testing.T) {
 	proxyURL, err := url.Parse("http://127.0.0.1:9200")
 	if err != nil {

@@ -21,6 +21,7 @@ import (
 const runtimeProxyEgressEndpoint = "http://ip-api.com/json/?fields=status,message,countryCode,query,isp,as"
 const runtimeProxyEgressMaxAttempts = 10
 const runtimeProxyEgressRiskCooldown = 10 * time.Minute
+const runtimeProxySelectionMaxErrors = 5
 
 type runtimeProxyEgressDetector func(context.Context, string) (runtimeProxyEgressInfo, error)
 
@@ -163,14 +164,14 @@ func selectRuntimeProxyWithEgressPolicy(ctx context.Context, raw string, opts pr
 
 		selection, err := proxy.SelectRuntimeProxy(ctx, raw, singleAttemptOpts)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("第%d次代理不可用: %v", attempt, err))
+			errors = appendRuntimeProxySelectionError(errors, fmt.Sprintf("第%d次代理不可用: %v", attempt, err))
 			continue
 		}
 
 		egress, geoErr := detector(ctx, selection.ProxyURL)
 		egress = normalizeRuntimeProxyEgressInfo(egress)
 		if geoErr != nil {
-			errors = append(errors, fmt.Sprintf("第%d次出口探测失败: %v", attempt, geoErr))
+			errors = appendRuntimeProxySelectionError(errors, fmt.Sprintf("第%d次出口探测失败: %v", attempt, geoErr))
 			selection.Attempts = attempt
 			selection.SuccessAttempt = attempt
 			selection.Duration = time.Since(start)
@@ -180,7 +181,7 @@ func selectRuntimeProxyWithEgressPolicy(ctx context.Context, raw string, opts pr
 
 		cooling := policy.IsCooling != nil && policy.IsCooling(egress)
 		if cooling {
-			errors = append(errors, fmt.Sprintf("第%d次出口 IP %s 风控冷却中，跳过", attempt, egress.IP))
+			errors = appendRuntimeProxySelectionError(errors, fmt.Sprintf("第%d次出口 IP %s 风控冷却中，跳过", attempt, egress.IP))
 			continue
 		}
 
@@ -218,6 +219,13 @@ func selectRuntimeProxyWithEgressPolicy(ctx context.Context, raw string, opts pr
 		Duration:  time.Since(start),
 		Errors:    errors,
 	}, runtimeProxyEgressInfo{}, false, fmt.Errorf("代理候选均不可用或出口 IP 均在冷却中，已尝试 %d 次: %s", maxPreferredAttempts, strings.Join(errors, "；"))
+}
+
+func appendRuntimeProxySelectionError(errors []string, message string) []string {
+	if len(errors) >= runtimeProxySelectionMaxErrors {
+		return errors
+	}
+	return append(errors, message)
 }
 
 func normalizeRuntimeProxyEgressInfo(egress runtimeProxyEgressInfo) runtimeProxyEgressInfo {

@@ -1213,6 +1213,29 @@ func TestClassifyErrorSplitsFormerOtherErrors(t *testing.T) {
 	}
 }
 
+func TestRegisteredMailboxIsNotAnEmailServiceFailure(t *testing.T) {
+	stats := newRuntimeTaskStats()
+	stats.RecordFailure("邮箱已注册过，跳过", false, "")
+
+	diagnostics := stats.DiagnosticsSnapshot(0, 0, 10)
+	if diagnostics.EmailServiceFailures.Total != 0 {
+		t.Fatalf("registered mailbox is not a service failure: %#v", diagnostics.EmailServiceFailures)
+	}
+	if got := stats.failCategories["邮箱已注册"]; got != 1 {
+		t.Fatalf("registered mailbox failure count = %d, want 1", got)
+	}
+}
+
+func TestCompletedRegistrationDurationRejectsUnstartedAttempt(t *testing.T) {
+	if duration, ok := completedRegistrationDuration(time.Time{}, time.Now()); ok || duration != 0 {
+		t.Fatalf("unstarted attempt duration = %v, %v; want 0, false", duration, ok)
+	}
+	start := time.Unix(100, 0)
+	if duration, ok := completedRegistrationDuration(start, start.Add(3*time.Second)); !ok || duration != 3 {
+		t.Fatalf("started attempt duration = %v, %v; want 3, true", duration, ok)
+	}
+}
+
 func TestOutlookRegistrationAddressTrackerSkipsDuplicateAndRegisteredAddresses(t *testing.T) {
 	tracker := newOutlookRegistrationAddressTracker()
 	first := email.OutlookAccount{Email: "alias1@outlook.jp", RegistrationEmail: "primary@hotmail.com"}

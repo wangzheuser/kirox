@@ -3174,7 +3174,10 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			return
 		}
 
-		itemDuration := time.Since(itemStart).Seconds()
+		itemDuration, started := completedRegistrationDuration(itemStart, time.Now())
+		if !started {
+			return
+		}
 		success := result["status"] == "success"
 		if success {
 			if err := data.SaveKiroSuccess(result, outDir); err != nil {
@@ -3733,13 +3736,18 @@ func emailServiceFailureDetail(errorMsg, reason string) string {
 		return "邮箱创建失败"
 	case strings.Contains(errorMsg, "获取邮件失败") || strings.Contains(errorMsg, "获取邮件列表失败") || strings.Contains(errorMsg, "获取邮件详情失败"):
 		return "获取邮件失败"
-	case strings.TrimSpace(reason) == "邮箱已注册":
-		return "邮箱已注册"
 	case strings.TrimSpace(reason) == "邮箱服务异常":
 		return "邮箱服务异常"
 	default:
 		return ""
 	}
+}
+
+func completedRegistrationDuration(start, end time.Time) (float64, bool) {
+	if start.IsZero() {
+		return 0, false
+	}
+	return end.Sub(start).Seconds(), true
 }
 
 func resetOutlookRetryBudgetAfterAccountRotation(attempt, proxySwitches int) (int, int) {
