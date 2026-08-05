@@ -21,6 +21,7 @@ import (
 const runtimeProxyEgressEndpoint = "http://ip-api.com/json/?fields=status,message,countryCode,query,isp,as"
 const runtimeProxyEgressMaxAttempts = 10
 const runtimeProxyEgressRiskCooldown = 10 * time.Minute
+const runtimeProxyEgressNetworkCooldown = 2 * time.Minute
 const runtimeProxySelectionMaxErrors = 5
 
 type runtimeProxyEgressDetector func(context.Context, string) (runtimeProxyEgressInfo, error)
@@ -181,7 +182,7 @@ func selectRuntimeProxyWithEgressPolicy(ctx context.Context, raw string, opts pr
 
 		cooling := policy.IsCooling != nil && policy.IsCooling(egress)
 		if cooling {
-			errors = appendRuntimeProxySelectionError(errors, fmt.Sprintf("第%d次出口 IP %s 风控冷却中，跳过", attempt, egress.IP))
+			errors = appendRuntimeProxySelectionError(errors, fmt.Sprintf("第%d次出口 IP %s 冷却中，跳过", attempt, egress.IP))
 			continue
 		}
 
@@ -288,5 +289,5 @@ func recordRuntimeProxyEgressRiskFailure(sourceKey string, egress runtimeProxyEg
 }
 
 func recordRuntimeProxyEgressNetworkFailure(sourceKey string, egress runtimeProxyEgressInfo) error {
-	return storage.RecordProxyEgressNetworkFailure(sourceKey, runtimeProxyEgressStorageIdentity(egress))
+	return storage.RecordProxyEgressNetworkFailure(sourceKey, runtimeProxyEgressStorageIdentity(egress), runtimeProxyEgressNetworkCooldown)
 }

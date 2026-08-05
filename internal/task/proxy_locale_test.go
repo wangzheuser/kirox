@@ -145,6 +145,9 @@ func TestRuntimeProxyEgressSelectionSamplesMultipleCandidates(t *testing.T) {
 	if runtimeProxyEgressRiskCooldown != 10*time.Minute {
 		t.Fatalf("runtime proxy egress risk cooldown should be 10 minutes, got %s", runtimeProxyEgressRiskCooldown)
 	}
+	if runtimeProxyEgressNetworkCooldown != 2*time.Minute {
+		t.Fatalf("runtime proxy egress network cooldown should be 2 minutes, got %s", runtimeProxyEgressNetworkCooldown)
+	}
 }
 
 func TestRuntimeProxyEgressSelectionCapsRepeatedErrors(t *testing.T) {

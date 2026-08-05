@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -51,20 +52,56 @@ func (r *Registrar) Step6SubmitEmail() (string, error) {
 	httputil.SaveCookies(r.Cookies, respH)
 
 	var data map[string]interface{}
-	json.Unmarshal(body, &data)
-	if wh, ok := data["workflowStateHandle"].(string); ok {
-		r.WorkflowHandle = wh
-	}
+	_ = json.Unmarshal(body, &data)
 
 	if status == 400 {
 		if isTESBlockedResponse(body) {
 			return "", fmt.Errorf("提交邮箱失败: %d - %s", status, shortResponseBody(body, 500))
 		}
+		workflowHandle := signupWorkflowHandle(data)
+		if workflowHandle == "" {
+			return "", fmt.Errorf("提交邮箱失败: %d - 未返回有效 signup redirect/workflowStateHandle: %s", status, shortResponseBody(body, 500))
+		}
+		r.WorkflowHandle = workflowHandle
 		return "signup", nil
 	} else if status == 200 {
+		if wh, ok := data["workflowStateHandle"].(string); ok && strings.TrimSpace(wh) != "" {
+			r.WorkflowHandle = strings.TrimSpace(wh)
+		}
 		return "login", nil
 	}
 	return "", fmt.Errorf("提交邮箱失败: %d - %s", status, string(body)[:min(200, len(body))])
+}
+
+func signupWorkflowHandle(data map[string]interface{}) string {
+	responseHandle, _ := data["workflowStateHandle"].(string)
+	responseHandle = strings.TrimSpace(responseHandle)
+	rawRedirect, hasRedirect := data["redirect"]
+	if !hasRedirect {
+		message, _ := data["message"].(map[string]interface{})
+		errorCode, _ := message["errorCode"].(string)
+		if !strings.EqualFold(strings.TrimSpace(errorCode), "ENTITY_DOES_NOT_EXIST") {
+			return ""
+		}
+		return responseHandle
+	}
+	redirect, ok := rawRedirect.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	rawURL, _ := redirect["url"].(string)
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || !strings.HasSuffix(strings.TrimRight(parsed.Path, "/"), "/signup") {
+		return ""
+	}
+	handle := strings.TrimSpace(parsed.Query().Get("workflowStateHandle"))
+	if handle == "" {
+		return ""
+	}
+	if responseHandle != "" && responseHandle != handle {
+		return ""
+	}
+	return handle
 }
 
 func isTESBlockedResponse(body []byte) bool {
@@ -294,6 +331,8 @@ func (r *Registrar) Step9SendOTP() error {
 	reqPayload.Set("email", r.Email)
 	reqPayload.Set("browserData", browserData)
 
+	// 完整 profile 表单已经构造并进入提交步骤；响应是否接受由 OTPSent 区分。
+	r.FormSubmitted = true
 	respBody, status, _, err := r.DoPostRaw(r.Cfg.ProfileBase+"/api/send-otp", reqPayload, r.BuildProfileHeaders(ref))
 	if err != nil {
 		return err
@@ -307,6 +346,7 @@ func (r *Registrar) Step9SendOTP() error {
 		}
 		return fmt.Errorf("send-otp 失败 (%d) [%s]", status, diagnostics)
 	}
+	r.OTPSent = true
 	log.Println("验证码已发送")
 	return nil
 }

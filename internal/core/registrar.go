@@ -79,8 +79,11 @@ type Registrar struct {
 	// Outlook 模式: 发送验证码前的邮件数量
 	OutlookMailCount int
 
-	// OTPReceived 标记本次注册流程已成功收到验证码。
-	OTPReceived bool
+	// 注册流程里程碑，由 Run 写入结构化结果供协调器计数。
+	EnteredSignup bool
+	FormSubmitted bool
+	OTPSent       bool
+	OTPReceived   bool
 }
 
 // NewRegistrar 创建注册器

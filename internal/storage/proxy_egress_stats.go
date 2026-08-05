@@ -212,14 +212,21 @@ func RecordProxyEgressRiskFailure(sourceKey string, identity ProxyEgressIdentity
 	})
 }
 
-// RecordProxyEgressNetworkFailure 累计指定代理出口网络失败次数。
-func RecordProxyEgressNetworkFailure(sourceKey string, identity ProxyEgressIdentity) error {
+// RecordProxyEgressNetworkFailure 累计指定代理出口网络失败次数，并短期冷却该出口 IP。
+func RecordProxyEgressNetworkFailure(sourceKey string, identity ProxyEgressIdentity, cooldown time.Duration) error {
 	return modifyProxyEgressStat(sourceKey, identity, func(stat *ProxyEgressStat) {
 		stat.NetworkFailureCount++
+		if cooldown > 0 {
+			until := time.Now().Add(cooldown)
+			if current, err := time.Parse(time.RFC3339, stat.CooldownUntil); err == nil && current.After(until) {
+				return
+			}
+			stat.CooldownUntil = until.Format(time.RFC3339)
+		}
 	})
 }
 
-// IsProxyEgressCooling 判断指定代理来源下的出口 IP 是否仍在风控冷却期。
+// IsProxyEgressCooling 判断指定代理来源下的出口 IP 是否仍在冷却期。
 func IsProxyEgressCooling(sourceKey, ip string, now time.Time) bool {
 	sourceKey = strings.TrimSpace(sourceKey)
 	ip = strings.TrimSpace(ip)

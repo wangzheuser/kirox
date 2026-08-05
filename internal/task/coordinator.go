@@ -599,26 +599,32 @@ type StartTaskRequest struct {
 }
 
 type emailProviderSelector struct {
-	mu                  sync.Mutex
-	providers           []string
-	next                int
-	createFailureStreak map[string]int
-	cooldownUntil       map[string]time.Time
+	mu                   sync.Mutex
+	providers            []string
+	next                 int
+	createFailureStreak  map[string]int
+	createCooldownUntil  map[string]time.Time
+	mailboxFailureStreak map[string]int
+	mailboxCooldownUntil map[string]time.Time
 }
 
 const (
-	emailProviderHistoricalMinOTP               = 5
-	emailProviderHistoricalMinSuccess           = 3
-	emailProviderHistoricalMinSuccessRate       = 0.50
-	emailProviderCreateFailureCooldownThreshold = 8
-	emailProviderCreateFailureCooldown          = 90 * time.Second
+	emailProviderHistoricalMinOTP                = 5
+	emailProviderHistoricalMinSuccess            = 3
+	emailProviderHistoricalMinSuccessRate        = 0.50
+	emailProviderCreateFailureCooldownThreshold  = 3
+	emailProviderCreateFailureCooldown           = 30 * time.Minute
+	emailProviderMailboxFailureCooldownThreshold = 3
+	emailProviderMailboxFailureCooldown          = 30 * time.Minute
 )
 
 func newEmailProviderSelector(providers []string) *emailProviderSelector {
 	return &emailProviderSelector{
-		providers:           append([]string(nil), providers...),
-		createFailureStreak: make(map[string]int),
-		cooldownUntil:       make(map[string]time.Time),
+		providers:            append([]string(nil), providers...),
+		createFailureStreak:  make(map[string]int),
+		createCooldownUntil:  make(map[string]time.Time),
+		mailboxFailureStreak: make(map[string]int),
+		mailboxCooldownUntil: make(map[string]time.Time),
 	}
 }
 
@@ -641,6 +647,8 @@ func (s *emailProviderSelector) NextWithContext(ctx context.Context) (string, er
 		}
 		if wait <= 0 {
 			wait = 100 * time.Millisecond
+		} else {
+			log.Printf("[Kiro] 所选邮箱渠道均在冷却，等待 %s 后重新选择", wait.Truncate(time.Second))
 		}
 		timer := time.NewTimer(wait)
 		select {
@@ -664,16 +672,26 @@ func (s *emailProviderSelector) nextAvailable(now time.Time) (string, time.Durat
 	for offset := 0; offset < len(s.providers); offset++ {
 		idx := (s.next + offset) % len(s.providers)
 		provider := s.providers[idx]
-		until := s.cooldownUntil[provider]
+		createUntil := s.createCooldownUntil[provider]
+		if !createUntil.IsZero() && !createUntil.After(now) {
+			delete(s.createCooldownUntil, provider)
+			createUntil = time.Time{}
+		}
+		mailboxUntil := s.mailboxCooldownUntil[provider]
+		if !mailboxUntil.IsZero() && !mailboxUntil.After(now) {
+			delete(s.mailboxCooldownUntil, provider)
+			mailboxUntil = time.Time{}
+		}
+		until := createUntil
+		if mailboxUntil.After(until) {
+			until = mailboxUntil
+		}
 		if until.After(now) {
 			wait := until.Sub(now)
 			if minWait == 0 || wait < minWait {
 				minWait = wait
 			}
 			continue
-		}
-		if !until.IsZero() {
-			delete(s.cooldownUntil, provider)
 		}
 		s.next = idx + 1
 		return provider, 0, true
@@ -694,15 +712,15 @@ func (s *emailProviderSelector) ReportCreateFailure(provider string) bool {
 	if s.createFailureStreak == nil {
 		s.createFailureStreak = make(map[string]int)
 	}
-	if s.cooldownUntil == nil {
-		s.cooldownUntil = make(map[string]time.Time)
+	if s.createCooldownUntil == nil {
+		s.createCooldownUntil = make(map[string]time.Time)
 	}
 	s.createFailureStreak[provider]++
 	if s.createFailureStreak[provider] < emailProviderCreateFailureCooldownThreshold {
 		return false
 	}
 	s.createFailureStreak[provider] = 0
-	s.cooldownUntil[provider] = time.Now().Add(emailProviderCreateFailureCooldown)
+	s.createCooldownUntil[provider] = time.Now().Add(emailProviderCreateFailureCooldown)
 	return true
 }
 
@@ -717,7 +735,49 @@ func (s *emailProviderSelector) ReportCreateSuccess(provider string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.createFailureStreak, provider)
-	delete(s.cooldownUntil, provider)
+	delete(s.createCooldownUntil, provider)
+}
+
+func (s *emailProviderSelector) ReportMailboxResult(provider string, result map[string]interface{}) bool {
+	if s == nil || result == nil {
+		return false
+	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" || provider == "outlook" {
+		return false
+	}
+	otpReceived, _ := result["otpReceived"].(bool)
+	if result["status"] == "success" || otpReceived {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		delete(s.mailboxFailureStreak, provider)
+		delete(s.mailboxCooldownUntil, provider)
+		return false
+	}
+	formSubmitted, _ := result["formSubmitted"].(bool)
+	if !formSubmitted {
+		return false
+	}
+	errorMsg, _ := result["error"].(string)
+	if !isEmailProviderMailboxFailure(errorMsg) {
+		return false
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mailboxFailureStreak == nil {
+		s.mailboxFailureStreak = make(map[string]int)
+	}
+	if s.mailboxCooldownUntil == nil {
+		s.mailboxCooldownUntil = make(map[string]time.Time)
+	}
+	s.mailboxFailureStreak[provider]++
+	if s.mailboxFailureStreak[provider] < emailProviderMailboxFailureCooldownThreshold {
+		return false
+	}
+	s.mailboxFailureStreak[provider] = 0
+	s.mailboxCooldownUntil[provider] = time.Now().Add(emailProviderMailboxFailureCooldown)
+	return true
 }
 
 func normalizeStartEmailProviders(providers []string) ([]string, error) {
@@ -1594,7 +1654,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 	taskStartTime := time.Now()
 	registrarStartPacingEnabled := shouldEnableRegistrarStartPacing(req.Concurrency, proxyMode, taskConfig.Proxy)
 	if registrarStartPacingEnabled {
-		log.Printf("[Kiro] 真实注册启动节流: 步进 %s，全局错峰进入注册流程", registrarStartPacingStep)
+		log.Printf("[Kiro] 注册链路启动节流: 步进 %s，全局错峰进入前置流程", registrarStartPacingStep)
 	}
 	registrarStartPacer := newRegistrarStartPacer(registrarStartPacingStep)
 	waitForRegistrarStartPacing := func(registrationIndex int, displayTotal int) bool {
@@ -1605,7 +1665,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		if delay <= 0 {
 			return true
 		}
-		log.Printf("[Kiro][%d/%d] 真实注册启动节流等待 %s，降低同批风控聚集", registrationIndex+1, displayTotal, delay.Truncate(time.Millisecond))
+		log.Printf("[Kiro][%d/%d] 注册链路启动节流等待 %s，降低同批风控聚集", registrationIndex+1, displayTotal, delay.Truncate(time.Millisecond))
 		timer := time.NewTimer(delay)
 		defer timer.Stop()
 		select {
@@ -2583,6 +2643,8 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 		var itemStart time.Time
 		var result map[string]interface{}
 		registrationReserved := false
+		registrationCommitted := false
+		var lastConsumingResult map[string]interface{}
 		domainAttemptRecorded := false
 		reserveBeforeRegistrar := func() bool {
 			if registrationReserved {
@@ -2604,11 +2666,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				return false
 			}
 			itemStart = time.Now()
-			log.Printf("[Kiro][%d/%d] 开始注册", i+1, displayTotal)
-			if !domainAttemptRecorded {
-				recordEmailProviderDomainAttemptStat(emailProvider, currentEmail)
-				domainAttemptRecorded = true
-			}
+			log.Printf("[Kiro][%d/%d] 启动注册链路（表单提交前暂不计入注册次数）", i+1, displayTotal)
 			return true
 		}
 		releaseRegistrationReservation := func() {
@@ -2685,6 +2743,9 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 					selection, err := clashClient.SwitchToNextAvailable(taskCtx)
 					if err != nil {
 						log.Printf("[Kiro][%d/%d] Clash 节点选择失败: %v", i+1, displayTotal, err)
+						if !registrationReserved {
+							recordProxySelectFailure(err)
+						}
 						result = map[string]interface{}{
 							"status": "failed",
 							"error":  "Clash 无可用节点: " + err.Error(),
@@ -2829,7 +2890,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				if currentRuntimeProxyEgress.IP != "" {
 					delay := runtimeProxyEgressStartPacer.ReserveDelay(currentRuntimeProxyEgress.IP, time.Now())
 					if delay > 0 {
-						log.Printf("[Kiro][%d/%d] 同出口 IP 真实注册启动节流: ip=%s, 等待 %ds，避免短时间并发触发风控",
+						log.Printf("[Kiro][%d/%d] 同出口 IP 注册链路启动节流: ip=%s, 等待 %ds，避免短时间并发触发风控",
 							i+1, displayTotal, currentRuntimeProxyEgress.IP, int(delay.Seconds()))
 						timer := time.NewTimer(delay)
 						select {
@@ -2853,11 +2914,6 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				if !reserveBeforeRegistrar() {
 					return false
 				}
-				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxySourceKey != "" && currentRuntimeProxyEgress.IP != "" {
-					if err := recordRuntimeProxyEgressAttempt(currentRuntimeProxySourceKey, currentRuntimeProxyEgress); err != nil {
-						log.Printf("[Kiro][%d/%d] 记录代理出口尝试统计失败: ip=%s err=%v", i+1, displayTotal, currentRuntimeProxyEgress.IP, err)
-					}
-				}
 				result = runRegistrar(&attemptCfg)
 				return true
 			}
@@ -2870,7 +2926,27 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			if resultEmail, _ := result["email"].(string); resultEmail != "" {
 				currentEmail = resultEmail
 			}
+			if registrationResultConsumesAttempt(result) {
+				lastConsumingResult = result
+				if !registrationCommitted {
+					registrationCommitted = true
+					log.Printf("[Kiro][%d/%d] 注册表单已提交，正式计入注册次数", i+1, displayTotal)
+				}
+				if !domainAttemptRecorded {
+					recordEmailProviderDomainAttemptStat(emailProvider, currentEmail)
+					domainAttemptRecorded = true
+				}
+				if !currentClashAssisted && proxyMode == storage.ProxyModeNormal && currentRuntimeProxySourceKey != "" && currentRuntimeProxyEgress.IP != "" {
+					if err := recordRuntimeProxyEgressAttempt(currentRuntimeProxySourceKey, currentRuntimeProxyEgress); err != nil {
+						log.Printf("[Kiro][%d/%d] 记录代理出口表单提交尝试统计失败: ip=%s err=%v", i+1, displayTotal, currentRuntimeProxyEgress.IP, err)
+					}
+				}
+			}
 			recordEmailProviderOTPStat(emailProvider, result)
+			if providerSelector.ReportMailboxResult(emailProvider, result) {
+				log.Printf("[Kiro] %s 连续收码失败 %d 次，渠道冷却 %s 后再试",
+					emailProviderDisplayName(emailProvider), emailProviderMailboxFailureCooldownThreshold, emailProviderMailboxFailureCooldown)
+			}
 
 			if result["status"] == "success" {
 				if currentClashAssisted && currentClashNode != "" {
@@ -3122,8 +3198,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 				continue retryLoop
 			}
 
-			// Step6 提交邮箱 403 等发生在验证码/创建身份之前：邮箱和账号尚未消耗。
-			// 优先同邮箱切换动态代理重试；超过切换上限后作为前置补齐失败释放注册名额。
+			// 注册表单提交前的失败尚未消耗注册次数；优先同邮箱切换动态代理重试。
 			if shouldTreatReservedFailureAsPreflight(result) && (proxy.HasURLTemplate(taskCfg.Proxy) || currentClashAssisted) && proxySwitches < maxProxySwitches {
 				proxySwitches++
 				if currentClashAssisted {
@@ -3154,8 +3229,9 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 
 			log.Printf("[Kiro][%d/%d] 注册失败: %s，准备重试", i+1, displayTotal, errorMsg)
 		}
+		result = preserveConsumingRegistrationResult(result, lastConsumingResult)
 
-		if registrationReserved && shouldTreatReservedFailureAsPreflight(result) {
+		if registrationReserved && !registrationCommitted {
 			errorMsg, _ := result["error"].(string)
 			releaseRegistrationReservation()
 			Manager.mu.Lock()
@@ -3163,7 +3239,7 @@ func runBatch(req StartTaskRequest, outlookAccounts []email.OutlookAccount) {
 			successCount := Manager.success
 			failedCount := Manager.failed
 			Manager.mu.Unlock()
-			log.Printf("[Kiro][%d/%d] 预注册失败（未进入验证码/创建身份流程，不计入注册次数，继续补齐）: %s", i+1, displayTotal, errorMsg)
+			log.Printf("[Kiro][%d/%d] 表单提交前失败（未提交注册表单，不计入注册次数，继续补齐）: %s", i+1, displayTotal, errorMsg)
 			statsMu.Lock()
 			runtimeStats.RecordPreflightRegistrationFailure(errorMsg)
 			progressSummary := runtimeStats.ProgressSummary(completedCount, successCount, failedCount, 3)
@@ -3683,25 +3759,30 @@ func shouldTreatReservedFailureAsPreflight(result map[string]interface{}) bool {
 	if result == nil || result["status"] == "success" {
 		return false
 	}
-	if passwordSet, _ := result["passwordSet"].(bool); passwordSet {
+	if registrationResultConsumesAttempt(result) {
 		return false
 	}
 	errorMsg, _ := result["error"].(string)
-	errorMsg = strings.TrimSpace(errorMsg)
-	if errorMsg == "" {
+	return strings.TrimSpace(errorMsg) != ""
+}
+
+func registrationResultConsumesAttempt(result map[string]interface{}) bool {
+	if result == nil {
 		return false
 	}
-	if isSubmitEmail403RiskError(errorMsg) {
+	if result["status"] == "success" {
 		return true
 	}
-	lower := strings.ToLower(errorMsg)
-	if strings.Contains(errorMsg, "代理无可用节点") || strings.Contains(errorMsg, "代理池无可用节点") {
-		return true
+	formSubmitted, _ := result["formSubmitted"].(bool)
+	passwordSet, _ := result["passwordSet"].(bool)
+	return formSubmitted || passwordSet
+}
+
+func preserveConsumingRegistrationResult(current, lastConsuming map[string]interface{}) map[string]interface{} {
+	if current == nil || registrationResultConsumesAttempt(current) || lastConsuming == nil {
+		return current
 	}
-	if strings.Contains(lower, "context canceled") || strings.Contains(errorMsg, "任务已取消") {
-		return true
-	}
-	return false
+	return lastConsuming
 }
 
 func riskFailureDetail(errorMsg, reason string) string {
@@ -3881,7 +3962,10 @@ func isProxyNetworkError(errorMsg string) bool {
 		"unexpected eof",
 		"client.timeout exceeded",
 		"broken pipe",
-		"connect",
+		"dial tcp",
+		"connectex",
+		"connect:",
+		"no such host",
 		"proxy",
 		"代理",
 		"网络连接",
@@ -4152,6 +4236,41 @@ func isSendOTPMailboxRejectedError(errorMsg string) bool {
 	}
 	if diagnostics, ok := parseSendOTPDiagnostics(errorMsg); ok {
 		return isSendOTPBlockedError(errorMsg) && diagnostics["provider"] != "" && diagnostics["domain"] != ""
+	}
+	return false
+}
+
+func isEmailProviderMailboxFailure(errorMsg string) bool {
+	if strings.TrimSpace(errorMsg) == "" || isProxyNetworkError(errorMsg) {
+		return false
+	}
+	if isSendOTPMailboxRejectedError(errorMsg) || isSendOTPClientRejection(errorMsg) {
+		return true
+	}
+	triggers := []string{
+		"验证码接收超时",
+		"等待验证码超时",
+		"获取邮件失败",
+		"邮箱服务异常",
+		"无法接收验证码",
+	}
+	for _, trigger := range triggers {
+		if strings.Contains(errorMsg, trigger) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSendOTPClientRejection(errorMsg string) bool {
+	lower := strings.ToLower(errorMsg)
+	if !strings.Contains(lower, "send-otp 失败") {
+		return false
+	}
+	for _, status := range []string{"(400)", "(401)", "(403)", "(409)", "(422)"} {
+		if strings.Contains(lower, status) {
+			return true
+		}
 	}
 	return false
 }

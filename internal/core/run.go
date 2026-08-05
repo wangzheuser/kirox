@@ -133,7 +133,17 @@ func (r *Registrar) ctxCancelled() bool {
 }
 
 // Run 执行完整注册流程
-func (r *Registrar) Run() map[string]interface{} {
+func (r *Registrar) Run() (result map[string]interface{}) {
+	defer func() {
+		if result == nil {
+			result = map[string]interface{}{}
+		}
+		result["enteredSignup"] = r.EnteredSignup
+		result["formSubmitted"] = r.FormSubmitted
+		result["otpSent"] = r.OTPSent
+		result["otpReceived"] = r.OTPReceived
+	}()
+
 	if r.InitErr != nil {
 		friendlyErr := r.formatError("Proxy", r.InitErr)
 		return map[string]interface{}{"status": "failed", "error": friendlyErr, "email": r.Email}
@@ -180,6 +190,7 @@ func (r *Registrar) Run() map[string]interface{} {
 	}
 
 	if status == "signup" {
+		r.EnteredSignup = true
 		signupSteps := []struct {
 			name string
 			fn   func() error
@@ -332,7 +343,7 @@ func (r *Registrar) Run() map[string]interface{} {
 	}
 
 	verify := r.VerifyAlive(awsToken)
-	result := buildFinalRegistrationResult(r, awsToken, kiroTokens, verify)
+	result = buildFinalRegistrationResult(r, awsToken, kiroTokens, verify)
 	if result["status"] == "success" {
 		log.Printf("%s 注册成功", prefix)
 	} else if suspended, _ := verify["suspended"].(bool); suspended {

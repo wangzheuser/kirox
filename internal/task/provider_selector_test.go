@@ -1,9 +1,11 @@
 package task
 
 import (
+	"context"
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"reg_go/internal/storage"
 )
@@ -90,6 +92,129 @@ func TestEmailProviderSelectorSetIsImmutable(t *testing.T) {
 	sort.Strings(got[:2])
 	if got[0] != "emailnator" || got[1] != "mailgw" || got[2] != "emailnator" {
 		t.Fatalf("selector should keep an internal copy, got %#v", got)
+	}
+}
+
+func TestEmailProviderSelectorCreateFailureCooldown(t *testing.T) {
+	selector := newEmailProviderSelector([]string{"mailgw"})
+	for i := 1; i <= emailProviderCreateFailureCooldownThreshold; i++ {
+		cooled := selector.ReportCreateFailure("mailgw")
+		if cooled != (i == emailProviderCreateFailureCooldownThreshold) {
+			t.Fatalf("failure %d cooled=%v", i, cooled)
+		}
+	}
+
+	if provider, wait, ok := selector.nextAvailable(time.Now()); ok || provider != "" || wait <= 0 {
+		t.Fatalf("create-failed provider should cool: provider=%q wait=%s ok=%v", provider, wait, ok)
+	}
+	selector.ReportCreateSuccess("mailgw")
+	if provider, _, ok := selector.nextAvailable(time.Now()); !ok || provider != "mailgw" {
+		t.Fatalf("create success should clear create cooldown: provider=%q ok=%v", provider, ok)
+	}
+}
+
+func TestEmailProviderSelectorMailboxCooldownSurvivesCreateSuccess(t *testing.T) {
+	selector := newEmailProviderSelector([]string{"mailgw"})
+	result := map[string]interface{}{
+		"status":        "failed",
+		"formSubmitted": true,
+		"otpSent":       true,
+		"otpReceived":   false,
+		"error":         "验证码接收超时，请检查邮箱服务或稍后重试",
+	}
+	for i := 1; i <= emailProviderMailboxFailureCooldownThreshold; i++ {
+		cooled := selector.ReportMailboxResult("mailgw", result)
+		if cooled != (i == emailProviderMailboxFailureCooldownThreshold) {
+			t.Fatalf("mailbox failure %d cooled=%v", i, cooled)
+		}
+	}
+
+	selector.ReportCreateSuccess("mailgw")
+	if provider, wait, ok := selector.nextAvailable(time.Now()); ok || provider != "" || wait <= 0 {
+		t.Fatalf("create success must not clear mailbox cooldown: provider=%q wait=%s ok=%v", provider, wait, ok)
+	}
+
+	selector.ReportMailboxResult("mailgw", map[string]interface{}{
+		"status":        "failed",
+		"formSubmitted": true,
+		"otpReceived":   true,
+	})
+	if provider, _, ok := selector.nextAvailable(time.Now()); !ok || provider != "mailgw" {
+		t.Fatalf("OTP received should clear mailbox cooldown: provider=%q ok=%v", provider, ok)
+	}
+}
+
+func TestEmailProviderSelectorDoesNotPenalizeProxyOrPreFormFailure(t *testing.T) {
+	selector := newEmailProviderSelector([]string{"mailgw"})
+	results := []map[string]interface{}{
+		{
+			"status":        "failed",
+			"formSubmitted": true,
+			"otpReceived":   false,
+			"error":         "proxy connect timeout while waiting for mailbox",
+		},
+		{
+			"status":        "failed",
+			"formSubmitted": false,
+			"otpReceived":   false,
+			"error":         "验证码接收超时，请检查邮箱服务或稍后重试",
+		},
+	}
+	for _, result := range results {
+		for i := 0; i < emailProviderMailboxFailureCooldownThreshold+1; i++ {
+			if selector.ReportMailboxResult("mailgw", result) {
+				t.Fatalf("non-mailbox result should not trigger cooldown: %#v", result)
+			}
+		}
+	}
+	if provider, _, ok := selector.nextAvailable(time.Now()); !ok || provider != "mailgw" {
+		t.Fatalf("provider should remain available: provider=%q ok=%v", provider, ok)
+	}
+}
+
+func TestEmailProviderSelectorCooldownWaitIsCancellable(t *testing.T) {
+	selector := newEmailProviderSelector([]string{"mailgw"})
+	selector.mailboxCooldownUntil["mailgw"] = time.Now().Add(emailProviderMailboxFailureCooldown)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := selector.NextWithContext(ctx)
+		done <- err
+	}()
+	cancel()
+
+	select {
+	case err := <-done:
+		if err != context.Canceled {
+			t.Fatalf("NextWithContext error=%v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("NextWithContext did not stop after context cancellation")
+	}
+}
+
+func TestIsEmailProviderMailboxFailure(t *testing.T) {
+	tests := []struct {
+		name string
+		err  string
+		want bool
+	}{
+		{name: "send otp rejected", err: `发送验证码失败: send-otp 失败 (400): rejected`, want: true},
+		{name: "send otp forbidden", err: `发送验证码失败: send-otp 失败 (403): rejected`, want: true},
+		{name: "TES blocked", err: `注册被拦截: 请更换IP或稍后重试 [provider=mailgw, domain=example.test]`, want: true},
+		{name: "OTP timeout", err: "验证码接收超时，请检查邮箱服务或稍后重试", want: true},
+		{name: "mailbox read", err: "邮箱服务异常，无法接收验证码", want: true},
+		{name: "send otp rate limit", err: `发送验证码失败: send-otp 失败 (429): rate limited`, want: false},
+		{name: "send otp upstream", err: `发送验证码失败: send-otp 失败 (503): unavailable`, want: false},
+		{name: "proxy timeout", err: "proxy connect timeout", want: false},
+		{name: "cancelled", err: "任务已取消", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isEmailProviderMailboxFailure(tt.err); got != tt.want {
+				t.Fatalf("isEmailProviderMailboxFailure(%q)=%v, want %v", tt.err, got, tt.want)
+			}
+		})
 	}
 }
 

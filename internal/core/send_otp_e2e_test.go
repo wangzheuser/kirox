@@ -90,6 +90,31 @@ func TestStep9SendOTPLocalTargetAcceptsValidRequest(t *testing.T) {
 	if seenEmail != r.Email {
 		t.Fatalf("server saw email %q, want %q", seenEmail, r.Email)
 	}
+	if !r.FormSubmitted || !r.OTPSent {
+		t.Fatalf("successful send-otp milestones = formSubmitted:%v otpSent:%v", r.FormSubmitted, r.OTPSent)
+	}
+}
+
+func TestStep9SendOTPRejectedRequestStillMarksFormSubmitted(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errorCode":"BLOCKED"}`))
+	}))
+	defer server.Close()
+
+	cfg := NewConfig()
+	cfg.ProfileBase = server.URL
+	r := NewRegistrar(cfg)
+	r.WorkflowID = "wf-id"
+	r.WorkflowState = "wf-state"
+	r.Email = "user@example.test"
+
+	if err := r.Step9SendOTP(); err == nil {
+		t.Fatal("Step9SendOTP should report rejected send-otp response")
+	}
+	if !r.FormSubmitted || r.OTPSent {
+		t.Fatalf("rejected send-otp milestones = formSubmitted:%v otpSent:%v", r.FormSubmitted, r.OTPSent)
+	}
 }
 
 func TestStep9SendOTPBodyJSONUsesBrowserInsertionOrder(t *testing.T) {

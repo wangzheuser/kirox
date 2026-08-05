@@ -614,6 +614,21 @@ func TestBareEOFIsProxyNetworkError(t *testing.T) {
 	}
 }
 
+func TestProxyNetworkErrorDoesNotMatchLocalizedBusinessText(t *testing.T) {
+	if isProxyNetworkError("Veuillez reessayer de vous connecter") {
+		t.Fatal("French business text containing connecter must not be treated as a network error")
+	}
+	for _, errText := range []string{
+		"dial tcp 127.0.0.1:443: connect: connection refused",
+		"dial tcp: lookup endpoint: no such host",
+		"connectex: No connection could be made",
+	} {
+		if !isProxyNetworkError(errText) {
+			t.Fatalf("real connection error should still match: %q", errText)
+		}
+	}
+}
+
 func TestModels403IsClashNodeRiskFailureNotNetworkError(t *testing.T) {
 	errText := `验活失败: models query failed: 403`
 	if isProxyNetworkError(errText) {
@@ -1154,6 +1169,54 @@ func TestSubmitEmail403BeforePasswordSetIsPreRegistrationFailure(t *testing.T) {
 
 	if !shouldTreatReservedFailureAsPreflight(result) {
 		t.Fatalf("submit-email 403 before passwordSet should release registration slot and be补齐 as preflight")
+	}
+}
+
+func TestRegistrationResultConsumesAttemptAtFormSubmission(t *testing.T) {
+	tests := []struct {
+		name   string
+		result map[string]interface{}
+		want   bool
+	}{
+		{name: "nil", result: nil},
+		{name: "entered signup only", result: map[string]interface{}{"status": "failed", "enteredSignup": true}},
+		{name: "form submitted", result: map[string]interface{}{"status": "failed", "formSubmitted": true}, want: true},
+		{name: "password set compatibility", result: map[string]interface{}{"status": "failed", "passwordSet": true}, want: true},
+		{name: "success compatibility", result: map[string]interface{}{"status": "success"}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := registrationResultConsumesAttempt(tt.result); got != tt.want {
+				t.Fatalf("registrationResultConsumesAttempt(%#v) = %v, want %v", tt.result, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPreserveConsumingRegistrationResultAcrossRetry(t *testing.T) {
+	consuming := map[string]interface{}{
+		"status":        "failed",
+		"formSubmitted": true,
+		"error":         "first submitted failure",
+	}
+	preflight := map[string]interface{}{
+		"status":        "failed",
+		"formSubmitted": false,
+		"error":         "later preflight failure",
+	}
+
+	got := preserveConsumingRegistrationResult(preflight, consuming)
+	if got["error"] != consuming["error"] || got["formSubmitted"] != true {
+		t.Fatalf("final result should preserve submitted attempt, got %#v", got)
+	}
+	newerConsuming := map[string]interface{}{
+		"status":        "failed",
+		"formSubmitted": true,
+		"error":         "newer submitted failure",
+	}
+	if got := preserveConsumingRegistrationResult(newerConsuming, consuming); got["error"] != newerConsuming["error"] {
+		t.Fatalf("current consuming result should win, got %#v", got)
 	}
 }
 

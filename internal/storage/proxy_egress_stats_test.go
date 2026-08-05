@@ -50,15 +50,19 @@ func TestProxyEgressStatsRecordAttemptSuccessAndRiskCooldown(t *testing.T) {
 	}
 }
 
-func TestProxyEgressStatsSuccessClearsCooldownAndResetClearsAll(t *testing.T) {
+func TestProxyEgressStatsNetworkFailureCooldownClearedBySuccess(t *testing.T) {
 	withTempStorageConfig(t, "")
 
 	egress := ProxyEgressIdentity{IP: "203.0.113.10", CountryCode: "RO"}
-	if err := RecordProxyEgressRiskFailure("template-a", egress, time.Hour); err != nil {
-		t.Fatalf("RecordProxyEgressRiskFailure returned error: %v", err)
+	if err := RecordProxyEgressNetworkFailure("template-a", egress, time.Hour); err != nil {
+		t.Fatalf("RecordProxyEgressNetworkFailure returned error: %v", err)
 	}
 	if !IsProxyEgressCooling("template-a", "203.0.113.10", time.Now()) {
-		t.Fatalf("risk failure should cool the egress IP")
+		t.Fatalf("network failure should cool the egress IP")
+	}
+	stat := findProxyEgressStat(t, GetProxyEgressStats(), "template-a", "203.0.113.10")
+	if stat.NetworkFailureCount != 1 {
+		t.Fatalf("network failure count = %d, want 1", stat.NetworkFailureCount)
 	}
 	if err := RecordProxyEgressRegistrationSuccess("template-a", egress); err != nil {
 		t.Fatalf("RecordProxyEgressRegistrationSuccess returned error: %v", err)
@@ -75,5 +79,27 @@ func TestProxyEgressStatsSuccessClearsCooldownAndResetClearsAll(t *testing.T) {
 	}
 	if got := GetProxyEgressStats(); len(got) != 0 {
 		t.Fatalf("stats should be empty after reset, got %#v", got)
+	}
+}
+
+func TestProxyEgressStatsNetworkFailureDoesNotShortenExistingCooldown(t *testing.T) {
+	withTempStorageConfig(t, "")
+
+	egress := ProxyEgressIdentity{IP: "203.0.113.10", CountryCode: "RO"}
+	if err := RecordProxyEgressRiskFailure("template-a", egress, 10*time.Minute); err != nil {
+		t.Fatalf("RecordProxyEgressRiskFailure returned error: %v", err)
+	}
+	before := findProxyEgressStat(t, GetProxyEgressStats(), "template-a", "203.0.113.10")
+
+	if err := RecordProxyEgressNetworkFailure("template-a", egress, 2*time.Minute); err != nil {
+		t.Fatalf("RecordProxyEgressNetworkFailure returned error: %v", err)
+	}
+	after := findProxyEgressStat(t, GetProxyEgressStats(), "template-a", "203.0.113.10")
+
+	if after.CooldownUntil != before.CooldownUntil {
+		t.Fatalf("network failure shortened cooldown from %q to %q", before.CooldownUntil, after.CooldownUntil)
+	}
+	if after.NetworkFailureCount != 1 {
+		t.Fatalf("network failure count = %d, want 1", after.NetworkFailureCount)
 	}
 }

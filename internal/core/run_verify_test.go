@@ -1,6 +1,20 @@
 package core
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
+
+func TestRunIncludesRegistrationMilestonesOnEarlyFailure(t *testing.T) {
+	result := (&Registrar{InitErr: errors.New("proxy init failed"), Email: "user@example.test"}).Run()
+
+	for _, key := range []string{"enteredSignup", "formSubmitted", "otpSent", "otpReceived"} {
+		value, ok := result[key].(bool)
+		if !ok || value {
+			t.Fatalf("early failure milestone %s = %#v, want false bool", key, result[key])
+		}
+	}
+}
 
 func TestBuildFinalRegistrationResultFailsWhenVerificationFailed(t *testing.T) {
 	result := buildFinalRegistrationResult(&Registrar{
